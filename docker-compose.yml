@@ -1,0 +1,31 @@
+services:
+  osrm:
+    image: osrm/osrm-backend:latest
+    container_name: osrm
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./osrm-data:/data
+    command: osrm-routed --algorithm mld --max-table-size 10000 /data/sudeste-260212.osrm
+    restart: unless-stopped
+    networks:
+      - routing
+
+  vroom:
+    image: ghcr.io/vroom-project/vroom-docker:v1.14.0
+    container_name: vroom
+    ports:
+      - "3000:3000"
+    environment:
+      - VROOM_ROUTER=osrm
+      - OSRM_ADDRESS=osrm
+      - OSRM_PORT=5000
+    depends_on:
+      - osrm
+    restart: unless-stopped
+    networks:
+      - routing
+
+networks:
+  routing:
+    driver: bridge

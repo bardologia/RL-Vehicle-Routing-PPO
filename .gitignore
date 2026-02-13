@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv
+.env
+
+# PyTorch & Machine Learning
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.pickle
+
+# Training Data & Generated Data
+data/
+*.csv
+*.npy
+*.npz
+
+# OSRM Data (large binary map files)
+osrm-data/
+*.osm
+*.osm.pbf
+*.osrm*
+
+# Training Runs & Logs
+runs/
+logs/
+*.log
+experiments/
+
+# TensorBoard
+events.out.tfevents.*
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+*.ipynb_checkpoints
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS Specific
+Thumbs.db
+.DS_Store
+*.bak
+
+# Documentation builds
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Distribution / Packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
