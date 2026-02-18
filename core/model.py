@@ -1,7 +1,17 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import HeteroConv, GATv2Conv # type: ignore
+from torch_geometric.nn import HeteroConv, GATv2Conv
+from core.mask import PPOMasking 
+import numpy as np
+
+
+class Action:
+    def __init__(self, operator, vehicle_index, job_index):
+        self.operator = operator
+        self.vehicle_index = vehicle_index
+        self.job_index = job_index
 
 
 class SelfAttention(nn.Module):
@@ -369,4 +379,266 @@ class GNN(nn.Module):
         context = {node_type: self.pooling[node_type](embeddings[node_type]) for node_type in self.node_types}
 
         return embeddings, context["job"], context["vehicle"], context["path"]
+
+
+class Policy(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        model   = config.model
+        self.masking = PPOMasking(config) 
+        
+        self.device = "cuda" if config.training.device.startswith("cuda") else "cpu"
+        self.num_operators = model.num_operators
+
+        self.graph_embedding  = GNN(
+            model                    = model,
+            job_input_dimension      = model.job_input_dim,
+            vehicle_input_dimension  = model.vehicle_input_dim,
+            path_input_dimension     = model.path_input_dim,
+            hidden_channels          = model.policy_gnn_hidden_channels,
+            output_channels          = model.policy_embedding_dim,
+            num_layers               = model.gnn_num_layers,
+            edge_attribute_dimension = model.edge_attr_dim,
+            mlp_hidden_channels      = model.policy_gnn_mlp_hidden_channels,
+            edge_dropout             = model.gnn_edge_dropout,
+        )
+
+        self.operator_emb = nn.Embedding(model.num_operators, model.operator_embedding_dim)
+
+        self.operator_actor = nn.Sequential(
+            self._layer_init(nn.Linear(3 * model.policy_embedding_dim, model.policy_actor_hidden_1)),   
+            nn.Tanh(),
+            self._layer_init(nn.Linear(model.policy_actor_hidden_1, model.policy_actor_hidden_2)),
+            nn.Tanh(),
+            self._layer_init(nn.Linear(model.policy_actor_hidden_2, model.num_operators), std=0.01),
+        )
+        
+        vehicle_actor_input_dim = model.policy_embedding_dim + 3 * model.policy_embedding_dim + model.operator_embedding_dim
+       
+        self.vehicle_actor = nn.Sequential(
+            self._layer_init(nn.Linear(vehicle_actor_input_dim, model.policy_actor_hidden_1)),  
+            nn.Tanh(),
+            self._layer_init(nn.Linear(model.policy_actor_hidden_1, model.policy_actor_hidden_2)),
+            nn.Tanh(),
+            self._layer_init(nn.Linear(model.policy_actor_hidden_2, 1), std=0.01),
+        )
+
+        pointer_context_input_dim = 3 * model.policy_embedding_dim + model.operator_embedding_dim + model.policy_embedding_dim
+        
+        self.pointer_context_proj = nn.Sequential(
+            self._layer_init(nn.Linear(pointer_context_input_dim, model.pointer_hidden_dim)),
+            nn.Tanh(),
+            self._layer_init(nn.Linear(model.pointer_hidden_dim, model.policy_embedding_dim)),
+        )
+        
+        self.job_pointer = PointerNetwork(
+            hidden_dim=model.policy_embedding_dim,
+            num_heads=model.pointer_num_heads,
+            tanh_clipping=model.pointer_tanh_clipping,
+        )
+
+        self.critic = nn.Sequential(
+            self._layer_init(nn.Linear(3 * model.value_embedding_dim, model.value_critic_hidden_1)),   
+            nn.Tanh(),
+            self._layer_init(nn.Linear(model.value_critic_hidden_1, model.value_critic_hidden_2)),
+            nn.Tanh(),
+            self._layer_init(nn.Linear(model.value_critic_hidden_2, 1), std=1.0),
+        )
+
+    @staticmethod
+    def _layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+        torch.nn.init.orthogonal_(layer.weight, std)
+        torch.nn.init.constant_(layer.bias, bias_const)
+        return layer
+
+    def forward(self, graph):
+        device = self.device
+        graph = graph.to(device)
+
+        with torch.amp.autocast(device, enabled=self.config.training.use_mixed_precision):
+            actor_embeddings, actor_job_ctx, actor_veh_ctx, actor_path_ctx = self.graph_embedding(graph)
+            actor_global_ctx = torch.cat([actor_job_ctx, actor_veh_ctx, actor_path_ctx], dim=-1)
+            op_logits        = self.operator_actor(actor_global_ctx)
+        
+            critic_context   = actor_global_ctx
+            state_value      = self.critic(critic_context).squeeze(-1)
+
+        return actor_embeddings, actor_global_ctx, op_logits, state_value
+
+    def compute_logits(self, actor_embeddings, actor_global_ctx, op_logits, selected_op=None, return_attention=False):
+
+        num_ops = self.num_operators
+        veh_emb = actor_embeddings["vehicle"]
+        job_emb = actor_embeddings["job"]
+        num_vehs = veh_emb.size(0)
+        
+        if selected_op is not None:
+            op_indices = torch.tensor([selected_op], device=self.device)
+            op_embs    = self.operator_emb(op_indices)
+
+            global_exp = actor_global_ctx.view(1, 1, -1).expand(1, num_vehs, -1)
+            veh_exp    = veh_emb.unsqueeze(0)  
+            op_exp     = op_embs.unsqueeze(1).expand(1, num_vehs, -1)
+        else:
+            op_indices = torch.arange(num_ops, device=self.device)
+            op_embs    = self.operator_emb(op_indices)
+            
+            global_exp = actor_global_ctx.view(1, 1, -1).expand(num_ops, num_vehs, -1)
+            veh_exp    = veh_emb.unsqueeze(0).expand(num_ops, num_vehs, -1)
+            op_exp     = op_embs.unsqueeze(1).expand(num_ops, num_vehs, -1)
+        
+        veh_input = torch.cat([veh_exp, global_exp, op_exp], dim=-1)
+        
+        with torch.amp.autocast(self.device, enabled=self.config.training.use_mixed_precision):
+            veh_logits = self.vehicle_actor(veh_input).squeeze(-1)
+            
+            pointer_context = torch.cat([global_exp, op_exp, veh_exp], dim=-1)
+            pointer_query = self.pointer_context_proj(pointer_context)
+            
+            if return_attention:
+                job_logits, attention_info = self.job_pointer(
+                    query            = pointer_query,
+                    keys             = job_emb,
+                    mask             = None,
+                    return_attention = True
+                )
+            else:
+                job_logits = self.job_pointer(
+                    query            = pointer_query,
+                    keys             = job_emb,
+                    mask             = None,
+                    return_attention = False
+                )
+        
+        if selected_op is not None:
+            veh_logits = veh_logits.squeeze(0) 
+            job_logits = job_logits.squeeze(0) 
+            
+            if return_attention:
+                attention_info['glimpse_weights'] = attention_info['glimpse_weights'].squeeze(0)
+                attention_info['pointer_weights'] = attention_info['pointer_weights'].squeeze(0)
+        
+        result = {
+            'op_logits'  : op_logits,
+            'veh_logits' : veh_logits,
+            'job_logits' : job_logits,
+        }
+        
+        if return_attention:
+            result['attention_info'] = attention_info
+        
+        return result
+
+    def act(self, graph, mask_info=None):
+        self.eval()
+        with torch.no_grad():
+            actor_embeddings, actor_global_ctx, op_logits, state_value = self.forward(graph)
+
+            masked_op_logits  = self.masking.mask_operator(op_logits, mask_info)
+            op_distribution   = torch.distributions.Categorical(logits=masked_op_logits.float())
+            selected_op       = op_distribution.sample()
+            
+            op_idx      = int(selected_op.item())
+            op_log_prob = op_distribution.log_prob(selected_op)
+
+            logits_result = self.compute_logits(
+                actor_embeddings = actor_embeddings,
+                actor_global_ctx = actor_global_ctx,
+                op_logits        = op_logits,
+                selected_op      = None, 
+                return_attention = True
+            )
+            
+            veh_logits_by_op     = logits_result['veh_logits']  
+            job_logits_by_op_veh = logits_result['job_logits']  
+            attention_info       = logits_result['attention_info']
+            
+            veh_logits_cond = veh_logits_by_op[op_idx] 
+
+            masked_veh_logits = self.masking.mask_vehicle(
+                veh_logits      = veh_logits_cond,
+                mask_info       = mask_info,
+                selected_op_idx = op_idx,
+            )
+            vehicle_distribution = torch.distributions.Categorical(logits=masked_veh_logits.float())
+            selected_vehicle     = vehicle_distribution.sample()
+            veh_idx              = int(selected_vehicle.item())
+            veh_log_prob         = vehicle_distribution.log_prob(selected_vehicle)
+            
+            job_logits_cond = job_logits_by_op_veh[op_idx, veh_idx]
+
+            masked_job_logits = self.masking.mask_job(
+                job_logits       = job_logits_cond,
+                mask_info        = mask_info,
+                selected_op_idx  = op_idx,
+                selected_veh_idx = veh_idx,
+            )
+            job_distribution = torch.distributions.Categorical(logits=masked_job_logits.float())
+
+            selected_job = job_distribution.sample()
+            job_idx      = int(selected_job.item())
+            job_log_prob = job_distribution.log_prob(selected_job)
+            
+            pointer_weights_sel = attention_info['pointer_weights'][op_idx, veh_idx]
+            glimpse_weights_sel = attention_info['glimpse_weights'][op_idx, veh_idx]
+
+        action = Action(
+            operator=op_idx,
+            vehicle_index=veh_idx,
+            job_index=job_idx,
+        )
+
+        results = {
+            "action"                : action,
+            "state_value"           : state_value,
+            "pointer_weights_sel"   : pointer_weights_sel,
+            "glimpse_weights_sel"   : glimpse_weights_sel,
+            "pointer_entropy"       : -(pointer_weights_sel * torch.log(pointer_weights_sel + 1e-10)).sum(),
+            "glimpse_entropy"       : -(glimpse_weights_sel * torch.log(glimpse_weights_sel + 1e-10)).sum(),
+            "pointer_max_weight"    : pointer_weights_sel.max(),
+            "glimpse_max_weight"    : glimpse_weights_sel.max(),
+            "log_prob_op"           : op_log_prob,
+            "log_prob_veh"          : veh_log_prob,
+            "log_prob_job"          : job_log_prob,
+            "op_log_prob"           : op_log_prob,
+            "veh_log_prob"          : veh_log_prob,
+            "job_log_prob"          : job_log_prob,
+            "old_op_logits"         : op_logits,
+            "old_veh_logits"        : veh_logits_by_op,
+            "old_job_logits"        : job_logits_by_op_veh,
+            "masked_op_logits"      : masked_op_logits,
+            "veh_logits_cond"       : veh_logits_cond,
+            "job_logits_cond"       : job_logits_cond,
+            "veh_logits_by_op"      : veh_logits_by_op,
+            "job_logits_by_op_veh"  : job_logits_by_op_veh,
+        }
+
+        self.train()
+        return results
+
+    def load(self, filename, directory):
+        filepath = os.path.join(directory, filename)
+        checkpoint = torch.load(filepath, map_location=self.config.training.device)
+
+        if "model_state_dict" in checkpoint:
+            self.load_state_dict(checkpoint["model_state_dict"])
+            return checkpoint.get("training_state", None)
+        else:
+            self.load_state_dict(checkpoint)
+            return None
+
+    def checkpoint(self, filename, directory, training_state=None, optimizer=None):
+        os.makedirs(directory, exist_ok=True)
+        filepath = os.path.join(directory, filename)
+        
+        checkpoint = {
+            "model_state_dict": self.state_dict(),
+            "training_state": training_state,
+        }
+        
+        if optimizer is not None:
+            checkpoint["optimizer_state_dict"] = optimizer.state_dict()
+        
+        torch.save(checkpoint, filepath)
 

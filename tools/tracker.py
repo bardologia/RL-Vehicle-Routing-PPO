@@ -1,3 +1,4 @@
+import torch
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -95,6 +96,16 @@ class BaseTracker:
         if len(state_dict) > 1 and self.writer:
             self.writer.add_scalars(f'{prefix}/comparison', state_dict, step)
     
+    def log_gpu_memory(self):
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated(self.device) / (1024**3)  # GB
+            reserved = torch.cuda.memory_reserved(self.device) / (1024**3)    # GB
+            max_allocated = torch.cuda.max_memory_allocated(self.device) / (1024**3)  # GB
+            
+            self.log_scalar(f'batch/gpu_memory_allocated_gb', allocated, self.global_step_counter)
+            self.log_scalar(f'batch/gpu_memory_reserved_gb', reserved, self.global_step_counter)
+            self.log_scalar(f'batch/gpu_memory_max_allocated_gb', max_allocated, self.global_step_counter)
+
     def close(self):
         if self.writer:
             self.writer.close()

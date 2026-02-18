@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 from torch import nn
 from torch_geometric.nn import GATv2Conv
-from core.embedding import SelfAttention, CrossAttention, PointerNetwork
+from core.model import SelfAttention, CrossAttention, PointerNetwork
 
 
 class Logger:

@@ -1,8 +1,7 @@
 import requests
 from requests.adapters import HTTPAdapter
-from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 import torch
 
@@ -109,7 +108,7 @@ class LearningRate:
     lr_operator_actor  : float = 3e-4
     lr_vehicle_actor   : float = 3e-4
     lr_critic          : float = 5e-4
-    lr_embedder_actor  : float = 2e-4
+    lr_embedding       : float = 2e-4
     lr_job_pointer     : float = 3e-4
     lr_pointer_context : float = 3e-4
     
@@ -136,6 +135,7 @@ class PPOConfig:
     gae_lambda : float = 0.95
 
     clip_ratio              : float = 0.2
+    value_clip_ratio        : float = 0.2
     value_loss_coef         : float = 0.5
     gradient_clip_max_norm  : float = 3.0
     kl_divergence_threshold : float = 0.015
@@ -145,7 +145,7 @@ class TrainingConfig:
     device                : str = "cuda"
     load_checkpoint       : bool = False
     resume_from_run       : Optional[str] = None
-    max_steps_per_episode : int = 1
+    max_steps_per_episode : int = 5
     batch_size            : int = 1024
     minibatch_size        : int = 128
     num_epochs            : int = 5
@@ -173,12 +173,8 @@ class DeviceConfig:
     device: str = "cuda"
     
     @property
-    def empty_edge_index(self):
-        return torch.empty((2, 0), dtype=torch.long)
-    
-    @property
-    def empty_edge_attr(self):
-        return torch.empty((0, 4), dtype=torch.float32)
+    def torch_device(self):
+        return torch.device(self.device)
 
 @dataclass
 class Config:

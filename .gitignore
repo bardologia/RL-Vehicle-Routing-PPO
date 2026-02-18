@@ -36,6 +36,7 @@ runs/
 logs/
 *.log
 experiments/
+test/
 
 # TensorBoard
 events.out.tfevents.*

@@ -70,7 +70,12 @@ def generate_coords_batch(center, radius_km, num_coords, p=0.1, m=5.0, bounds=((
     
     return np.column_stack([lons, lats])
 
-def add_jobs(jobs, num_jobs, center, radius, p, m):
+def add_jobs(jobs, num_jobs, config):
+    center = config.center
+    radius = config.radius
+    p      = config.outlier_probability
+    m      = config.outlier_multiplier
+    
     used_ids = [int(job.get("id")) for job in jobs]
     new_id = int(max(used_ids) + 1) if used_ids else 0
     coords_batch = generate_coords_batch(center, radius, num_jobs, p, m)
@@ -90,9 +95,14 @@ def add_jobs(jobs, num_jobs, center, radius, p, m):
 
     return jobs
 
-def add_vehicles(vehicles, num_vehicles, center, radius, p, m):
+def add_vehicles(vehicles, num_vehicles, config):
     used_ids = [int(veh.get("id")) for veh in vehicles]
     new_id = int(max(used_ids) + 1) if used_ids else 0
+
+    center = config.center
+    radius = config.radius
+    p      = config.outlier_probability
+    m      = config.outlier_multiplier
 
     coords_batch = generate_coords_batch(center, radius, num_vehicles, 0, m)
     capacities = np.random.choice([1, 2, 3], size=num_vehicles)

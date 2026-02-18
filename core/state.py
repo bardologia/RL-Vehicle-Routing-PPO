@@ -56,6 +56,22 @@ class State:
         return self.summary.get("cost", 0)
     
     @property
+    def duration(self) -> int:
+        return self.summary.get("duration", 0)
+    
+    @property
+    def service(self) -> int:
+        return self.summary.get("service", 0)
+    
+    @property
+    def distance(self) -> int:
+        return self.summary.get("distance", 0)
+    
+    @property
+    def waiting_time(self) -> int:
+        return self.summary.get("waiting_time", 0)
+    
+    @property
     def num_routes(self) -> int:
         return len(self.routes)
     
@@ -123,6 +139,66 @@ class StateHandler:
             if job_id in StateHandler.get_job_ids_in_route(route):
                 return route
         return None
+    
+    @staticmethod
+    def get_unassigned_priority_sum(state, jobs_by_id: dict) -> float:
+        priority_sum = 0.0
+        for unassigned_job in state.unassigned:
+            job = jobs_by_id.get(int(unassigned_job["id"]))
+            if job and "priority" in job:
+                priority_sum += float(job["priority"])
+        return priority_sum
+    
+    @staticmethod
+    def create_unassigned_entry(job_id: int, job_data: dict) -> dict:
+        return {
+            "id": int(job_id),
+            "location": job_data.get("location"),
+            "type": job_data.get("type", "job"),
+            "description": job_data.get("description"),
+        }
+    
+    @staticmethod
+    def build_job_location_map(routes) -> dict:
+        job_location_map = {}
+        for route in routes:
+            for step in route.get("steps", []):
+                if step.get("type") == "job" and "location" in step:
+                    job_id = step.get("job") or step.get("id")
+                    if job_id is not None:
+                        job_location_map[int(job_id)] = step["location"]
+        return job_location_map
+    
+    @staticmethod
+    def filter_steps_by_type(steps, step_type: str, exclude: bool = False):
+        if exclude:
+            return [step for step in (steps or []) if step.get("type") != step_type]
+        return [step for step in (steps or []) if step.get("type") == step_type]
+    
+    @staticmethod
+    def remove_jobs_from_steps(steps, job_ids_to_remove: set):
+        kept_steps = []
+        delta_service = 0
+        last_job_step = None
+        end_step = None
+        
+        for step in (steps or []):
+            stype = step.get("type")
+            
+            if stype == "job":
+                step_job_id = step.get("job") or step.get("id")
+                if step_job_id in job_ids_to_remove:
+                    delta_service += step.get("service", 0)
+                    continue
+                last_job_step = step
+                kept_steps.append(step)
+            elif stype == "end":
+                end_step = step
+                kept_steps.append(step)
+            else:
+                kept_steps.append(step)
+        
+        return kept_steps, delta_service, last_job_step, end_step
     
     @staticmethod
     def recompute_summary(state) -> None:

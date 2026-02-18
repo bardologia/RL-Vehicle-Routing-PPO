@@ -341,7 +341,7 @@ class Graph:
 
     def __init__(
         self,
-        device_cfg,
+        config,
         k_near_paths_for_job=3,
         k_near_vehicles_for_job=3,
         k_near_jobs_for_unassigned_vehicle=3,
@@ -367,7 +367,7 @@ class Graph:
 
         self.node_builder  = NodeBuilder(self)
         self.edge_builder  = EdgeBuilder(self)
-        self.graph_handler = GraphHandler(device_cfg)
+        self.graph_handler = GraphHandler(config)
 
         self.job_id_to_data     = {int(job["id"]): job for job in self.jobs}
         self.vehicle_id_to_data = {int(v["id"]): v for v in self.vehicles}
@@ -545,16 +545,15 @@ class Graph:
         
         raw_data     = self.pack_data()
         cleaned_data = self.graph_handler.build(raw_data)
-        mappings     = self.mappings()
+        cleaned_data.mappings = self.mappings()
 
-        graph = {"data": cleaned_data, "mappings": mappings}
-
-        return graph
+        return cleaned_data
 
 
 class GraphHandler:
-    def __init__(self, device_cfg):
-        self.device_cfg = device_cfg
+    def __init__(self, config):
+        self.config = config
+        self.device = config.device.device
     
     def ensure_relations(self, data: HeteroData) -> None:
         edge_index = data.edge_index_dict
@@ -575,9 +574,9 @@ class GraphHandler:
 
         for relation in required_relations:
             if relation not in edge_index:
-                data[relation].edge_index = self.device_cfg.empty_edge_index
+                data[relation].edge_index = torch.empty((2, 0), dtype=torch.long, device=self.device)
             if relation not in edge_attributes:
-                data[relation].edge_attr = self.device_cfg.empty_edge_attr
+                data[relation].edge_attr = torch.empty((0, 4), dtype=torch.float32, device=self.device)
     
     def populate_node(self, data: HeteroData) -> None:
         for node_type, features in data.x_dict.items():
@@ -585,13 +584,13 @@ class GraphHandler:
     
     def populate_edge(self, data: HeteroData) -> None:
         for edge_type, edge_index in data.edge_index_dict.items():
-            data[edge_type].edge_index = edge_index if edge_index.numel() else self.device_cfg.empty_edge_index
+            data[edge_type].edge_index = edge_index if edge_index.numel() else torch.empty((2, 0), dtype=torch.long, device=self.device)
         
         for edge_type, edge_attr in {etype: data[etype].edge_attr for etype in data.edge_types}.items():
-            data[edge_type].edge_attr = edge_attr if edge_attr.numel() else self.device_cfg.empty_edge_attr
+            data[edge_type].edge_attr = edge_attr if edge_attr.numel() else torch.empty((0, 4), dtype=torch.float32, device=self.device)
     
     def build(self, raw_data) -> HeteroData:  
-        data = raw_data["data"]
+        data = raw_data
         self.ensure_relations(data)
         self.populate_node(data)
         self.populate_edge(data)
