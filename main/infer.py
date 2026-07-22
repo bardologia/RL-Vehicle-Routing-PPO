@@ -5,7 +5,7 @@ proj_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
 if proj_root not in sys.path:
     sys.path.insert(0, proj_root)
 
-from tools.config import Config
+from configuration import Config
 from tools.logger import Logger
 from core.environment import Environment
 from core.inference import ModelInference

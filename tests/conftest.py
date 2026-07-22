@@ -11,7 +11,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from tools.config import Config
+from configuration import Config
 from core.state import Job, Route, RoutingState, Stop, Vehicle
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
