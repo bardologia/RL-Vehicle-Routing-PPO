@@ -5,8 +5,8 @@ from tools.logger import Logger
 from tools.inspection import ModelSummary, TensorLogger
 from tools.tracker import Tracker
 from tools.telemetry import PPOTelemetry
-from core.shared import Environment, PPOMasking, vroom
-from .ppo import PPO, PPODistribution
+from core.shared import Environment, ActionMasker, vroom
+from .ppo import PPO, ActionDistribution
 from .schedulers import LRScheduler, EntropyScheduler, EpochEarlyStopping
 from tqdm import tqdm
 import os
@@ -110,62 +110,62 @@ class Trainer:
     
     def initialize(self):
         self.logger.section("[PPO Initialization]")
-        lr_cfg      = self.config.lr
-        entropy_cfg = self.config.entropy
-        io_cfg      = self.config.io
+        lr_config      = self.config.lr
+        entropy_config = self.config.entropy
+        io_config      = self.config.io
                 
-        masking      = PPOMasking(self.config)
-        distribution = PPODistribution(self.config, masking)
+        masker       = ActionMasker(self.config)
+        distribution = ActionDistribution(self.config, masker)
 
         ppo = PPO(optimizer=None, config=self.config).to(self.device)
 
         ppo.telemetry    = self.telemetry
         ppo.logger       = self.logger
-        ppo.masking      = masking
+        ppo.masker       = masker
         ppo.distribution = distribution
       
         param_groups = [
-            {'params': ppo.policy.operator_actor.parameters(),       'lr': lr_cfg.lr_operator_actor,  'name': 'operator_actor'},
-            {'params': ppo.policy.vehicle_actor.parameters(),        'lr': lr_cfg.lr_vehicle_actor,   'name': 'vehicle_actor'},
-            {'params': ppo.policy.critic.parameters(),               'lr': lr_cfg.lr_critic,          'name': 'critic'},
-            {'params': ppo.policy.graph_embedding.parameters(),      'lr': lr_cfg.lr_embedding,       'name': 'graph_embedding'},
-            {'params': ppo.policy.job_actor.parameters(),            'lr': lr_cfg.lr_job_actor,       'name': 'job_actor'},
+            {'params': ppo.policy.operator_actor.parameters(),       'lr': lr_config.lr_operator_actor,  'name': 'operator_actor'},
+            {'params': ppo.policy.vehicle_actor.parameters(),        'lr': lr_config.lr_vehicle_actor,   'name': 'vehicle_actor'},
+            {'params': ppo.policy.critic.parameters(),               'lr': lr_config.lr_critic,          'name': 'critic'},
+            {'params': ppo.policy.graph_embedding.parameters(),      'lr': lr_config.lr_embedding,       'name': 'graph_embedding'},
+            {'params': ppo.policy.job_actor.parameters(),            'lr': lr_config.lr_job_actor,       'name': 'job_actor'},
         ]
                        
         self.logger.section("[Optimizer]")
-        self.logger.subsection(f"Operator Actor  = {lr_cfg.lr_operator_actor}")
-        self.logger.subsection(f"Vehicle Actor   = {lr_cfg.lr_vehicle_actor}")
-        self.logger.subsection(f"Critic          = {lr_cfg.lr_critic}")
-        self.logger.subsection(f"Graph Embedding = {lr_cfg.lr_embedding}")
-        self.logger.subsection(f"Job Actor       = {lr_cfg.lr_job_actor} \n")
+        self.logger.subsection(f"Operator Actor  = {lr_config.lr_operator_actor}")
+        self.logger.subsection(f"Vehicle Actor   = {lr_config.lr_vehicle_actor}")
+        self.logger.subsection(f"Critic          = {lr_config.lr_critic}")
+        self.logger.subsection(f"Graph Embedding = {lr_config.lr_embedding}")
+        self.logger.subsection(f"Job Actor       = {lr_config.lr_job_actor} \n")
 
         optimizer = optim.Adam(param_groups, eps=1e-5)
         ppo.optimizer = optimizer
         
         ppo.lr_scheduler = LRScheduler(
             optimizer    = optimizer,
-            warmup_steps = lr_cfg.lr_warmup_steps,
-            decay_steps  = lr_cfg.lr_decay_steps,
-            lr_min       = lr_cfg.lr_min,
+            warmup_steps = lr_config.lr_warmup_steps,
+            decay_steps  = lr_config.lr_decay_steps,
+            lr_min       = lr_config.lr_min,
         )
 
         ppo.entropy_scheduler = EntropyScheduler(
-            start_coef   = entropy_cfg.entropy_start,
-            end_coef     = entropy_cfg.entropy_end,
-            anneal_steps = entropy_cfg.entropy_anneal_steps,
-            warmup_steps = lr_cfg.lr_warmup_steps,
+            start_coef   = entropy_config.entropy_start,
+            end_coef     = entropy_config.entropy_end,
+            anneal_steps = entropy_config.entropy_anneal_steps,
+            warmup_steps = lr_config.lr_warmup_steps,
         )
 
         ppo.early_stopping = EpochEarlyStopping(self.config.ppo.kl_divergence_threshold)
 
         self.logger.section("[Schedulers]")
-        self.logger.subsection(f"LR Warmup Steps  = {lr_cfg.lr_warmup_steps}")
-        self.logger.subsection(f"LR Decay Steps   = {lr_cfg.lr_decay_steps}")
-        self.logger.subsection(f"LR Min           = {lr_cfg.lr_min}")
-        self.logger.subsection(f"Entropy Schedule = {entropy_cfg.entropy_start} -> {entropy_cfg.entropy_end} over {entropy_cfg.entropy_anneal_steps} steps")
+        self.logger.subsection(f"LR Warmup Steps  = {lr_config.lr_warmup_steps}")
+        self.logger.subsection(f"LR Decay Steps   = {lr_config.lr_decay_steps}")
+        self.logger.subsection(f"LR Min           = {lr_config.lr_min}")
+        self.logger.subsection(f"Entropy Schedule = {entropy_config.entropy_start} -> {entropy_config.entropy_end} over {entropy_config.entropy_anneal_steps} steps")
         self.logger.subsection(f"KL Threshold     = {self.config.ppo.kl_divergence_threshold} \n")
 
-        ppo.current_entropy_coef = entropy_cfg.entropy_start
+        ppo.current_entropy_coef = entropy_config.entropy_start
         
         if self.load_checkpoint:
             self.checkpoint.load(ppo, self, self.dataset)
@@ -205,7 +205,7 @@ class Trainer:
             with torch.no_grad():
                 if self.attached:
                     graph      = graph.to(self.device)
-                    ppo_output = self.ppo.policy.act(graph, mask_info)
+                    ppo_output = self.ppo.policy.select_action(graph, mask_info)
                     self.tensor_logger.save_markdown(path=os.path.join(self.config.io.logdir, "tensor_shape.md"), title=f"Tensor Shapes")
                     self.tensor_logger.detach()
                     self.attached = False
@@ -213,36 +213,36 @@ class Trainer:
                     self.logger.subsection("Tensor Shape Saved - Detaching Tensor Logger \n")
                 else:
                     graph      = graph.to(self.device)
-                    ppo_output = self.ppo.policy.act(graph, mask_info)
+                    ppo_output = self.ppo.policy.select_action(graph, mask_info)
 
-            action  = ppo_output["action"]
-            value   = ppo_output["state_value"].item()
-            op_idx  = action.operator
+            action         = ppo_output["action"]
+            value          = ppo_output["state_value"].item()
+            operator_index = action.operator
 
             old_state, next_state = self.environment.apply_action(action)
 
-            rewards, costs = self.environment.step(old_state, next_state, op_idx)
+            rewards, costs = self.environment.step(old_state, next_state, operator_index)
             reward = sum(rewards.values())
-     
-            self.operator_stats['count'][op_idx] += 1
-            self.operator_stats['rewards'][op_idx].append(reward)
+
+            self.operator_stats['count'][operator_index] += 1
+            self.operator_stats['rewards'][operator_index].append(reward)
 
             self.telemetry.step(rewards, costs, value, self.global_step_counter)
 
             experience = {
-                "graph"           : graph,
-                "mask_info"       : mask_info,
-                "reward"          : float(reward),
-                "action"          : ppo_output["action"],
-                "log_prob_op"     : ppo_output["log_prob_op"].detach().cpu(),
-                "log_prob_veh"    : ppo_output["log_prob_veh"].detach().cpu(),
-                "log_prob_job"    : ppo_output["log_prob_job"].detach().cpu(),
-                "state_value"     : ppo_output["state_value"].detach().cpu(),
-                "old_op_logits"   : ppo_output["old_op_logits"].detach().cpu(),
-                "old_veh_logits"  : ppo_output["old_veh_logits"].detach().cpu(),
-                "old_job_logits"  : ppo_output["old_job_logits"].detach().cpu(),
-                "bootstrap_value" : 0.0,
-                "done"            : False,
+                "graph"               : graph,
+                "mask_info"           : mask_info,
+                "reward"              : float(reward),
+                "action"              : ppo_output["action"],
+                "log_prob_operator"   : ppo_output["log_prob_operator"].detach().cpu(),
+                "log_prob_vehicle"    : ppo_output["log_prob_vehicle"].detach().cpu(),
+                "log_prob_job"        : ppo_output["log_prob_job"].detach().cpu(),
+                "state_value"         : ppo_output["state_value"].detach().cpu(),
+                "old_operator_logits" : ppo_output["old_operator_logits"].detach().cpu(),
+                "old_vehicle_logits"  : ppo_output["old_vehicle_logits"].detach().cpu(),
+                "old_job_logits"      : ppo_output["old_job_logits"].detach().cpu(),
+                "bootstrap_value"     : 0.0,
+                "done"                : False,
             }
 
             experiences.append(experience)

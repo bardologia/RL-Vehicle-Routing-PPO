@@ -25,34 +25,34 @@ def policy(cpu_config, seeded):
 def test_forward_contract_shapes(policy, cpu_config):
     graph = build_graph(cpu_config, num_jobs=5, num_vehicles=3)
 
-    embeddings, context, op_logits, state_value = policy(graph)
+    embeddings, context, operator_logits, state_value = policy(graph)
 
-    embed_dim = cpu_config.model.policy_embedding_dim
+    embedding_dim = cpu_config.model.policy_embedding_dim
 
-    assert embeddings["job"].shape == (5, embed_dim)
-    assert embeddings["vehicle"].shape == (3, embed_dim)
-    assert context.shape == (2 * embed_dim,)
-    assert op_logits.shape == (cpu_config.model.num_operators,)
+    assert embeddings["job"].shape == (5, embedding_dim)
+    assert embeddings["vehicle"].shape == (3, embedding_dim)
+    assert context.shape == (2 * embedding_dim,)
+    assert operator_logits.shape == (cpu_config.model.num_operators,)
     assert state_value.ndim == 0
 
 
 def test_compute_logits_shapes(policy, cpu_config):
     graph = build_graph(cpu_config, num_jobs=5, num_vehicles=3)
 
-    embeddings, context, op_logits, _ = policy(graph)
-    logits = policy.compute_logits(embeddings, context, op_logits)
+    embeddings, context, operator_logits, _ = policy(graph)
+    logits = policy.compute_logits(embeddings, context, operator_logits)
 
-    assert logits["veh_logits"].shape == (4, 3)
+    assert logits["vehicle_logits"].shape == (4, 3)
     assert logits["job_logits"].shape == (4, 3, 5)
 
 
-def test_compute_logits_selected_op_squeezes(policy, cpu_config):
+def test_compute_logits_selected_operator_squeezes(policy, cpu_config):
     graph = build_graph(cpu_config, num_jobs=4, num_vehicles=2)
 
-    embeddings, context, op_logits, _ = policy(graph)
-    logits = policy.compute_logits(embeddings, context, op_logits, selected_op=1)
+    embeddings, context, operator_logits, _ = policy(graph)
+    logits = policy.compute_logits(embeddings, context, operator_logits, selected_operator=1)
 
-    assert logits["veh_logits"].shape == (2,)
+    assert logits["vehicle_logits"].shape == (2,)
     assert logits["job_logits"].shape == (2, 4)
 
 
@@ -62,12 +62,12 @@ def test_forward_batch_matches_single_forward(policy, cpu_config):
     per_sample = policy.forward_batch(Batch.from_data_list(graphs))
 
     for graph, sample in zip(graphs, per_sample):
-        embeddings, context, op_logits, state_value = policy(graph)
+        embeddings, context, operator_logits, state_value = policy(graph)
 
         assert torch.allclose(embeddings["job"], sample["embeddings"]["job"], atol=1e-5)
         assert torch.allclose(embeddings["vehicle"], sample["embeddings"]["vehicle"], atol=1e-5)
         assert torch.allclose(context, sample["context"], atol=1e-5)
-        assert torch.allclose(op_logits, sample["op_logits"], atol=1e-5)
+        assert torch.allclose(operator_logits, sample["operator_logits"], atol=1e-5)
         assert torch.allclose(state_value, sample["state_value"], atol=1e-5)
 
 
@@ -93,7 +93,7 @@ def test_act_respects_masks(policy, cpu_config, seeded):
     }
 
     for _ in range(60):
-        action = policy.act(graph, mask_info=mask_info)["action"]
+        action = policy.select_action(graph, mask_info=mask_info)["action"]
 
         if action.operator == 0:
             assert action.job_index in {2, 3}
@@ -113,7 +113,7 @@ def test_act_never_selects_blocked_operators(policy, cpu_config, seeded):
         "vehicle_to_job_indices"     : {0: [], 1: []},
     }
 
-    operators = {policy.act(graph, mask_info=mask_info)["action"].operator for _ in range(60)}
+    operators = {policy.select_action(graph, mask_info=mask_info)["action"].operator for _ in range(60)}
 
     assert operators <= {2, 3}
 
