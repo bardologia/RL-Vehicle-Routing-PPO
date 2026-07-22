@@ -1,0 +1,101 @@
+import torch
+
+from core.graph import Graph, GraphHandler
+from core.state import EntityPool, RoutingState
+from tests.conftest import make_jobs, make_route, make_vehicles
+
+
+def build_graph(cpu_config, num_jobs=4, num_vehicles=2, stops=2, unassigned=2):
+    jobs     = make_jobs(num_jobs)
+    vehicles = make_vehicles(num_vehicles)
+    state    = RoutingState(
+        routes         = [make_route(vehicles[0], jobs[:stops])],
+        unassigned_ids = {job.id for job in jobs[stops:stops + unassigned]},
+    )
+
+    data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
+    return data, jobs, vehicles, state
+
+
+def test_node_feature_shapes(cpu_config):
+    data, jobs, vehicles, _ = build_graph(cpu_config)
+
+    assert data["job"].x.shape == (len(jobs), 7)
+    assert data["vehicle"].x.shape == (len(vehicles), 5)
+
+
+def test_all_model_relations_exist(cpu_config):
+    data, _, _, _ = build_graph(cpu_config)
+
+    for relation in GraphHandler.required_relations:
+        assert relation in data.edge_types
+        assert data[relation].edge_index.shape[0] == 2
+        assert data[relation].edge_attr.shape[1] == 4
+
+
+def test_bipartite_proximity_covers_all_pairs(cpu_config):
+    data, jobs, vehicles, _ = build_graph(cpu_config)
+
+    forward  = data[("job", "job_vehicle_proximity", "vehicle")].edge_index.shape[1]
+    backward = data[("vehicle", "job_vehicle_proximity", "job")].edge_index.shape[1]
+
+    assert forward == len(jobs) * len(vehicles)
+    assert backward == len(jobs) * len(vehicles)
+
+
+def test_sequence_and_assignment_edge_counts(cpu_config):
+    data, _, _, state = build_graph(cpu_config, stops=3)
+
+    stops = len(state.routes[0].stops)
+
+    assert data[("job", "job_sequence", "job")].edge_index.shape[1] == 2 * (stops - 1)
+    assert data[("vehicle", "vehicle_assigned", "job")].edge_index.shape[1] == stops
+    assert data[("job", "vehicle_assigned", "vehicle")].edge_index.shape[1] == stops
+
+
+def test_unassigned_and_assignment_flags(cpu_config):
+    data, jobs, _, state = build_graph(cpu_config)
+
+    features = data["job"].x
+
+    for index, job in enumerate(jobs):
+        is_unassigned = float(job.id in state.unassigned_ids)
+        is_assigned   = float(job.id in state.assigned_job_ids)
+        assert features[index, 5].item() == is_unassigned
+        assert features[index, 6].item() == is_assigned
+
+
+def test_graph_is_fully_on_cpu(cpu_config):
+    data, _, _, _ = build_graph(cpu_config)
+
+    for node_type in data.node_types:
+        assert data[node_type].x.device.type == "cpu"
+    for relation in data.edge_types:
+        assert data[relation].edge_index.device.type == "cpu"
+        assert data[relation].edge_attr.device.type == "cpu"
+
+
+def test_zero_route_state_produces_edge_complete_graph(cpu_config):
+    jobs     = make_jobs(3)
+    vehicles = make_vehicles(2)
+    state    = RoutingState(routes=[], unassigned_ids={job.id for job in jobs})
+
+    data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
+
+    for relation in GraphHandler.required_relations:
+        assert relation in data.edge_types
+
+    assert data[("job", "job_sequence", "job")].edge_index.shape[1] == 0
+    assert data[("job", "job_vehicle_proximity", "vehicle")].edge_index.shape[1] == len(jobs) * len(vehicles)
+
+
+def test_edge_attributes_are_finite_and_flagged(cpu_config):
+    data, _, _, _ = build_graph(cpu_config)
+
+    for relation in data.edge_types:
+        attrs = data[relation].edge_attr
+        if attrs.numel() == 0:
+            continue
+        assert torch.isfinite(attrs).all()
+        assert ((attrs[:, 2] == 0.0) | (attrs[:, 2] == 1.0)).all()
+        assert ((attrs[:, 3] == 0.0) | (attrs[:, 3] == 1.0)).all()
