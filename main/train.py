@@ -25,7 +25,7 @@ if not os.path.exists(dataset_dir_candidate):
     else:
         config.io.dataset_dir = dataset_dir_candidate
 
-dataset = Dataset(dataset_dir=config.io.dataset_dir, config=config, shuffle_chunks=False, verbose=True)
+dataset = Dataset(dataset_dir=config.io.dataset_dir, config=config, shuffle_chunks=False)
 trainer = Trainer(dataset=dataset, config=config)
 
 # Ensure a log directory exists so checkpointing works

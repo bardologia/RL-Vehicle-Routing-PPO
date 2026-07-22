@@ -17,6 +17,7 @@ dependencies    = [
     "polyline==2.0.4",
     "tqdm==4.69.0",
     "tensorboard==2.21.0",
+    "rich==15.0.0",
 ]
 
 [tool.setuptools]

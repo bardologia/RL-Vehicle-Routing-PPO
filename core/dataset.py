@@ -8,6 +8,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from core.environment import Environment
+from tools.logger import NullLogger
 import cProfile
 import pstats
 from io import StringIO
@@ -15,22 +16,21 @@ from io import StringIO
 
 
 class Dataset:
-    def __init__(self, dataset_dir, config, shuffle_chunks=False, verbose=True, count_events=False):
-        self.dataset_dir = dataset_dir
-        self.config = config
-        self.chunk_paths = self.get_existing_chunks(dataset_dir)
+    def __init__(self, dataset_dir, config, shuffle_chunks=False, count_events=False, logger=None):
+        self.dataset_dir    = dataset_dir
+        self.config         = config
+        self.logger         = logger or NullLogger()
+        self.chunk_paths    = self.get_existing_chunks(dataset_dir)
         self.shuffle_chunks = shuffle_chunks
-        self.verbose = verbose
-        
+
         if shuffle_chunks:
-            import random
             random.shuffle(self.chunk_paths)
-        
+
         self._total_events = None
         if count_events:
             self._count_events()
-            print(f"Dataset: {len(self.chunk_paths)} chunks, {self._total_events} events")
-        
+            self.logger.info(f"Dataset: {len(self.chunk_paths)} chunks, {self._total_events} events")
+
         self._current_chunk_idx = 0
         self._current_item_idx = 0
         self._total_items_yielded = 0
@@ -46,8 +46,7 @@ class Dataset:
         self._current_chunk_idx = state.get("current_chunk_idx", 0)
         self._current_item_idx = state.get("current_item_idx", 0)
         self._total_items_yielded = state.get("total_items_yielded", 0)
-        if self.verbose:
-            print(f"Dataset: Resuming from chunk {self._current_chunk_idx}, item {self._current_item_idx} (total yielded: {self._total_items_yielded})")
+        self.logger.info(f"Dataset: resuming from chunk {self._current_chunk_idx}, item {self._current_item_idx} (total yielded: {self._total_items_yielded})")
              
     def _count_events(self):
         self._total_events = 0
@@ -93,7 +92,6 @@ class Dataset:
         num_events,
         output_dir,
         seed=None,
-        verbose=False,
         chunk_size=10_000,
         batch_size=100,
         num_workers=None,
@@ -108,22 +106,18 @@ class Dataset:
         os.makedirs(output_dir, exist_ok=True)
 
         existing_events, num_existing_chunks = self.count_existing_events()
-
-        if verbose:
-            print(f"Found {num_existing_chunks} chunks with {existing_events} total events")
+        self.logger.info(f"Found {num_existing_chunks} chunks with {existing_events} total events")
 
         if existing_events >= num_events:
-            if verbose:
-                print(f"There are already {existing_events} events. Nothing to do")
+            self.logger.info(f"There are already {existing_events} events. Nothing to do")
             return output_dir
 
         events_to_create = num_events - existing_events
         num_batches      = int(np.ceil(events_to_create / batch_size))
         num_workers      = num_workers or max(1, (os.cpu_count() or 2) - 2)
 
-        if verbose:
-            print(f"Creating {events_to_create} new events")
-            print(f"Generating {num_batches} batches with batch_size={batch_size} on {num_workers} workers")
+        self.logger.info(f"Creating {events_to_create} new events")
+        self.logger.info(f"Generating {num_batches} batches with batch_size={batch_size} on {num_workers} workers")
 
         tasks = []
         for i in range(num_batches):
@@ -140,11 +134,7 @@ class Dataset:
             with tqdm(total=events_to_create, desc="Generating events", ncols=80) as pbar:
                 for batch_items, profile_stats in pool.imap(generate_events_task, tasks):
                     if profile_stats is not None:
-                        print(f"\n{'='*80}")
-                        print("WORKER PROFILE (first batch)")
-                        print(f"{'='*80}")
-                        print(profile_stats)
-                        print(f"{'='*80}\n")
+                        self.logger.info(f"Worker profile (first batch):\n{profile_stats}")
 
                     for item in batch_items:
                         current_chunk.append(item)
@@ -152,8 +142,7 @@ class Dataset:
 
                         if len(current_chunk) >= chunk_size:
                             chunk_path = self.get_chunk_path(current_chunk_index)
-                            if verbose:
-                                print(f"\nSaving chunk {current_chunk_index} with {len(current_chunk)} events to {chunk_path}")
+                            self.logger.info(f"Saving chunk {current_chunk_index} with {len(current_chunk)} events to {chunk_path}")
 
                             torch.save(current_chunk, chunk_path)
                             current_chunk = []
@@ -162,11 +151,11 @@ class Dataset:
 
         if current_chunk:
             chunk_path = self.get_chunk_path(current_chunk_index)
-            print(f"\nSaving final chunk {current_chunk_index} with {len(current_chunk)} events to {chunk_path}")
+            self.logger.info(f"Saving final chunk {current_chunk_index} with {len(current_chunk)} events to {chunk_path}")
             torch.save(current_chunk, chunk_path)
 
         total_events, total_chunks = self.count_existing_events()
-        print(f"\nDataset complete: {total_chunks} chunks, {total_events} events in {output_dir}")
+        self.logger.info(f"Dataset complete: {total_chunks} chunks, {total_events} events in {output_dir}")
 
         return output_dir
     
@@ -183,9 +172,7 @@ class Dataset:
                 continue
             
             self._current_chunk_idx = chunk_idx
-            
-            if self.verbose:
-                print(f"\nLoading chunk {chunk_idx + 1}/{len(self.chunk_paths)}: {chunk_path}")
+            self.logger.info(f"Loading chunk {chunk_idx + 1}/{len(self.chunk_paths)}: {chunk_path}")
             
             chunk_data = torch.load(chunk_path, weights_only=False)
             

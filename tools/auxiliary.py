@@ -20,7 +20,7 @@ def haversine_distance(lon1, lat1, lon2, lat2):
     return distance, duration
 
 
-def retry_api_call(max_retries=3, backoff_factor=0.5, timeout=10, verbose=False):
+def retry_api_call(max_retries=3, backoff_factor=0.5):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -31,13 +31,7 @@ def retry_api_call(max_retries=3, backoff_factor=0.5, timeout=10, verbose=False)
                 except (RequestException, Timeout, ConnectionError) as e:
                     last_exception = e
                     if attempt < max_retries - 1:
-                        wait_time = backoff_factor * (2 ** attempt)
-                        if verbose:
-                            print(f"API call failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {wait_time:.1f}s...")
-                        time.sleep(wait_time)
-                    else:
-                        if verbose:
-                            print(f"API call failed after {max_retries} attempts: {e}")
+                        time.sleep(backoff_factor * (2 ** attempt))
             raise last_exception
         return wrapper
     return decorator

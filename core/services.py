@@ -4,15 +4,17 @@ from typing import List, Optional, Tuple
 
 from tools.config import config
 from tools.auxiliary import retry_api_call
+from tools.logger import NullLogger
 from core.state import Job, Route, RoutingState, Vehicle
 
 
 class OsrmClient:
-    def __init__(self, service_config):
+    def __init__(self, service_config, logger=None):
         self.service = service_config
+        self.logger  = logger or NullLogger()
         self._distance_cache = {}
 
-    @retry_api_call(max_retries=3, backoff_factor=0.5, timeout=20, verbose=False)
+    @retry_api_call(max_retries=3, backoff_factor=0.5)
     def _fetch_distance_duration(self, lon_a, lat_a, lon_b, lat_b) -> Tuple[float, float]:
         url = (
             f"{self.service.osrm_url}/route/v1/driving/"
@@ -27,7 +29,7 @@ class OsrmClient:
         route = (data.get("routes") or [{}])[0]
         return float(route.get("distance", 0.0)), float(route.get("duration", 0.0))
 
-    @retry_api_call(max_retries=3, backoff_factor=0.5, timeout=20, verbose=False)
+    @retry_api_call(max_retries=3, backoff_factor=0.5)
     def _fetch_geometry(self, points: List[Tuple[float, float]]) -> Optional[str]:
         coords = ";".join(f"{lon},{lat}" for lon, lat in points)
         url    = f"{self.service.osrm_url}/route/v1/driving/{coords}?overview=full&geometries=polyline"
@@ -64,14 +66,15 @@ class OsrmClient:
 
 
 class VroomClient:
-    def __init__(self, service_config):
+    def __init__(self, service_config, logger=None):
         self.service = service_config
+        self.logger  = logger or NullLogger()
 
-    @retry_api_call(max_retries=3, backoff_factor=0.5, timeout=20, verbose=False)
+    @retry_api_call(max_retries=3, backoff_factor=0.5)
     def _post(self, payload) -> Optional[dict]:
         response = requests.post(self.service.vroom_url, json=payload, timeout=20)
         if response.status_code != 200:
-            print("VROOM error:", response.text)
+            self.logger.warning(f"VROOM error: {response.text}")
             return None
         return response.json()
 

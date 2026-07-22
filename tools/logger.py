@@ -1,230 +1,137 @@
-import datetime
 import logging
 import os
-import sys
-from pathlib import Path
-from typing import Optional
-from torch import nn
-from torch_geometric.nn import GATv2Conv
+from datetime import datetime
+from typing import Any, Mapping, Optional
+
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.rule import Rule
+from rich.table import Table
+from rich.text import Text
+from rich.theme import Theme
+
+
+_THEME = Theme({
+    "section":    "bold cyan",
+    "subsection": "white",
+    "key":        "bold magenta",
+    "value":      "bright_white",
+    "logging.level.debug":    "white",
+    "logging.level.info":     "white",
+    "logging.level.warning":  "bold yellow",
+    "logging.level.error":    "bold red",
+    "logging.level.critical": "bold red",
+})
+
+_CONSOLE: Optional[Console] = None
+
+
+def get_console() -> Console:
+    global _CONSOLE
+    if _CONSOLE is None:
+        _CONSOLE = Console(theme=_THEME, highlight=False, soft_wrap=False)
+    return _CONSOLE
 
 
 class Logger:
-    
     LOG_LEVELS = {
-        'DEBUG': logging.DEBUG,
-        'INFO': logging.INFO,
-        'WARNING': logging.WARNING,
-        'ERROR': logging.ERROR,
-        'CRITICAL': logging.CRITICAL
+        'DEBUG'    : logging.DEBUG,
+        'INFO'     : logging.INFO,
+        'WARNING'  : logging.WARNING,
+        'ERROR'    : logging.ERROR,
+        'CRITICAL' : logging.CRITICAL,
     }
-    
-    def __init__(self, log_dir="logs", name="experiment", level="INFO", config=None):
-        self.log_dir = log_dir
-        self.name = name
-        self.start_time = datetime.datetime.now()
-        self.config = config
-        if log_dir:
-            os.makedirs(self.log_dir, exist_ok=True)
-        
-        self.logger = logging.getLogger(name)
-        
-        if self.logger.hasHandlers():
-            self.logger.handlers.clear()
-            
-        log_level = self.LOG_LEVELS.get(str(level).upper(), logging.INFO)
-        self.logger.setLevel(log_level)
-        
-        file_formatter = logging.Formatter(
-            '[%(asctime)s] %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        console_formatter = logging.Formatter(
-            '[%(asctime)s] %(message)s',
-            datefmt='%H:%M:%S'
-        )
-        
-        log_filename = f'{name}_{self.start_time.strftime("%Y%m%d_%H%M%S")}.log'
-        if log_dir:
-            file_handler = logging.FileHandler(os.path.join(self.log_dir, log_filename), encoding='utf-8')
-            file_handler.setFormatter(file_formatter)
-            file_handler.setLevel(log_level)
-            self.logger.addHandler(file_handler)
-    
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setFormatter(console_formatter)
-        console_handler.setLevel(log_level)
-        self.logger.addHandler(console_handler)
-    
-    def section(self, title: str):
-        self.logger.info("")
-        self.logger.info(f">>> {str(title)}")
-    
-    def subsection(self, title: str):
-        self.logger.info(f"  > {title}")
 
-    def subsubsection(self, title: str):
-        self.logger.info(f"   {title}")
-    
-    def progress(self, current: int, total: int, prefix: str = "", suffix: str = ""):
-        percentage = 100 * (current / float(total))
-        self.logger.info(f"{prefix} [{current}/{total}] ({percentage:.1f}%) {suffix}")
+    def __init__(self, log_dir: Optional[str] = None, name: str = "experiment", level: str = "INFO"):
+        self.log_dir    = log_dir
+        self.name       = name
+        self.start_time = datetime.now()
 
-    def debug(self, message: str):
-        self.logger.debug(message)
-    
-    def info(self, message: str):
-        self.logger.info(message)
-    
-    def warning(self, message: str):
-        self.logger.warning(message)
-        
-    def error(self, message: str):
-        self.logger.error(message)
-    
-    def critical(self, message: str):
-        self.logger.critical(message)
-            
-    def close(self):
-        elapsed = datetime.now() - self.start_time
-        hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
-        minutes, seconds = divmod(remainder, 60)
-        
-        self.logger.info(f"[End] Duration: {hours:02d}:{minutes:02d}:{seconds:02d}")
-        for handler in self.logger.handlers[:]:
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+
+        self.console = get_console()
+        self.logger  = logging.getLogger(name)
+        self.logger.propagate = False
+
+        for handler in list(self.logger.handlers):
             handler.close()
             self.logger.removeHandler(handler)
 
+        log_level = self.LOG_LEVELS.get(str(level).upper(), logging.INFO)
+        self.logger.setLevel(log_level)
 
-class TensorLogger:
-    def __init__(self, model, include_types = (nn.Linear, nn.Embedding, nn.LayerNorm, GATv2Conv)):
-        self.model = model
-        self.include_types = include_types
-        self.records = []
-        self.hooks = []
-    
-    def _hook(self, name):
-        def fn(module, inputs, output):
-            if len(inputs) > 0:
-                x = inputs[0]
-                in_shape  = tuple(x.shape) if hasattr(x, "shape") else str(type(x))
-            else:
-                in_shape = "N/A"
-            out_shape = tuple(output.shape) if hasattr(output, "shape") else str(type(output))
-            self.records.append((name, module.__class__.__name__, in_shape, out_shape))
-        return fn
+        rich_handler = RichHandler(
+            console         = self.console,
+            level           = log_level,
+            show_time       = True,
+            show_level      = False,
+            show_path       = False,
+            markup          = False,
+            rich_tracebacks = True,
+            log_time_format = "[%H:%M:%S]",
+        )
+        self.logger.addHandler(rich_handler)
 
-    def attach(self):
-        for name, module in self.model.named_modules():
-            if name == "":
-                continue
-            if isinstance(module, self.include_types):
-                self.hooks.append(module.register_forward_hook(self._hook(name)))
-        return self
+        self._file_handler: Optional[logging.FileHandler] = None
+        if log_dir:
+            file_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+            file_handler   = logging.FileHandler(os.path.join(log_dir, f'{name}.log'), mode='w', encoding='utf-8')
+            file_handler.setFormatter(file_formatter)
+            file_handler.setLevel(log_level)
+            self.logger.addHandler(file_handler)
+            self._file_handler = file_handler
 
-    def detach(self):
-        for h in self.hooks:
-            h.remove()
-        self.hooks.clear()
+    def section(self, title: str) -> None:
+        text = str(title).upper()
+        self.console.print()
+        self.console.print(Rule(Text(text, style="section"), style="cyan"))
+        self._to_file(f">>> {text}")
 
-    def clear(self):
-        self.records.clear()
-    
-    def to_markdown(self, title: str = "Shape Log", sort_by_layer: bool = False) -> str:
-        rows = list(self.records)
-        if sort_by_layer:
-            rows.sort(key=lambda r: r[0])
+    def subsection(self, title: str) -> None:
+        self.console.print(f"  [cyan]>[/cyan] {title}", style="bold white", markup=True)
+        self._to_file(f"  > {title}")
 
-        def s(x):
-            return str(x)
+    def kv_table(self, data: Mapping[str, Any], title: Optional[str] = None) -> None:
+        table = Table(title=title, show_header=True, header_style="bold cyan", expand=False)
+        table.add_column("Field", style="key", no_wrap=True)
+        table.add_column("Value", style="value")
+        for key, value in data.items():
+            table.add_row(str(key), str(value))
+        self.console.print(table)
+        self._to_file(f"{title or 'table'}: " + ", ".join(f"{k}={v}" for k, v in data.items()))
 
-        def layer_cell(name: str) -> str:
-            return f"`{name}`"  # exatamente como será impresso
+    def debug(self, message: str) -> None:
+        self.logger.debug(message)
 
-        col_names = ["Layer", "Type", "Input shape", "Output shape"]
-        col_data = [
-            [layer_cell(r[0]) for r in rows],
-            [str(r[1]) for r in rows],
-            [s(r[2]) for r in rows],
-            [s(r[3]) for r in rows],
-        ]
+    def info(self, message: str) -> None:
+        self.logger.info(message)
 
-        widths = []
-        for header, data in zip(col_names, col_data):
-            widths.append(max([len(header)] + [len(v) for v in data]) if rows else len(header))
+    def warning(self, message: str) -> None:
+        self.logger.warning(message)
 
-        def fmt_row(cells):
-            return "| " + " | ".join(f"{c:<{w}}" for c, w in zip(cells, widths)) + " |"
+    def error(self, message: str) -> None:
+        self.logger.error(message)
 
-        def fmt_sep():
-            return "| " + " | ".join((":" + "-" * (w - 1)) if w > 1 else "-" for w in widths) + " |"
+    def critical(self, message: str) -> None:
+        self.logger.critical(message)
 
-        lines = []
-        lines.append(f"# {title}\n")
-        lines.append(fmt_row(col_names))
-        lines.append(fmt_sep())
+    def _to_file(self, message: str) -> None:
+        if self._file_handler is not None:
+            self._file_handler.handle(self.logger.makeRecord(self.name, logging.INFO, "", 0, message, None, None))
 
-        for (name, typ, ins, outs), layer_txt in zip(rows, col_data[0]):
-            lines.append(fmt_row([layer_txt, str(typ), s(ins), s(outs)]))
+    def close(self) -> None:
+        elapsed = datetime.now() - self.start_time
+        hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
+        minutes, seconds = divmod(remainder, 60)
 
-        lines.append(f"\n**Records:** {len(rows)}")
-        return "\n".join(lines)
-
-    def save_markdown(self, path, title: str = "Shape Log", sort_by_layer: bool = False):
-        md = self.to_markdown(title=title, sort_by_layer=sort_by_layer)
-        Path(path).write_text(md, encoding="utf-8")
+        self.logger.info(f"[End] Duration: {hours:02d}:{minutes:02d}:{seconds:02d}")
+        for handler in list(self.logger.handlers):
+            handler.close()
+            self.logger.removeHandler(handler)
+        self._file_handler = None
 
 
-class ModelSummary:
-    def __init__(self, model: nn.Module):
-        self.model = model
-        self.rows = []
-        self.total_params = 0
-     
-    def _count_params(self, module: nn.Module):
-        return sum(p.numel() for p in module.parameters())
-
-    def run(self):
-        self.total_params = 0
-
-        for name, module in self.model.named_modules():
-            if name == "":
-                continue
-
-            n_params = self._count_params(module)
-            self.total_params += n_params
-            
-            self.rows.append((name, module.__class__.__name__, n_params))
-    
-    def to_markdown(self, title="Model Summary") -> str:
-        if not self.rows:
-            return f"# {title}\n\nNo layers found."
-        
-        rows_fmt = [(name, typ, f"{params:,}") for name, typ, params in self.rows]
-        
-        col1 = max(len("Layer"), *(len(name) for name, _, _ in rows_fmt))
-        col2 = max(len("Type"), *(len(typ) for _, typ, _ in rows_fmt))
-        col3 = max(len("Parameters"), *(len(p) for _, _, p in rows_fmt))
-
-        def line(a, b, c):
-            return f"| {a:<{col1}} | {b:<{col2}} | {c:>{col3}} |"
-
-        table = []
-        table.append(line("Layer", "Type", "Parameters"))
-        table.append(f"| {'-'*col1} | {'-'*col2} | {'-'*col3} |")
-        for name, typ, params in rows_fmt:
-            table.append(line(name, typ, params))
-
-        total = f"{self.total_params:,}"
-
-        md = []
-        md.append(f"# {title}\n")
-        md.extend(table)
-        md.append(f"\n**Total Parameters:** `{total}`")
-        return "\n".join(md)
-
-    def save_markdown(self, path: str, title: str = "Model Summary"):
-        md = self.to_markdown(title=title)
-        Path(path).write_text(md, encoding="utf-8")
-
-
-
+class NullLogger:
+    def __getattr__(self, name: str):
+        return lambda *args, **kwargs: None
