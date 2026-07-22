@@ -160,8 +160,20 @@ class Checkpoint:
         self.logger.subsection(f"LR Scheduler Step           : {training_state['lr_scheduler_step']}")
         self.logger.subsection(f"Entropy Scheduler Step      : {training_state['entropy_scheduler_step']}")
         self.logger.subsection(f"Current Entropy Coefficient : {ppo.current_entropy_coef:.6f} \n")
-        
+
         return training_state
+
+    def save(self, ppo, trainer, directory=None):
+        save_dir = directory or self.config.io.logdir
+
+        ppo.policy.checkpoint(
+            filename       = self.filename,
+            directory      = save_dir,
+            training_state = trainer.state(),
+            optimizer      = ppo.optimizer,
+        )
+
+        self.logger.subsection(f"Checkpoint saved to {os.path.join(save_dir, self.filename)}")
 
 
 class Trainer:
@@ -429,11 +441,12 @@ class Trainer:
             chunk_data = torch.load(chunk_path, map_location="cpu", weights_only=False)
 
             episodes_processed = self.run_chunk(chunk_data)
-            
+
             self.tracker.log_scalar('batch/episodes_processed', episodes_processed, chunk_idx)
-            
+
             self.ppo_update()
-            
+            self.checkpoint.save(self.ppo, self)
+
             progress_pct = ((chunk_idx + 1) / total_chunks) * 100
             self.logger.subsection(f"Overall Progress: {progress_pct:.1f}% ({chunk_idx + 1}/{total_chunks} chunks)")
             self.tracker.log_scalar('batch/chunk_progress', chunk_idx / total_chunks, chunk_idx)
