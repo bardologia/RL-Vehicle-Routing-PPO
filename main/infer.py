@@ -1,6 +1,13 @@
+import os
+import sys
+
+proj_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
+if proj_root not in sys.path:
+    sys.path.insert(0, proj_root)
+
 from tools.config import Config
 from core.environment import Environment
-from infer import ModelInference
+from core.inference import ModelInference
 from core.model import Policy
 
 def main(config):
