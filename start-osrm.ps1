@@ -8,7 +8,7 @@ docker run -d `
   -p 5000:5000 `
   -v "${currentPath}:/data" `
   osrm/osrm-backend `
-  osrm-routed --algorithm mld --max-table-size 10000 /data/sudeste-260212.osrm
+  osrm-routed --algorithm mld --max-table-size 10000 /data/sudeste-latest.osrm
 
 Start-Sleep -Seconds 3
 

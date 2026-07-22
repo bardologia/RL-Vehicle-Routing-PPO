@@ -6,7 +6,7 @@ services:
       - "5000:5000"
     volumes:
       - ./osrm-data:/data
-    command: osrm-routed --algorithm mld --max-table-size 10000 /data/sudeste-260212.osrm
+    command: osrm-routed --algorithm mld --max-table-size 10000 /data/sudeste-latest.osrm
     restart: unless-stopped
     networks:
       - routing
@@ -16,10 +16,10 @@ services:
     container_name: vroom
     ports:
       - "3000:3000"
+    volumes:
+      - ./vroom-conf:/conf
     environment:
       - VROOM_ROUTER=osrm
-      - OSRM_ADDRESS=osrm
-      - OSRM_PORT=5000
     depends_on:
       - osrm
     restart: unless-stopped
