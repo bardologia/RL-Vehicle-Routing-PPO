@@ -76,3 +76,10 @@ def test_dataset_resume_state_skips_consumed_items(cpu_config, seeded, fake_vroo
 
     assert len(items) == len(batch) - 1
     assert items[0]["state"] == batch[1]["state"]
+
+
+def test_dataset_set_state_requires_all_keys(cpu_config, tmp_path):
+    dataset = Dataset(dataset_dir=str(tmp_path), config=cpu_config)
+
+    with pytest.raises(KeyError):
+        dataset.set_state({"current_chunk_idx": 0})

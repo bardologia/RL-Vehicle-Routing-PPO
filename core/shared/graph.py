@@ -96,7 +96,7 @@ class EdgeBuilder:
 
     def job_vehicle_proximity(self, job_nodes, vehicle_nodes):
         for job_node in job_nodes:
-            assigned_vehicle_id = job_node["metadata"].get("assigned_vehicle_id")
+            assigned_vehicle_id = job_node["metadata"]["assigned_vehicle_id"]
 
             for vehicle_node in vehicle_nodes:
                 dist_m, dur_s = haversine_distance(job_node["longitude"], job_node["latitude"], vehicle_node["longitude"], vehicle_node["latitude"])

@@ -131,7 +131,7 @@ class PPOTelemetry:
         if not self.tracker.active:
             return
 
-        rates = {group.get('name', f'group_{i}'): group['lr'] for i, group in enumerate(optimizer.param_groups)}
+        rates = {group['name']: group['lr'] for group in optimizer.param_groups}
         self.tracker.log_metrics('batch/learning_rate', rates, step)
 
     def entropy_coefficient(self, value, step):

@@ -28,23 +28,20 @@ class Checkpoint:
             directory=load_dir
         )
         
-        # Load optimizer state if available
         checkpoint_path = os.path.join(load_dir, self.filename)
         checkpoint = torch.load(checkpoint_path, map_location=ppo.device, weights_only=False)
-        if "optimizer_state_dict" in checkpoint:
-            ppo.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-            self.logger.subsection("Optimizer state restored")
-        
-        trainer.global_step_counter = training_state.get("global_step_counter", 0)
-        trainer.episode_index = training_state.get("episode_index", 0)
-        trainer.ppo_update_index = training_state.get("ppo_update_index", 0)
+        ppo.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        self.logger.subsection("Optimizer state restored")
+
+        trainer.global_step_counter = training_state["global_step_counter"]
+        trainer.episode_index = training_state["episode_index"]
+        trainer.ppo_update_index = training_state["ppo_update_index"]
         
         self.logger.subsection(f"Restored Global Step      : {trainer.global_step_counter}")
         self.logger.subsection(f"Restored Episode Index    : {trainer.episode_index}")
         self.logger.subsection(f"Restored PPO Update Index : {trainer.ppo_update_index}")
 
-        dataset_state = training_state.get("dataset_state", None)
-        dataset.set_state(dataset_state)
+        dataset.set_state(training_state["dataset_state"])
         
         ppo.lr_scheduler.set_step(training_state["lr_scheduler_step"])
         ppo.entropy_scheduler.set_step(training_state["entropy_scheduler_step"])

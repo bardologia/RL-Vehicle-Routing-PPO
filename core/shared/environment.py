@@ -174,7 +174,7 @@ class Environment:
     def reset(self):
         env = self.config.env
 
-        while True:
+        for _ in range(env.reset_max_attempts):
             n_jobs     = max(env.min_jobs,     int(np.random.normal(loc=env.mean_jobs,     scale=env.std_jobs)))
             n_vehicles = max(env.min_vehicles, int(np.random.normal(loc=env.mean_vehicles, scale=env.std_vehicles)))
 
@@ -182,12 +182,12 @@ class Environment:
             self.vehicles = EntityPool(self.sampler.sample_vehicles(EntityPool(), n_vehicles))
 
             solution = vroom.solve(list(self.jobs), list(self.vehicles))
-            if solution is None:
-                continue
+            if solution is not None:
+                self.current_state = solution
+                self.initial_state = solution.copy()
+                return
 
-            self.current_state = solution
-            self.initial_state = solution.copy()
-            break
+        raise RuntimeError(f"Environment.reset exhausted {env.reset_max_attempts} attempts without a VROOM solution (mean_jobs={env.mean_jobs}, mean_vehicles={env.mean_vehicles})")
 
     def load_from_dataset(self, item):
         self.jobs          = EntityPool([Job.from_dict(job) for job in item["jobs"]])
@@ -233,7 +233,7 @@ class Environment:
         elif event_type == "remove_vehicle":
             event_state = self.event_handler.apply_remove_vehicle(self, state, num_items)
         else:
-            event_state = state.copy()
+            raise ValueError(f"Unknown event type: {event_type!r}")
 
         self.current_state = event_state
         return event_state
@@ -256,7 +256,7 @@ class Environment:
         elif operator == 3:
             new_state = self.action_handler.apply_reoptimize(self, old_state)
         else:
-            new_state = old_state
+            raise ValueError(f"Unknown operator index: {operator}")
 
         return old_state, new_state
 
@@ -296,7 +296,7 @@ class Environment:
             2: reward_config.invalid_action_penalty,
             3: reward_config.reoptimize_penalty
         }
-        action_reward = action_penalties.get(operator_index, 0)
+        action_reward = action_penalties[operator_index]
 
         costs = {
             "old_distance_cost"   : old_distance_cost,

@@ -42,8 +42,8 @@ class ActionMasker:
         if mask_info is None:
             return masked_operator_logits
 
-        unassigned_job_indices = mask_info.get("unassigned_job_indices", [])
-        vehicles_with_jobs_indices = mask_info.get("vehicles_with_jobs_indices", [])
+        unassigned_job_indices     = mask_info["unassigned_job_indices"]
+        vehicles_with_jobs_indices = mask_info["vehicles_with_jobs_indices"]
 
         if len(unassigned_job_indices) == 0 and masked_operator_logits.numel() > 0:
             masked_operator_logits[0] = self.large_negative_value
@@ -59,7 +59,7 @@ class ActionMasker:
         if mask_info is None:
             return masked_vehicle_logits
 
-        vehicles_with_jobs_indices = mask_info.get("vehicles_with_jobs_indices", [])
+        vehicles_with_jobs_indices = mask_info["vehicles_with_jobs_indices"]
 
         if selected_operator_index == 1 and len(vehicles_with_jobs_indices) > 0:  # REMOVE operator
             invalid_vehicle_mask = torch.ones_like(masked_vehicle_logits, dtype=torch.bool)
@@ -79,8 +79,8 @@ class ActionMasker:
         if mask_info is None:
             return masked_job_logits
 
-        unassigned_job_indices = mask_info.get("unassigned_job_indices", [])
-        vehicle_to_job_indices = mask_info.get("vehicle_to_job_indices", {})
+        unassigned_job_indices = mask_info["unassigned_job_indices"]
+        vehicle_to_job_indices = mask_info["vehicle_to_job_indices"]
 
         if selected_operator_index == 0:
             if len(unassigned_job_indices) > 0:
@@ -89,7 +89,7 @@ class ActionMasker:
                 masked_job_logits[invalid_job_mask] = self.large_negative_value
 
         elif selected_operator_index == 1 and selected_vehicle_index is not None:  # REMOVE operator
-            valid_jobs_for_vehicle = vehicle_to_job_indices.get(int(selected_vehicle_index), [])
+            valid_jobs_for_vehicle = vehicle_to_job_indices[int(selected_vehicle_index)]
             if len(valid_jobs_for_vehicle) > 0:
                 invalid_job_mask = torch.ones_like(masked_job_logits, dtype=torch.bool)
                 invalid_job_mask[valid_jobs_for_vehicle] = False

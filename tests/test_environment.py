@@ -10,6 +10,25 @@ def test_reset_produces_consistent_state(environment):
     assert environment.current_state.assigned_job_ids <= set(environment.jobs.ids)
 
 
+def test_reset_raises_when_solver_never_returns_solution(cpu_config, seeded, monkeypatch):
+    class DeadVroom:
+        def solve(self, jobs, vehicles):
+            return None
+
+    monkeypatch.setattr("core.shared.environment.vroom", DeadVroom())
+    cpu_config.env.reset_max_attempts = 4
+
+    from core.shared import Environment
+
+    with pytest.raises(RuntimeError):
+        Environment(cpu_config)
+
+
+def test_apply_event_rejects_unknown_type(environment):
+    with pytest.raises(ValueError):
+        environment.apply_event(environment.current_state, "teleport")
+
+
 def test_new_job_event_grows_pool_and_unassigned(environment):
     before_jobs       = len(environment.jobs)
     before_unassigned = environment.current_state.num_unassigned
