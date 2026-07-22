@@ -31,9 +31,9 @@ class ActionDistribution:
         device       = vehicle_masked.device
         neg          = self.large_negative_value
 
-        vehicles_with_jobs = mask_info.get("vehicles_with_jobs_indices", [])
-        unassigned_jobs    = mask_info.get("unassigned_job_indices", [])
-        vehicle_to_jobs    = mask_info.get("vehicle_to_job_indices", {})
+        vehicles_with_jobs = mask_info["vehicles_with_jobs_indices"]
+        unassigned_jobs    = mask_info["unassigned_job_indices"]
+        vehicle_to_jobs    = mask_info["vehicle_to_job_indices"]
 
         if len(vehicles_with_jobs) > 0:
             blocked = torch.ones(num_vehicles, dtype=torch.bool, device=device)

@@ -217,12 +217,8 @@ class Policy(nn.Module):
         filepath = os.path.join(directory, filename)
         checkpoint = torch.load(filepath, map_location=self.config.training.device, weights_only=False)
 
-        if "model_state_dict" in checkpoint:
-            self.load_state_dict(checkpoint["model_state_dict"])
-            return checkpoint.get("training_state", None)
-        else:
-            self.load_state_dict(checkpoint)
-            return None
+        self.load_state_dict(checkpoint["model_state_dict"])
+        return checkpoint["training_state"]
 
     def checkpoint(self, filename, directory, training_state=None, optimizer=None):
         os.makedirs(directory, exist_ok=True)

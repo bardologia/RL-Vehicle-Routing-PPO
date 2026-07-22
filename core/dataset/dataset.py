@@ -39,9 +39,9 @@ class Dataset:
         }
     
     def set_state(self, state):
-        self._current_chunk_idx = state.get("current_chunk_idx", 0)
-        self._current_item_idx = state.get("current_item_idx", 0)
-        self._total_items_yielded = state.get("total_items_yielded", 0)
+        self._current_chunk_idx = state["current_chunk_idx"]
+        self._current_item_idx = state["current_item_idx"]
+        self._total_items_yielded = state["total_items_yielded"]
         self.logger.info(f"Dataset: resuming from chunk {self._current_chunk_idx}, item {self._current_item_idx} (total yielded: {self._total_items_yielded})")
              
     def _count_events(self):
@@ -117,7 +117,7 @@ class Dataset:
 
         tasks = []
         for i in range(num_batches):
-            batch_seed        = (seed or 0) + i if seed is not None else random.randint(0, 2**31)
+            batch_seed        = seed + i if seed is not None else random.randint(0, 2**31)
             actual_batch_size = min(batch_size, events_to_create - i * batch_size)
             profile_this      = enable_worker_profiling and i == 0
             tasks.append((actual_batch_size, batch_seed, self.config, profile_this))

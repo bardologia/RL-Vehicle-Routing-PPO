@@ -15,6 +15,8 @@ class EnvironmentConfig:
     mean_vehicles : int = 4
     std_vehicles  : int = 1
 
+    reset_max_attempts : int = 32
+
     outlier_frequency  : int = 8
     outlier_multiplier : int = 2
 
