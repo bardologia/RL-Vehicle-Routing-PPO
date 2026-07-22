@@ -1,6 +1,6 @@
 import pytest
 
-from core.shared import Action
+from model.policy_model import Action
 
 
 def test_reset_produces_consistent_state(environment):
