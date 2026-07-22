@@ -137,7 +137,7 @@ class Checkpoint:
         
         # Load optimizer state if available
         checkpoint_path = os.path.join(load_dir, self.filename)
-        checkpoint = torch.load(checkpoint_path, map_location=ppo.device)
+        checkpoint = torch.load(checkpoint_path, map_location=ppo.device, weights_only=False)
         if "optimizer_state_dict" in checkpoint:
             ppo.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             self.logger.subsection("Optimizer state restored")

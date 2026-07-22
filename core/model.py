@@ -619,7 +619,7 @@ class Policy(nn.Module):
 
     def load(self, filename, directory):
         filepath = os.path.join(directory, filename)
-        checkpoint = torch.load(filepath, map_location=self.config.training.device)
+        checkpoint = torch.load(filepath, map_location=self.config.training.device, weights_only=False)
 
         if "model_state_dict" in checkpoint:
             self.load_state_dict(checkpoint["model_state_dict"])
