@@ -1,0 +1,23 @@
+[build-system]
+requires      = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name            = "rl-vehicle-routing-ppo"
+version         = "0.1.0"
+description     = "PPO agent with GNN state encoding for dynamic vehicle routing over OSRM and VROOM"
+requires-python = ">=3.10"
+dependencies    = [
+    "torch==2.13.0",
+    "torch-geometric==2.8.0.post1",
+    "numpy==2.2.6",
+    "scipy==1.15.3",
+    "pandas==2.3.3",
+    "requests==2.34.2",
+    "polyline==2.0.4",
+    "tqdm==4.69.0",
+    "tensorboard==2.21.0",
+]
+
+[tool.setuptools]
+packages = ["core", "tools"]

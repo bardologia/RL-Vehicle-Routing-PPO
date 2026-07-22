@@ -1,0 +1,9 @@
+torch==2.13.0
+torch-geometric==2.8.0.post1
+numpy==2.2.6
+scipy==1.15.3
+pandas==2.3.3
+requests==2.34.2
+polyline==2.0.4
+tqdm==4.69.0
+tensorboard==2.21.0
