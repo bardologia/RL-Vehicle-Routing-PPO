@@ -1,0 +1,181 @@
+{
+  "code": 0,
+  "summary": {
+    "cost": 261,
+    "routes": 1,
+    "unassigned": 9,
+    "delivery": [
+      1
+    ],
+    "amount": [
+      1
+    ],
+    "pickup": [
+      0
+    ],
+    "setup": 0,
+    "service": 300,
+    "duration": 261,
+    "waiting_time": 0,
+    "priority": 1,
+    "distance": 2595,
+    "violations": [],
+    "computing_times": {
+      "loading": 62,
+      "solving": 0,
+      "routing": 2
+    }
+  },
+  "unassigned": [
+    {
+      "id": 9,
+      "location": [
+        -46.595,
+        -23.56
+      ],
+      "type": "job"
+    },
+    {
+      "id": 8,
+      "location": [
+        -46.6,
+        -23.56
+      ],
+      "type": "job"
+    },
+    {
+      "id": 7,
+      "location": [
+        -46.605,
+        -23.56
+      ],
+      "type": "job"
+    },
+    {
+      "id": 6,
+      "location": [
+        -46.61,
+        -23.56
+      ],
+      "type": "job"
+    },
+    {
+      "id": 5,
+      "location": [
+        -46.615,
+        -23.56
+      ],
+      "type": "job"
+    },
+    {
+      "id": 4,
+      "location": [
+        -46.62,
+        -23.56
+      ],
+      "type": "job"
+    },
+    {
+      "id": 3,
+      "location": [
+        -46.625,
+        -23.56
+      ],
+      "type": "job"
+    },
+    {
+      "id": 2,
+      "location": [
+        -46.63,
+        -23.56
+      ],
+      "type": "job"
+    },
+    {
+      "id": 1,
+      "location": [
+        -46.635,
+        -23.56
+      ],
+      "type": "job"
+    }
+  ],
+  "routes": [
+    {
+      "vehicle": 0,
+      "cost": 261,
+      "delivery": [
+        1
+      ],
+      "amount": [
+        1
+      ],
+      "pickup": [
+        0
+      ],
+      "setup": 0,
+      "service": 300,
+      "duration": 261,
+      "waiting_time": 0,
+      "priority": 1,
+      "distance": 2595,
+      "steps": [
+        {
+          "type": "start",
+          "location": [
+            -46.65,
+            -23.55
+          ],
+          "setup": 0,
+          "service": 0,
+          "waiting_time": 0,
+          "load": [
+            1
+          ],
+          "arrival": 28800,
+          "duration": 0,
+          "violations": [],
+          "distance": 0
+        },
+        {
+          "type": "job",
+          "location": [
+            -46.64,
+            -23.56
+          ],
+          "id": 0,
+          "setup": 0,
+          "service": 300,
+          "waiting_time": 0,
+          "job": 0,
+          "load": [
+            0
+          ],
+          "arrival": 29061,
+          "duration": 261,
+          "violations": [],
+          "distance": 2595
+        },
+        {
+          "type": "end",
+          "location": [
+            -46.64,
+            -23.56
+          ],
+          "setup": 0,
+          "service": 0,
+          "waiting_time": 0,
+          "load": [
+            0
+          ],
+          "arrival": 29361,
+          "duration": 261,
+          "violations": [],
+          "distance": 2595
+        }
+      ],
+      "violations": [],
+      "geometry": "nrvnCliv{G|Ac@dBg@PGCMIYOs@Ow@_@cBGYEMESESK_@I]q@_DGSGYOo@ACCKESESOw@YqAQw@EMYcAGUGOEGEGmBaCQU[_@MM_@c@CC??CCGIK_@CIAI?I?G@EDIFEFILCt@MLCp@IBAjBWnAOPCtASLAJGDCHGBCNOXs@@CDODKTm@x@}BDMN_@J]@EJU^iAFQVm@^cAXy@JWx@yBFODKJY@WFMFGTK^G~@QNMXGn@MBANEFATI`@Af@@pADhAZ~@b@bAVpBj@n@RbBj@dDfAfD`ABF`At@nBtAfAr@??"
+    }
+  ]
+}
