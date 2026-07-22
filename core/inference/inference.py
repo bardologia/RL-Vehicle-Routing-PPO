@@ -2,11 +2,7 @@ import torch
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 
-from core.state import RoutingState
-from core.environment import Environment
-from core.graph import Graph
-from core.mask import MaskContext
-from core.model import Policy, Action
+from core.shared import Action, Environment, Graph, MaskContext, Policy, RoutingState
 
 
 @dataclass

@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple
 from configuration import config
 from tools.auxiliary import retry_api_call
 from tools.logger import NullLogger
-from core.state import Job, Route, RoutingState, Vehicle
+from .state import Job, Route, RoutingState, Vehicle
 
 
 class OsrmClient:

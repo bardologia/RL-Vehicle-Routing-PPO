@@ -1,7 +1,6 @@
 import torch
 
-from core.graph import Graph, GraphHandler
-from core.state import EntityPool, RoutingState
+from core.shared import Graph, GraphHandler, EntityPool, RoutingState
 from tests.conftest import make_jobs, make_route, make_vehicles
 
 

@@ -2,8 +2,7 @@ import pytest
 import torch
 
 from core.dataset import Dataset, generate_events
-from core.environment import Environment
-from core.state import RoutingState
+from core.shared import Environment, RoutingState
 
 
 @pytest.fixture
