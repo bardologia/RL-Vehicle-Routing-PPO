@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.ppo import PPO
+from core.training import PPO
 
 
 @pytest.fixture

@@ -12,7 +12,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from configuration import Config
-from core.state import Job, Route, RoutingState, Stop, Vehicle
+from core.shared import Job, Route, RoutingState, Stop, Vehicle
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -91,11 +91,11 @@ def seeded():
 @pytest.fixture
 def fake_vroom(monkeypatch):
     fake = FakeVroom()
-    monkeypatch.setattr("core.environment.vroom", fake)
+    monkeypatch.setattr("core.shared.environment.vroom", fake)
     return fake
 
 
 @pytest.fixture
 def environment(cpu_config, seeded, fake_vroom):
-    from core.environment import Environment
+    from core.shared import Environment
     return Environment(cpu_config)

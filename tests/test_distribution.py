@@ -1,7 +1,7 @@
 import torch
 
-from core.mask import PPOMasking
-from core.ppo import PPODistribution
+from core.shared import PPOMasking
+from core.training import PPODistribution
 
 
 MASK_INFO = {

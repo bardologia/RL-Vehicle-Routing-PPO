@@ -2,9 +2,7 @@ import pytest
 import torch
 from torch_geometric.data import Batch
 
-from core.graph import Graph
-from core.model import Policy
-from core.state import EntityPool, RoutingState
+from core.shared import Graph, Policy, EntityPool, RoutingState
 from tests.conftest import make_jobs, make_route, make_vehicles
 
 

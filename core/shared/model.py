@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch_geometric.nn import HeteroConv, GATv2Conv, global_mean_pool
-from core.mask import PPOMasking
+from .mask import PPOMasking
 
 
 class Action:

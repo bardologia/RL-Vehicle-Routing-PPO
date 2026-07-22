@@ -1,6 +1,6 @@
 import pytest
 
-from core.state import EntityPool, Job, Route, RoutingState, Stop, Vehicle
+from core.shared import EntityPool, Job, Route, RoutingState, Stop, Vehicle
 from tests.conftest import load_fixture, make_jobs, make_route, make_vehicles
 
 
