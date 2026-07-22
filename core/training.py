@@ -333,8 +333,8 @@ class Trainer:
             veh_idx = action.vehicle_index
             job_idx = action.job_index
 
-            true_veh_id = int(self.environment.vehicles[veh_idx]["id"])
-            true_job_id = int(self.environment.jobs[job_idx]["id"])
+            true_veh_id = int(self.environment.vehicles[veh_idx].id)
+            true_job_id = int(self.environment.jobs[job_idx].id)
 
             old_state, next_state = self.environment.apply_action(action)
             if next_state is None:
