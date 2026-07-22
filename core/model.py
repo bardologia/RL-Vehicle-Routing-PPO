@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn as nn
 import numpy as np
-from torch_geometric.nn import HeteroConv, GATv2Conv
+from torch_geometric.nn import HeteroConv, GATv2Conv, global_mean_pool
 from core.mask import PPOMasking
 
 
@@ -56,7 +56,13 @@ class GNN(nn.Module):
             embeddings = conv(embeddings, edge_index_dict, edge_attr_dict=edge_attr_dict)
             embeddings = {node_type: self.activation(features) for node_type, features in embeddings.items()}
 
-        context = torch.cat([embeddings["job"].mean(dim=0), embeddings["vehicle"].mean(dim=0)], dim=-1)
+        job_emb = embeddings["job"]
+        veh_emb = embeddings["vehicle"]
+
+        job_batch     = graph["job"].batch if "batch" in graph["job"] else torch.zeros(job_emb.size(0), dtype=torch.long, device=job_emb.device)
+        vehicle_batch = graph["vehicle"].batch if "batch" in graph["vehicle"] else torch.zeros(veh_emb.size(0), dtype=torch.long, device=veh_emb.device)
+
+        context = torch.cat([global_mean_pool(job_emb, job_batch), global_mean_pool(veh_emb, vehicle_batch)], dim=-1)
         return embeddings, context
 
 
@@ -121,10 +127,38 @@ class Policy(nn.Module):
 
         with torch.amp.autocast(self.device, enabled=self.config.training.use_mixed_precision):
             embeddings, context = self.graph_embedding(graph)
+            context             = context.squeeze(0)
             op_logits           = self.operator_actor(context)
             state_value         = self.critic(context).squeeze(-1)
 
         return embeddings, context, op_logits, state_value
+
+    def forward_batch(self, batch_graph):
+        batch_graph = batch_graph.to(self.device)
+
+        with torch.amp.autocast(self.device, enabled=self.config.training.use_mixed_precision):
+            embeddings, context = self.graph_embedding(batch_graph)
+            op_logits           = self.operator_actor(context)
+            state_values        = self.critic(context).squeeze(-1)
+
+        job_batch     = batch_graph["job"].batch
+        vehicle_batch = batch_graph["vehicle"].batch
+
+        per_sample = []
+        for graph_index in range(batch_graph.num_graphs):
+            per_sample.append(
+                {
+                    "embeddings" : {
+                        "job"     : embeddings["job"][job_batch == graph_index],
+                        "vehicle" : embeddings["vehicle"][vehicle_batch == graph_index],
+                    },
+                    "context"     : context[graph_index],
+                    "op_logits"   : op_logits[graph_index],
+                    "state_value" : state_values[graph_index],
+                }
+            )
+
+        return per_sample
 
     def compute_logits(self, actor_embeddings, actor_global_ctx, op_logits, selected_op=None):
         veh_emb = actor_embeddings["vehicle"]
