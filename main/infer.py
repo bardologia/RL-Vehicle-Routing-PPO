@@ -6,6 +6,7 @@ if proj_root not in sys.path:
     sys.path.insert(0, proj_root)
 
 from tools.config import Config
+from tools.logger import Logger
 from core.environment import Environment
 from core.inference import ModelInference
 from core.model import Policy
@@ -24,4 +25,6 @@ def main(config):
 if __name__ == "__main__":
     config = Config()
     result = main(config)
-    print(result)
+
+    logger = Logger(name="inference")
+    logger.kv_table(result.summary(), title="Inference Summary")

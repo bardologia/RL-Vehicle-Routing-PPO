@@ -3,37 +3,33 @@ import gc
 import math
 import torch
 from core.mask import PPOMasking
-from tools.logger import Logger, ModelSummary, TensorLogger
-from tools.tracker import BaseTracker
-from .environment import *
-from .ppo import PPO, PPODistribution, PPOTools
+from tools.logger import Logger
+from tools.inspection import ModelSummary, TensorLogger
+from tools.tracker import Tracker
+from tools.telemetry import PPOTelemetry
+from core.environment import Environment
+from core.services import vroom
+from .ppo import PPO, PPODistribution
 from tqdm import tqdm
 import os
 
 
 class LRScheduler:
-    def __init__(self, optimizer, warmup_steps=1000, decay_steps=100000, lr_min=1e-5, tracker=None, logger=None):
+    def __init__(self, optimizer, warmup_steps=1000, decay_steps=100000, lr_min=1e-5):
         self.optimizer    = optimizer
         self.warmup_steps = warmup_steps
         self.decay_steps  = decay_steps
         self.lr_min       = lr_min
         self.current_step = 0
-        self.tracker      = tracker
-        self.logger       = logger
-        
+
         self.lr_max_per_group = [pg['lr'] for pg in optimizer.param_groups]
 
-        self.logger.section("[Learning Rate Scheduler]")
-        self.logger.subsection(f"Warmup Steps    = {self.warmup_steps}")
-        self.logger.subsection(f"Decay Steps     = {self.decay_steps}")
-        self.logger.subsection(f"Min LR          = {self.lr_min} \n")
-      
     def step(self):
         self.current_step += 1
-        
+
         for i, param_group in enumerate(self.optimizer.param_groups):
             base_lr = self.lr_max_per_group[i]
-            
+
             if self.current_step < self.warmup_steps:
                 progress = self.current_step / self.warmup_steps
                 lr_start = 0.1 * base_lr
@@ -42,11 +38,9 @@ class LRScheduler:
                 adjusted_step = self.current_step - self.warmup_steps
                 progress = min(1.0, adjusted_step / self.decay_steps)
                 lr = self.lr_min + 0.5 * (base_lr - self.lr_min) * (1 + math.cos(math.pi * progress))
-            
+
             param_group['lr'] = lr
-        
-        if self.tracker:
-            self.tracker.log_optimizer(self.optimizer, self.current_step, prefix='batch/learning_rate')
+
         return self.optimizer.param_groups[0]['lr']
     
     def get_lr(self):
@@ -57,32 +51,20 @@ class LRScheduler:
 
 
 class EntropyScheduler:
-    def __init__(self, start_coef=0.02, end_coef=0.001, anneal_steps=50000, warmup_steps=0, tracker=None, logger=None):
-        self.tracker      = tracker
-        self.logger       = logger
-        
+    def __init__(self, start_coef=0.02, end_coef=0.001, anneal_steps=50000, warmup_steps=0):
         self.start_coef   = start_coef
         self.end_coef     = end_coef
         self.anneal_steps = anneal_steps
         self.warmup_steps = warmup_steps
-        
-        self.current_step = 0
 
-        self.logger.section(f"[Entropy Scheduler]")
-        self.logger.subsection(f"Start Coef   = {self.start_coef}")
-        self.logger.subsection(f"End Coef     = {self.end_coef}")
-        self.logger.subsection(f"Anneal Steps = {self.anneal_steps}")
-        self.logger.subsection(f"Warmup Steps = {self.warmup_steps} \n")
+        self.current_step = 0
 
     def step(self):
         self.current_step += 1
         return self.get_coef()
-    
+
     def get_coef(self):
-        entropy_coef = self._linear_anneal()
-        if self.tracker:
-            self.tracker.log_scalar('batch/entropy_coefficient', entropy_coef, self.current_step)
-        return entropy_coef
+        return self._linear_anneal()
 
     def _linear_anneal(self):
         if self.current_step <= self.warmup_steps:
@@ -97,26 +79,11 @@ class EntropyScheduler:
 
 
 class EpochEarlyStopping:
-    def __init__(self, threshold, logger=None, tracker=None):
+    def __init__(self, threshold):
         self.threshold = threshold
-        self.logger    = logger
-        self.tracker   = tracker
 
-        self.logger.section("[Early Stopping]")
-        self.logger.subsection(f"KL Divergence Threshold: {self.threshold} \n")
-    
-    def should_stop(self, kl_divergence, epoch, global_step):
-        if kl_divergence > self.threshold:
-            if self.tracker:
-                self.tracker.log_scalar('batch/epoch_early_stop_epoch', epoch, global_step)
-            
-            if self.logger:
-                self.logger.subsection(
-                    f"Early stopping PPO update at epoch {epoch} : KL = {kl_divergence:.4f} > {self.threshold}")
-        
-            return True
-        
-        return False
+    def should_stop(self, kl_divergence):
+        return kl_divergence > self.threshold
 
 
 class Checkpoint:
@@ -184,16 +151,19 @@ class Trainer:
 
         self.device     = config.training.device
         
-        self.logger     = Logger(log_dir=config.io.logdir, name="training", level="INFO", config=config)
-        self.tracker    = BaseTracker(writer=config.io.writer)
+        self.logger     = Logger(log_dir=config.io.logdir, name="training", level="INFO")
+        self.tracker    = Tracker(writer=config.io.writer)
+        self.telemetry  = PPOTelemetry(self.tracker, config)
         self.checkpoint = Checkpoint(config, logger=self.logger)
-        
+
+        vroom.logger = self.logger
+
         self.logger.section("[Trainer Initialization]")
         self.logger.subsection(f"Device: {self.device}")
         self.logger.subsection(f"Load Checkpoint: {load_checkpoint} \n")
-        
+
         self.ppo           = self.initialize()
-        self.environment   = Environment(config)
+        self.environment   = Environment(config, logger=self.logger)
         self.summary       = ModelSummary(self.ppo)
         self.tensor_logger = TensorLogger(self.ppo).attach()
         self.attached      = True
@@ -218,15 +188,12 @@ class Trainer:
         entropy_cfg = self.config.entropy
         io_cfg      = self.config.io
                 
-        tracker      = BaseTracker(writer=io_cfg.writer)
-        tools        = PPOTools(self.config, tracker)
         masking      = PPOMasking(self.config)
         distribution = PPODistribution(self.config, masking)
 
         ppo = PPO(optimizer=None, config=self.config).to(self.device)
-        
-        ppo.tracker      = tracker
-        ppo.tools        = tools
+
+        ppo.telemetry    = self.telemetry
         ppo.logger       = self.logger
         ppo.masking      = masking
         ppo.distribution = distribution
@@ -250,28 +217,27 @@ class Trainer:
         ppo.optimizer = optimizer
         
         ppo.lr_scheduler = LRScheduler(
-            optimizer=optimizer,
-            warmup_steps=lr_cfg.lr_warmup_steps,
-            decay_steps=lr_cfg.lr_decay_steps,
-            lr_min=lr_cfg.lr_min,
-            tracker=tracker,
-            logger=self.logger,
+            optimizer    = optimizer,
+            warmup_steps = lr_cfg.lr_warmup_steps,
+            decay_steps  = lr_cfg.lr_decay_steps,
+            lr_min       = lr_cfg.lr_min,
         )
-        
+
         ppo.entropy_scheduler = EntropyScheduler(
-            start_coef=entropy_cfg.entropy_start,
-            end_coef=entropy_cfg.entropy_end,
-            anneal_steps=entropy_cfg.entropy_anneal_steps,
-            warmup_steps=lr_cfg.lr_warmup_steps,
-            tracker=tracker,
-            logger=self.logger,
+            start_coef   = entropy_cfg.entropy_start,
+            end_coef     = entropy_cfg.entropy_end,
+            anneal_steps = entropy_cfg.entropy_anneal_steps,
+            warmup_steps = lr_cfg.lr_warmup_steps,
         )
-        
-        ppo.early_stopping = EpochEarlyStopping(
-            threshold=self.config.ppo.kl_divergence_threshold,
-            logger=self.logger,
-            tracker=ppo.tracker,
-        )
+
+        ppo.early_stopping = EpochEarlyStopping(self.config.ppo.kl_divergence_threshold)
+
+        self.logger.section("[Schedulers]")
+        self.logger.subsection(f"LR Warmup Steps  = {lr_cfg.lr_warmup_steps}")
+        self.logger.subsection(f"LR Decay Steps   = {lr_cfg.lr_decay_steps}")
+        self.logger.subsection(f"LR Min           = {lr_cfg.lr_min}")
+        self.logger.subsection(f"Entropy Schedule = {entropy_cfg.entropy_start} -> {entropy_cfg.entropy_end} over {entropy_cfg.entropy_anneal_steps} steps")
+        self.logger.subsection(f"KL Threshold     = {self.config.ppo.kl_divergence_threshold} \n")
 
         ppo.current_entropy_coef = entropy_cfg.entropy_start
         
@@ -295,8 +261,6 @@ class Trainer:
     
     def ppo_update(self):
         self.logger.section("[PPO Update]")
-        memory_size = len(self.ppo.memory.rewards)
-        self.tracker.log_scalar('batch/buffer_size', memory_size, self.global_step_counter)
         self.ppo.update()
         
     def run_episode(self, dataset_item):
@@ -337,9 +301,7 @@ class Trainer:
             self.operator_stats['count'][op_idx] += 1
             self.operator_stats['rewards'][op_idx].append(reward)
 
-            self.tracker.log_dict('step/reward', rewards, self.global_step_counter)
-            self.tracker.log_dict('step/cost', costs, self.global_step_counter)
-            self.tracker.log_scalar('step/state_value', value, self.global_step_counter)
+            self.telemetry.step(rewards, costs, value, self.global_step_counter)
 
             experience = {
                 "graph"           : graph,
@@ -390,14 +352,7 @@ class Trainer:
             self.episode_index += 1
             episodes_processed += 1
             
-            self.tracker.log_scalar('episode/total_reward', episode_reward, self.episode_index)
-            self.tracker.log_scalar('episode/length',       episode_length, self.episode_index)
-            
-            total = sum(self.operator_stats['count'].values())
-            freq = {f'op{i}': self.operator_stats['count'][i]/total for i in range(4)}
-            avg_rew = {f'op{i}': (sum(self.operator_stats['rewards'][i])/len(self.operator_stats['rewards'][i]) if self.operator_stats['rewards'][i] else 0) for i in range(4)}
-            self.tracker.log_dict('episode/operator_frequency', freq, self.episode_index)
-            self.tracker.log_dict('episode/operator_avg_reward', avg_rew, self.episode_index)
+            self.telemetry.episode(episode_reward, episode_length, self.operator_stats, self.episode_index)
             self.operator_stats = {'count': {i: 0 for i in range(4)}, 'rewards': {i: [] for i in range(4)}}
 
         self.logger.subsection(f"Chunk complete: {episodes_processed} episodes processed")
@@ -429,14 +384,14 @@ class Trainer:
 
             episodes_processed = self.run_chunk(chunk_data)
 
-            self.tracker.log_scalar('batch/episodes_processed', episodes_processed, chunk_idx)
+            self.telemetry.episodes_processed(episodes_processed, chunk_idx)
 
             self.ppo_update()
             self.checkpoint.save(self.ppo, self)
 
             progress_pct = ((chunk_idx + 1) / total_chunks) * 100
             self.logger.subsection(f"Overall Progress: {progress_pct:.1f}% ({chunk_idx + 1}/{total_chunks} chunks)")
-            self.tracker.log_scalar('batch/chunk_progress', chunk_idx / total_chunks, chunk_idx)
+            self.telemetry.chunk_progress(chunk_idx, total_chunks)
             
             del chunk_data
             gc.collect()

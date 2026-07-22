@@ -6,6 +6,7 @@ from core.graph import Graph
 from core.mask import MaskContext
 from core.services import vroom
 from core.state import EntityPool, Job, Route, RoutingState, Vehicle
+from tools.logger import NullLogger
 
 
 class ScenarioSampler:
@@ -46,6 +47,9 @@ class ScenarioSampler:
 
 
 class ActionHandler:
+    def __init__(self, logger):
+        self.logger = logger
+
     def _solve_vehicle_route(self, jobs, vehicle: Vehicle):
         solution = vroom.solve(jobs, [vehicle])
         if solution is None or not solution.routes:
@@ -66,7 +70,7 @@ class ActionHandler:
 
         new_route = self._solve_vehicle_route(candidate_jobs, vehicle)
         if new_route is None:
-            print("Job insertion failed for vehicle_id:", vehicle_id, "job_id:", job_id)
+            self.logger.warning(f"Job insertion failed for vehicle_id={vehicle_id} job_id={job_id}")
             return state
 
         new_state = state.copy()
@@ -91,7 +95,7 @@ class ActionHandler:
 
         new_route = self._solve_vehicle_route(remaining_jobs, vehicle)
         if new_route is None:
-            print("Job removal failed for vehicle_id:", vehicle_id, "job_id:", job_id)
+            self.logger.warning(f"Job removal failed for vehicle_id={vehicle_id} job_id={job_id}")
             return state
 
         new_state.replace_route(new_route)
@@ -101,7 +105,7 @@ class ActionHandler:
     def apply_reoptimize(self, env, state: RoutingState) -> RoutingState:
         solution = vroom.solve(list(env.jobs), list(env.vehicles))
         if solution is None:
-            print("VROOM failed to run")
+            self.logger.warning("Reoptimize failed: VROOM returned no solution")
             return state
 
         return solution
@@ -150,8 +154,9 @@ class EventHandler:
 
 
 class Environment:
-    def __init__(self, config):
+    def __init__(self, config, logger=None):
         self.config   = config
+        self.logger   = logger or NullLogger()
         self.jobs     = EntityPool()
         self.vehicles = EntityPool()
 
@@ -162,7 +167,7 @@ class Environment:
         self.mask_context   = MaskContext()
         self.sampler        = ScenarioSampler(config.env)
         self.event_handler  = EventHandler(self.sampler)
-        self.action_handler = ActionHandler()
+        self.action_handler = ActionHandler(self.logger)
 
         self.reset()
 

@@ -6,242 +6,6 @@ from .model import Policy
 from tqdm import tqdm
 
 
-class PPOTools:
-    def __init__(self, config, tracker):
-        self.config  = config
-        self.tracker = tracker
-    
-    def layer_gradients(self, module_name, module, batch_step):
-        layer_stats = {}
-        
-        for name, param in module.named_parameters():
-            if param.grad is not None:
-                grad = param.grad.detach()
-                layer_key = f'{module_name}/{name}'
-                
-                layer_stats[f'{layer_key}/norm'] = grad.norm().item()
-                layer_stats[f'{layer_key}/mean'] = grad.mean().item()
-                layer_stats[f'{layer_key}/std']  = grad.std(unbiased=False).item()
-        
-        if layer_stats:
-            self.tracker.log_dict(f'batch/gradients_layers/{module_name}', layer_stats, batch_step)
-    
-    def compute_gradient_stats(self, module, module_name):
-        stats        = {}
-        grad_values  = []
-        param_values = []
-        
-        for name, param in module.named_parameters():
-            if param.grad is not None:
-                grad = param.grad.detach()
-                grad_values.append(grad.view(-1))
-                param_values.append(param.detach().view(-1))
-        
-        if grad_values:
-            all_grads  = torch.cat(grad_values)
-            all_params = torch.cat(param_values)
-            
-            stats[f'{module_name}/grad_mean']     = all_grads.mean().item()
-            stats[f'{module_name}/grad_std']      = all_grads.std(unbiased=False).item()
-            stats[f'{module_name}/grad_max']      = all_grads.max().item()
-            stats[f'{module_name}/grad_min']      = all_grads.min().item()
-            stats[f'{module_name}/grad_abs_mean'] = all_grads.abs().mean().item()
-            
-            param_norm = all_params.norm().item()
-            grad_norm  = all_grads.norm().item()
-            
-            if param_norm > 1e-8:
-                stats[f'{module_name}/grad_param_ratio'] = grad_norm / param_norm
-            
-            stats[f'{module_name}/has_nan'] = torch.isnan(all_grads).any().item()
-            stats[f'{module_name}/has_inf'] = torch.isinf(all_grads).any().item()
-        
-        return stats
-    
-    def compute_prob_ratios(self, old_log_probs, new_log_probs):
-        prob_ratio_op  = torch.exp(new_log_probs["op"]  - old_log_probs["op"])
-        prob_ratio_veh = torch.exp(new_log_probs["veh"] - old_log_probs["veh"])
-        prob_ratio_job = torch.exp(new_log_probs["job"] - old_log_probs["job"])
-
-        prob_ratios = {
-            "operator" : prob_ratio_op,
-            "vehicle"  : prob_ratio_veh,
-            "job"      : prob_ratio_job,
-        }
-
-        return prob_ratios
-    
-    def compute_component_loss(self, advantage, prob_ratios):
-        clipped_ratio_op  = torch.clamp(prob_ratios["operator"], 1.0 - self.config.ppo.clip_ratio, 1.0 + self.config.ppo.clip_ratio)
-        clipped_ratio_veh = torch.clamp(prob_ratios["vehicle"],  1.0 - self.config.ppo.clip_ratio, 1.0 + self.config.ppo.clip_ratio)
-        clipped_ratio_job = torch.clamp(prob_ratios["job"],      1.0 - self.config.ppo.clip_ratio, 1.0 + self.config.ppo.clip_ratio)
-
-        operator_loss = -torch.min(prob_ratios["operator"] * advantage, clipped_ratio_op * advantage)
-        veh_loss      = -torch.min(prob_ratios["vehicle"]  * advantage, clipped_ratio_veh * advantage)
-        job_loss      = -torch.min(prob_ratios["job"]      * advantage, clipped_ratio_job * advantage)
-
-        loss = {
-            "operator" : operator_loss.item(),
-            "vehicle"  : veh_loss.item(),
-            "job"      : job_loss.item(),
-        }
-
-        return loss
-    
-    def compute_clip_fraction(self, prob_ratios):
-        operator_clip_frac = (torch.abs(prob_ratios["operator"] - 1.0) > self.config.ppo.clip_ratio).float().mean()
-        vehicle_clip_frac  = (torch.abs(prob_ratios["vehicle"]  - 1.0) > self.config.ppo.clip_ratio).float().mean()
-        job_clip_frac      = (torch.abs(prob_ratios["job"]      - 1.0) > self.config.ppo.clip_ratio).float().mean()
-
-        clip_fracs = {
-            "operator": operator_clip_frac.item(),
-            "vehicle": vehicle_clip_frac.item(),
-            "job": job_clip_frac.item(),
-        }
-
-        return clip_fracs
-    
-    def log_baseline(self, batch_data, global_step):
-        values  = batch_data["values"]
-        returns = batch_data["returns"]
-        
-        explained_var = 0.0
-        if returns.std() > 1e-8:
-            explained_var = 1.0 - ((returns - values).var() / (returns.var() + 1e-8))
-        
-        baseline = {
-            "advantage_mean"     : float(batch_data["advantages"].mean().item()),
-            "advantage_std"      : float(batch_data["advantages"].std().item()),
-            "return_mean"        : float(batch_data["returns"].mean().item()),
-            "return_std"         : float(batch_data["returns"].std().item()),
-            "reward_mean"        : float(batch_data["rewards"].mean().item()),
-            "reward_std"         : float(batch_data["rewards"].std().item()),
-            "value_mean"         : float(batch_data["values"].mean().item()),
-            "value_std"          : float(batch_data["values"].std().item()),
-            "explained_variance" : float(explained_var.item()) if torch.is_tensor(explained_var) else float(explained_var),
-            "value_target_std"   : float(returns.std().item()),
-        }
-
-        self.tracker.log_dict('batch/baseline_stats', baseline, global_step)
-        
-    def log_action_distribution(self, dist, sample_index):
-        with torch.no_grad():
-            op_probs      = dist["op"].probs.cpu().detach()
-            vehicle_probs = dist["veh"].probs.cpu().detach()
-            job_probs     = dist["job"].probs.cpu().detach()
-            
-            op_stats = {
-                'op_max_prob'  : op_probs.max().item(),
-                'op_mean_prob' : op_probs.mean().item(),
-                'op_min_prob'  : op_probs.min().item(),
-            }
-
-            veh_stats = {
-                'veh_max_prob'  : vehicle_probs.max().item(),
-                'veh_mean_prob' : vehicle_probs.mean().item(),
-                'veh_min_prob'  : vehicle_probs.min().item(),
-            }
-                        
-            job_stats = {
-                'job_max_prob'  : job_probs.max().item(),
-                'job_mean_prob' : job_probs.mean().item(),
-                'job_min_prob'  : job_probs.min().item(),
-            }
-            
-            self.tracker.log_dict('sample/op_distribution',  op_stats,  sample_index)
-            self.tracker.log_dict('sample/job_distribution', job_stats, sample_index)
-            self.tracker.log_dict('sample/veh_distribution', veh_stats, sample_index)
-
-    def log_sample_metrics(self, sample_results, global_sample_step):
-        loss_components       = sample_results["loss_components"]
-        entropy_dict          = sample_results["entropy_dict"]
-        kl_dict               = sample_results["kl_dict"]
-        clip_fractions        = sample_results["clip_fractions"]
-        old_log_probs         = sample_results["old_log_probs"]
-        new_log_probs         = sample_results["new_log_probs"]
-        accumulated_loss      = sample_results["accumulated_loss"]
-        accumulated_kl        = sample_results["accumulated_kl"]
-        new_distribution_dict = sample_results["new_distribution_dict"]
-        total_loss            = sample_results["total_loss"]
-        entropy_loss          = sample_results["entropy_loss"]
-        policy_loss_dict      = sample_results["policy_loss_dict"]
-        value_loss_dict       = sample_results["value_loss_dict"]
-        advantage             = sample_results["advantage"]
-        target_return         = sample_results["target_return"]
-        prob_ratios           = sample_results["prob_ratios"]
-
-        prob_ratios_log = {
-            "operator" : prob_ratios["operator"].item(),
-            "vehicle"  : prob_ratios["vehicle"].item(),
-            "job"      : prob_ratios["job"].item(),
-        }
-        
-        old_log_probs_log = {
-            "op"    : old_log_probs["op"].item(),
-            "veh"   : old_log_probs["veh"].item(),
-            "job"   : old_log_probs["job"].item(),
-            "total" : old_log_probs["total"].item(),
-        }
-        
-        new_log_probs_log = {
-            "op"    : new_log_probs["op"].item(),
-            "veh"   : new_log_probs["veh"].item(),
-            "job"   : new_log_probs["job"].item(),
-            "total" : new_log_probs["total"].item(),
-        }
-        
-        entropy_dict_log = {
-            "total_entropy"       : entropy_dict["total_entropy"].item(),
-            "operator_entropy"    : entropy_dict["operator_entropy"].item(),
-            "vehicle_entropy_exp" : entropy_dict["vehicle_entropy_exp"].item(),
-            "job_entropy_exp"     : entropy_dict["job_entropy_exp"].item(),
-        }
-        
-        policy_loss_log = {
-            "prob_ratio"    : policy_loss_dict["prob_ratio"].item(),
-            "unclipped_obj" : policy_loss_dict["unclipped_obj"].item(),
-            "clipped_obj"   : policy_loss_dict["clipped_obj"].item(),
-            "policy_loss"   : policy_loss_dict["policy_loss"].item(),
-        }
-        
-        value_loss_log = {
-            "value_loss_unclipped" : value_loss_dict["value_loss_unclipped"].item(),
-            "value_loss_clipped"   : value_loss_dict["value_loss_clipped"].item(),
-            "value_loss"           : value_loss_dict["value_loss"].item(),
-        }
-
-        self.tracker.log_dict('sample/loss', loss_components, global_sample_step)
-        self.tracker.log_dict('sample/clip_fraction', clip_fractions, global_sample_step)
-        self.tracker.log_dict('sample/prob_ratio', prob_ratios_log, global_sample_step)
-        self.tracker.log_dict('sample/old_log_probs', old_log_probs_log, global_sample_step)
-        self.tracker.log_dict('sample/new_log_probs', new_log_probs_log, global_sample_step)
-        self.tracker.log_dict('sample/entropy', entropy_dict_log, global_sample_step)
-        self.tracker.log_dict('sample/kl_divergence', kl_dict, global_sample_step)
-        self.tracker.log_scalar('sample/accumulated_loss', accumulated_loss, global_sample_step)
-        self.tracker.log_scalar('sample/accumulated_kl', accumulated_kl, global_sample_step)
-        self.log_action_distribution(new_distribution_dict, global_sample_step)
-        self.tracker.log_scalar('sample/total_loss', total_loss, global_sample_step)
-        self.tracker.log_scalar('sample/entropy_loss', entropy_loss, global_sample_step)
-        self.tracker.log_dict('sample/policy_loss', policy_loss_log, global_sample_step)
-        self.tracker.log_dict('sample/value_loss', value_loss_log, global_sample_step)
-        self.tracker.log_scalar('sample/advantage', advantage.item(), global_sample_step)
-        self.tracker.log_scalar('sample/target_return', target_return.item(), global_sample_step)
-    
-    def log_gradients(self, modules_dict, batch_step):
-        grad_norms = {}
-        grad_stats = {}
-
-        for module_name, module in modules_dict.items():
-            grad_norms[module_name] = nn.utils.clip_grad_norm_(module.parameters(), max_norm=float('inf')).item()
-            grad_stats.update(self.compute_gradient_stats(module, module_name))
-
-            if batch_step % 10 == 0:
-                self.layer_gradients(module_name, module, batch_step)
-
-        self.tracker.log_dict('batch/gradients_norms', grad_norms, batch_step)
-        self.tracker.log_dict('batch/gradients_stats', grad_stats, batch_step)
-    
-
 class PPODistribution:
     def __init__(self, config, masking):
         self.config               = config
@@ -453,7 +217,7 @@ class PPO(nn.Module):
         self.policy       = Policy(config).to(self.device)
         self.memory       = PPOMemory()
         self.logger       = None
-        self.tools        = None
+        self.telemetry    = None
         self.masking      = None
         self.distribution = None
 
@@ -641,10 +405,10 @@ class PPO(nn.Module):
         else:
             total_loss.backward()
 
-        self.tools.log_gradients(self._modules_dict, batch_step)
+        self.telemetry.gradients(self._modules_dict, batch_step)
 
         total_norm = nn.utils.clip_grad_norm_(self.parameters(), max_norm=self.config.ppo.gradient_clip_max_norm)
-        self.tracker.log_scalar('batch/grad_norm_before_clip', total_norm.item(), batch_step)
+        self.telemetry.grad_norm(total_norm.item(), batch_step)
 
         if self.config.training.use_mixed_precision:
             self.scaler.step(self.optimizer)
@@ -700,32 +464,21 @@ class PPO(nn.Module):
             
             accumulated_loss = accumulated_loss + total_loss
             accumulated_kl   += kl_dict["mean_kl"]
-        
-            prob_ratios     = self.tools.compute_prob_ratios(old_log_prob_dict, new_log_prob_dict)
-            clip_fractions  = self.tools.compute_clip_fraction(prob_ratios)
-            loss_components = self.tools.compute_component_loss(advantage, prob_ratios)
-            
-            sample_results = {
-                "sample_index"          : sample_idx,
-                "policy_loss_dict"      : policy_loss_dict,
-                "value_loss_dict"       : value_loss_dict,
-                "entropy_loss"          : entropy_loss.item(),
-                "total_loss"            : total_loss.item(),
-                "kl_dict"               : kl_dict,
-                "entropy_dict"          : entropy_dict,
-                "old_log_probs"         : old_log_prob_dict,
-                "new_log_probs"         : new_log_prob_dict,
-                "accumulated_loss"      : accumulated_loss.item(),
-                "accumulated_kl"        : accumulated_kl,
-                "new_distribution_dict" : new_distribution_dict,
-                "clip_fractions"        : clip_fractions,
-                "loss_components"       : loss_components,
-                "prob_ratios"           : prob_ratios,
-                "advantage"             : advantage,
-                "target_return"         : target_return,
-            }
 
-            self.tools.log_sample_metrics(sample_results, self.global_sample_step)
+            self.telemetry.sample(
+                sample_step      = self.global_sample_step,
+                advantage        = advantage,
+                target_return    = target_return,
+                old_log_probs    = old_log_prob_dict,
+                new_log_probs    = new_log_prob_dict,
+                distributions    = new_distribution_dict,
+                policy_loss_dict = policy_loss_dict,
+                value_loss_dict  = value_loss_dict,
+                entropy_dict     = entropy_dict,
+                kl_dict          = kl_dict,
+                entropy_loss     = entropy_loss.item(),
+                total_loss       = total_loss.item(),
+            )
             self.global_sample_step += 1
 
         mean_loss_tensor = accumulated_loss / batch_size
@@ -739,10 +492,10 @@ class PPO(nn.Module):
         total_samples  = len(self.memory.rewards)
         batch_data     = self.prepare_batch()
         indices        = np.arange(total_samples)
-        
-        self.logger.subsection("Logging Baseline Statistics")
-        self.tools.log_baseline(batch_data, self.global_update_step)
-  
+
+        self.telemetry.buffer_size(total_samples, self.global_update_step)
+        self.telemetry.baseline(batch_data, self.global_update_step)
+
         self.logger.subsection(f"Starting PPO Update - Max Epochs: {self.num_epochs}, Minibatch Size: {self.minibatch_size}")
         for epoch in tqdm(range(self.num_epochs), desc="PPO Update", unit="epoch"):
             np.random.shuffle(indices)
@@ -753,29 +506,31 @@ class PPO(nn.Module):
             for start_index in tqdm(range(0, total_samples, self.minibatch_size), desc="Minibatch", leave=False):
                 end_index = start_index + self.minibatch_size
                 batch_indices = indices[start_index:end_index]
-                
+
                 mean_batch_loss_tensor, mean_batch_loss_value, mean_batch_kl = self.process_batch(batch_indices, batch_data)
-                
-                self.tracker.log_scalar('batch/mean_loss', mean_batch_loss_value, self.global_batch_step)
-                self.tracker.log_scalar('batch/mean_kl', mean_batch_kl, self.global_batch_step)
 
                 epoch_kl_sum            += mean_batch_kl
                 epoch_loss_sum          += mean_batch_loss_value
                 epoch_batches           += 1
                 self.global_batch_step  += 1
-                
+
                 self.backward(mean_batch_loss_tensor, self.global_batch_step)
                 self.lr_scheduler.step()
                 self.current_entropy_coef = self.entropy_scheduler.step()
 
+                self.telemetry.batch(mean_batch_loss_value, mean_batch_kl, self.global_batch_step)
+                self.telemetry.learning_rates(self.optimizer, self.global_batch_step)
+                self.telemetry.entropy_coefficient(self.current_entropy_coef, self.global_batch_step)
+
             self.global_epoch_step += 1
             mean_epoch_kl           = epoch_kl_sum / epoch_batches
             mean_epoch_loss         = epoch_loss_sum / epoch_batches
-            
-            self.tracker.log_scalar('epoch/mean_loss', mean_epoch_loss, self.global_epoch_step)
-            self.tracker.log_scalar('epoch/mean_kl', mean_epoch_kl, self.global_epoch_step)
-          
-            if self.early_stopping.should_stop(mean_epoch_kl, epoch, self.global_epoch_step):
+
+            self.telemetry.epoch(mean_epoch_loss, mean_epoch_kl, self.global_epoch_step)
+
+            if self.early_stopping.should_stop(mean_epoch_kl):
+                self.logger.subsection(f"Early stopping PPO update at epoch {epoch} : KL = {mean_epoch_kl:.4f} > {self.early_stopping.threshold}")
+                self.telemetry.early_stop(epoch, self.global_epoch_step)
                 break
 
         self.global_update_step += 1

@@ -138,9 +138,17 @@ class RewardConfig:
     no_action_penalty         : float = 0.0
 
 @dataclass
+class TelemetryConfig:
+    step_every            : int = 8
+    episode_every         : int = 4
+    sample_every          : int = 32
+    layer_gradients_every : int = 50
+
+
+@dataclass
 class DeviceConfig:
     device: str = "cuda"
-    
+
     @property
     def torch_device(self):
         return torch.device(self.device)
@@ -156,6 +164,7 @@ class Config:
     training   : TrainingConfig    = field(default_factory=TrainingConfig)
     reward     : RewardConfig      = field(default_factory=RewardConfig)
     ppo        : PPOConfig         = field(default_factory=PPOConfig)
+    telemetry  : TelemetryConfig   = field(default_factory=TelemetryConfig)
     device     : DeviceConfig      = field(default_factory=DeviceConfig)
 
 config = Config()
