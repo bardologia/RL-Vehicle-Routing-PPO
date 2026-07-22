@@ -3,7 +3,7 @@ import numpy as np
 
 from tools.auxiliary import generate_coords_batch
 from .graph import Graph
-from .mask import MaskContext
+from .mask import ActionMaskBuilder
 from .services import vroom
 from .state import EntityPool, Job, Route, RoutingState, Vehicle
 from tools.logger import NullLogger
@@ -11,10 +11,10 @@ from tools.logger import NullLogger
 
 class ScenarioSampler:
     def __init__(self, env_config):
-        self.env = env_config
+        self.env_config = env_config
 
     def sample_jobs(self, pool: EntityPool, count: int):
-        coords     = generate_coords_batch(self.env.center, self.env.radius, count, self.env.outlier_probability, self.env.outlier_multiplier)
+        coords     = generate_coords_batch(self.env_config.center, self.env_config.radius, count, self.env_config.outlier_probability, self.env_config.outlier_multiplier)
         priorities = np.random.choice([1, 2, 3, 4, 5], size=count)
         first_id   = pool.next_id()
 
@@ -29,7 +29,7 @@ class ScenarioSampler:
         ]
 
     def sample_vehicles(self, pool: EntityPool, count: int):
-        coords     = generate_coords_batch(self.env.center, self.env.radius, count, 0, self.env.outlier_multiplier)
+        coords     = generate_coords_batch(self.env_config.center, self.env_config.radius, count, 0, self.env_config.outlier_multiplier)
         capacities = np.random.choice([1, 2, 3], size=count)
         speeds     = np.random.choice([0.9, 1.0, 1.1], size=count)
         first_id   = pool.next_id()
@@ -164,7 +164,7 @@ class Environment:
         self.initial_state: RoutingState = None
 
         self.graph          = Graph(config)
-        self.mask_context   = MaskContext()
+        self.mask_builder   = ActionMaskBuilder()
         self.sampler        = ScenarioSampler(config.env)
         self.event_handler  = EventHandler(self.sampler)
         self.action_handler = ActionHandler(self.logger)
@@ -195,9 +195,9 @@ class Environment:
         self.current_state = RoutingState.from_payload(item["state"])
 
     def observe(self):
-        graph        = self.graph.build(self.jobs, self.vehicles, self.current_state)
-        mask_context = self.mask_context.build(self)
-        return graph, mask_context
+        graph     = self.graph.build(self.jobs, self.vehicles, self.current_state)
+        mask_info = self.mask_builder.build(self)
+        return graph, mask_info
 
     def generate_event(self):
         env = self.config.env
@@ -272,15 +272,15 @@ class Environment:
             if self.jobs.contains(job_id)
         )
 
-        reward_cfg      = self.config.reward
-        distance_cost   = reward_cfg.distance_weight * base_cost / 1000
-        unassigned_cost = reward_cfg.unassigned_penalty_weight * num_unassigned
-        idle_cost       = reward_cfg.idle_penalty_weight * idle_vehicles
-        priority_cost   = reward_cfg.priority_penalty_weight * unassigned_priority_sum
+        reward_config   = self.config.reward
+        distance_cost   = reward_config.distance_weight * base_cost / 1000
+        unassigned_cost = reward_config.unassigned_penalty_weight * num_unassigned
+        idle_cost       = reward_config.idle_penalty_weight * idle_vehicles
+        priority_cost   = reward_config.priority_penalty_weight * unassigned_priority_sum
 
         return distance_cost, unassigned_cost, idle_cost, priority_cost
 
-    def step(self, old_state, new_state, operator_idx):
+    def step(self, old_state, new_state, operator_index):
         old_distance_cost, old_unassigned_cost, old_idle_cost, old_priority_cost = self.evaluate_cost(old_state)
         new_distance_cost, new_unassigned_cost, new_idle_cost, new_priority_cost = self.evaluate_cost(new_state)
 
@@ -289,14 +289,14 @@ class Environment:
         idle_reward       = -(new_idle_cost       - old_idle_cost)
         priority_reward   = -(new_priority_cost   - old_priority_cost)
 
-        reward_cfg = self.config.reward
+        reward_config = self.config.reward
         action_penalties = {
-            0: reward_cfg.add_job_penalty,
-            1: reward_cfg.remove_job_penalty,
-            2: reward_cfg.invalid_action_penalty,
-            3: reward_cfg.reoptimize_penalty
+            0: reward_config.add_job_penalty,
+            1: reward_config.remove_job_penalty,
+            2: reward_config.invalid_action_penalty,
+            3: reward_config.reoptimize_penalty
         }
-        action_reward = action_penalties.get(operator_idx, 0)
+        action_reward = action_penalties.get(operator_index, 0)
 
         costs = {
             "old_distance_cost"   : old_distance_cost,

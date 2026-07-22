@@ -2,7 +2,7 @@ import torch
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 
-from core.shared import Environment, Graph, MaskContext, RoutingState
+from core.shared import Environment, Graph, ActionMaskBuilder, RoutingState
 from model.policy_model import Action, Policy
 
 
@@ -90,7 +90,7 @@ class ModelInference:
         self.model.to(self.device)
         
         self.graph_builder = Graph(self.environment.config)
-        self.mask_builder  = MaskContext()
+        self.mask_builder  = ActionMaskBuilder()
     
     def _create_graph(self, state: RoutingState):
 
@@ -145,7 +145,7 @@ class ModelInference:
             mask_info = self._get_mask_info(current_state)
             
             with torch.no_grad():
-                action_result = self.model.act(graph, mask_info=mask_info)
+                action_result = self.model.select_action(graph, mask_info=mask_info)
             
             action = action_result["action"]
             

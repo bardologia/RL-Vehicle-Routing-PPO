@@ -1,7 +1,7 @@
 import torch
 
-from core.shared import PPOMasking
-from core.training import PPODistribution
+from core.shared import ActionMasker
+from core.training import ActionDistribution
 
 
 MASK_INFO = {
@@ -12,14 +12,14 @@ MASK_INFO = {
 
 
 def build_distribution(cpu_config):
-    masking = PPOMasking(cpu_config)
-    return masking, PPODistribution(cpu_config, masking)
+    masker = ActionMasker(cpu_config)
+    return masker, ActionDistribution(cpu_config, masker)
 
 
 def test_categorical_kl_of_identical_logits_is_zero():
     logits = torch.randn(6)
 
-    kl = PPODistribution.categorical_kl(logits, logits)
+    kl = ActionDistribution.categorical_kl(logits, logits)
 
     assert torch.allclose(kl, torch.tensor(0.0), atol=1e-6)
 
@@ -27,64 +27,64 @@ def test_categorical_kl_of_identical_logits_is_zero():
 def test_categorical_kl_is_positive_for_different_logits():
     torch.manual_seed(0)
 
-    kl = PPODistribution.categorical_kl(torch.randn(6), torch.randn(6))
+    kl = ActionDistribution.categorical_kl(torch.randn(6), torch.randn(6))
 
     assert kl.item() > 0.0
 
 
 def test_masked_action_logits_matches_per_row_masking(cpu_config, seeded):
-    masking, distribution = build_distribution(cpu_config)
-    O, V, J               = 4, 6, 20
+    masker, distribution = build_distribution(cpu_config)
+    O, V, J              = 4, 6, 20
 
-    veh_logits = torch.randn(O, V)
-    job_logits = torch.randn(O, V, J)
+    vehicle_logits = torch.randn(O, V)
+    job_logits     = torch.randn(O, V, J)
 
-    veh_masked, job_masked = distribution.masked_action_logits(veh_logits, job_logits, MASK_INFO)
+    vehicle_masked, job_masked = distribution.masked_action_logits(vehicle_logits, job_logits, MASK_INFO)
 
-    for op_index in range(O):
-        expected_veh = masking.mask_vehicle(veh_logits[op_index], MASK_INFO, op_index)
-        assert torch.equal(veh_masked[op_index], expected_veh)
+    for operator_index in range(O):
+        expected_vehicle = masker.mask_vehicle(vehicle_logits[operator_index], MASK_INFO, operator_index)
+        assert torch.equal(vehicle_masked[operator_index], expected_vehicle)
 
-        for veh_index in range(V):
-            expected_job = masking.mask_job(job_logits[op_index, veh_index], MASK_INFO, op_index, veh_index)
-            assert torch.equal(job_masked[op_index, veh_index], expected_job)
+        for vehicle_index in range(V):
+            expected_job = masker.mask_job(job_logits[operator_index, vehicle_index], MASK_INFO, operator_index, vehicle_index)
+            assert torch.equal(job_masked[operator_index, vehicle_index], expected_job)
 
 
 def test_compute_returns_zero_kl_for_unchanged_policy(cpu_config, seeded):
-    masking, distribution = build_distribution(cpu_config)
+    masker, distribution = build_distribution(cpu_config)
 
-    op_logits  = torch.randn(4)
-    veh_logits = torch.randn(4, 6)
-    job_logits = torch.randn(4, 6, 20)
+    operator_logits = torch.randn(4)
+    vehicle_logits  = torch.randn(4, 6)
+    job_logits      = torch.randn(4, 6, 20)
 
-    entropy, kl = distribution.compute(op_logits, veh_logits, job_logits, op_logits, veh_logits, job_logits, MASK_INFO)
+    entropy, kl = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits, vehicle_logits, job_logits, MASK_INFO)
 
     assert abs(kl["total_kl"]) < 1e-5
     assert entropy["total_entropy"].item() > 0.0
 
 
 def test_compute_kl_grows_with_policy_change(cpu_config, seeded):
-    masking, distribution = build_distribution(cpu_config)
+    masker, distribution = build_distribution(cpu_config)
 
-    op_logits  = torch.randn(4)
-    veh_logits = torch.randn(4, 6)
-    job_logits = torch.randn(4, 6, 20)
+    operator_logits = torch.randn(4)
+    vehicle_logits  = torch.randn(4, 6)
+    job_logits      = torch.randn(4, 6, 20)
 
-    _, kl_small = distribution.compute(op_logits, veh_logits, job_logits, op_logits + 0.01 * torch.randn(4), veh_logits + 0.01 * torch.randn(4, 6), job_logits + 0.01 * torch.randn(4, 6, 20), MASK_INFO)
-    _, kl_large = distribution.compute(op_logits, veh_logits, job_logits, op_logits + torch.randn(4), veh_logits + torch.randn(4, 6), job_logits + torch.randn(4, 6, 20), MASK_INFO)
+    _, kl_small = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits + 0.01 * torch.randn(4), vehicle_logits + 0.01 * torch.randn(4, 6), job_logits + 0.01 * torch.randn(4, 6, 20), MASK_INFO)
+    _, kl_large = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits + torch.randn(4), vehicle_logits + torch.randn(4, 6), job_logits + torch.randn(4, 6, 20), MASK_INFO)
 
     assert kl_small["total_kl"] > 0.0
     assert kl_large["total_kl"] > kl_small["total_kl"]
 
 
 def test_compute_entropy_ignores_masked_entries(cpu_config):
-    masking, distribution = build_distribution(cpu_config)
+    masker, distribution = build_distribution(cpu_config)
 
-    op_logits  = torch.zeros(4)
-    veh_logits = torch.zeros(4, 6)
-    job_logits = torch.zeros(4, 6, 20)
+    operator_logits = torch.zeros(4)
+    vehicle_logits  = torch.zeros(4, 6)
+    job_logits      = torch.zeros(4, 6, 20)
 
-    entropy, _ = distribution.compute(op_logits, veh_logits, job_logits, op_logits, veh_logits, job_logits, None)
-    entropy_masked, _ = distribution.compute(op_logits, veh_logits, job_logits, op_logits, veh_logits, job_logits, MASK_INFO)
+    entropy, _ = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits, vehicle_logits, job_logits, None)
+    entropy_masked, _ = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits, vehicle_logits, job_logits, MASK_INFO)
 
     assert entropy_masked["total_entropy"].item() < entropy["total_entropy"].item()

@@ -117,7 +117,7 @@ def test_step_rewards_are_negated_cost_deltas(environment):
     old_state = environment.current_state
     new_state = environment.event_handler.apply_new_job(environment, old_state, 2)
 
-    rewards, costs = environment.step(old_state, new_state, operator_idx=0)
+    rewards, costs = environment.step(old_state, new_state, operator_index=0)
 
     assert rewards["unassigned_reward"] == pytest.approx(-(costs["new_unassigned_cost"] - costs["old_unassigned_cost"]))
     assert rewards["distance_reward"] == pytest.approx(-(costs["new_distance_cost"] - costs["old_distance_cost"]))

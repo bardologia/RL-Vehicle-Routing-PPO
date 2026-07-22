@@ -162,9 +162,9 @@ class Graph:
         self.edge_attributes = []
         self.edge_types      = []
 
-        self.node_builder  = NodeBuilder(self)
-        self.edge_builder  = EdgeBuilder(self)
-        self.graph_handler = GraphHandler(config)
+        self.node_builder       = NodeBuilder(self)
+        self.edge_builder       = EdgeBuilder(self)
+        self.relation_completer = RelationCompleter(config)
 
     def _reset(self):
         self.nodes.clear()
@@ -288,13 +288,13 @@ class Graph:
         self.node_builder.build()
         self.edge_builder.build()
 
-        data = self.graph_handler.build(self.pack_data())
+        data = self.relation_completer.build(self.pack_data())
         data.mappings = self.mappings()
 
         return data
 
 
-class GraphHandler:
+class RelationCompleter:
     required_relations = [
         ("job", "job_sequence", "job"),
         ("vehicle", "vehicle_assigned", "job"),

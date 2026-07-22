@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn as nn
 import numpy as np
-from core.shared.mask import PPOMasking
+from core.shared.mask import ActionMasker
 from model.gnn_model import GNN
 
 
@@ -16,20 +16,20 @@ class Action:
 class Policy(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.config  = config
-        self.masking = PPOMasking(config)
+        self.config = config
+        self.masker = ActionMasker(config)
 
         model = config.model
 
         self.device        = "cuda" if config.training.device.startswith("cuda") else "cpu"
         self.num_operators = model.num_operators
 
-        embed_dim   = model.policy_embedding_dim
-        context_dim = 2 * embed_dim
-        op_dim      = model.operator_embedding_dim
+        embedding_dim = model.policy_embedding_dim
+        context_dim   = 2 * embedding_dim
+        operator_dim  = model.operator_embedding_dim
 
-        self.graph_embedding = GNN(model)
-        self.operator_emb    = nn.Embedding(model.num_operators, op_dim)
+        self.graph_embedding    = GNN(model)
+        self.operator_embedding = nn.Embedding(model.num_operators, operator_dim)
 
         self.operator_actor = nn.Sequential(
             self._layer_init(nn.Linear(context_dim, model.policy_actor_hidden_1)),
@@ -40,7 +40,7 @@ class Policy(nn.Module):
         )
 
         self.vehicle_actor = nn.Sequential(
-            self._layer_init(nn.Linear(embed_dim + context_dim + op_dim, model.policy_actor_hidden_1)),
+            self._layer_init(nn.Linear(embedding_dim + context_dim + operator_dim, model.policy_actor_hidden_1)),
             nn.Tanh(),
             self._layer_init(nn.Linear(model.policy_actor_hidden_1, model.policy_actor_hidden_2)),
             nn.Tanh(),
@@ -48,7 +48,7 @@ class Policy(nn.Module):
         )
 
         self.job_actor = nn.Sequential(
-            self._layer_init(nn.Linear(2 * embed_dim + context_dim + op_dim, model.policy_actor_hidden_1)),
+            self._layer_init(nn.Linear(2 * embedding_dim + context_dim + operator_dim, model.policy_actor_hidden_1)),
             nn.Tanh(),
             self._layer_init(nn.Linear(model.policy_actor_hidden_1, model.policy_actor_hidden_2)),
             nn.Tanh(),
@@ -75,17 +75,17 @@ class Policy(nn.Module):
         with torch.amp.autocast(self.device, enabled=self.config.training.use_mixed_precision):
             embeddings, context = self.graph_embedding(graph)
             context             = context.squeeze(0)
-            op_logits           = self.operator_actor(context)
+            operator_logits     = self.operator_actor(context)
             state_value         = self.critic(context).squeeze(-1)
 
-        return embeddings, context, op_logits, state_value
+        return embeddings, context, operator_logits, state_value
 
     def forward_batch(self, batch_graph):
         batch_graph = batch_graph.to(self.device)
 
         with torch.amp.autocast(self.device, enabled=self.config.training.use_mixed_precision):
             embeddings, context = self.graph_embedding(batch_graph)
-            op_logits           = self.operator_actor(context)
+            operator_logits     = self.operator_actor(context)
             state_values        = self.critic(context).squeeze(-1)
 
         job_batch     = batch_graph["job"].batch
@@ -99,115 +99,115 @@ class Policy(nn.Module):
                         "job"     : embeddings["job"][job_batch == graph_index],
                         "vehicle" : embeddings["vehicle"][vehicle_batch == graph_index],
                     },
-                    "context"     : context[graph_index],
-                    "op_logits"   : op_logits[graph_index],
-                    "state_value" : state_values[graph_index],
+                    "context"         : context[graph_index],
+                    "operator_logits" : operator_logits[graph_index],
+                    "state_value"     : state_values[graph_index],
                 }
             )
 
         return per_sample
 
-    def compute_logits(self, actor_embeddings, actor_global_ctx, op_logits, selected_op=None):
-        veh_emb = actor_embeddings["vehicle"]
-        job_emb = actor_embeddings["job"]
+    def compute_logits(self, actor_embeddings, global_context, operator_logits, selected_operator=None):
+        vehicle_embedding = actor_embeddings["vehicle"]
+        job_embedding     = actor_embeddings["job"]
 
-        num_vehicles = veh_emb.size(0)
-        num_jobs     = job_emb.size(0)
+        num_vehicles = vehicle_embedding.size(0)
+        num_jobs     = job_embedding.size(0)
 
-        if selected_op is not None:
-            op_indices = torch.tensor([selected_op], device=self.device)
+        if selected_operator is not None:
+            operator_indices = torch.tensor([selected_operator], device=self.device)
         else:
-            op_indices = torch.arange(self.num_operators, device=self.device)
+            operator_indices = torch.arange(self.num_operators, device=self.device)
 
-        op_embs = self.operator_emb(op_indices)
-        num_ops = op_embs.size(0)
+        operator_embeddings   = self.operator_embedding(operator_indices)
+        num_scored_operators  = operator_embeddings.size(0)
 
-        context_exp = actor_global_ctx.view(1, 1, -1).expand(num_ops, num_vehicles, -1)
-        veh_exp     = veh_emb.unsqueeze(0).expand(num_ops, -1, -1)
-        op_exp      = op_embs.unsqueeze(1).expand(-1, num_vehicles, -1)
+        context_expanded  = global_context.view(1, 1, -1).expand(num_scored_operators, num_vehicles, -1)
+        vehicle_expanded  = vehicle_embedding.unsqueeze(0).expand(num_scored_operators, -1, -1)
+        operator_expanded = operator_embeddings.unsqueeze(1).expand(-1, num_vehicles, -1)
 
         with torch.amp.autocast(self.device, enabled=self.config.training.use_mixed_precision):
-            veh_logits = self.vehicle_actor(torch.cat([veh_exp, context_exp, op_exp], dim=-1)).squeeze(-1)
+            vehicle_logits = self.vehicle_actor(torch.cat([vehicle_expanded, context_expanded, operator_expanded], dim=-1)).squeeze(-1)
 
-            job_exp     = job_emb.view(1, 1, num_jobs, -1).expand(num_ops, num_vehicles, -1, -1)
-            veh_for_job = veh_exp.unsqueeze(2).expand(-1, -1, num_jobs, -1)
-            ctx_for_job = context_exp.unsqueeze(2).expand(-1, -1, num_jobs, -1)
-            op_for_job  = op_exp.unsqueeze(2).expand(-1, -1, num_jobs, -1)
+            job_expanded      = job_embedding.view(1, 1, num_jobs, -1).expand(num_scored_operators, num_vehicles, -1, -1)
+            vehicle_for_job   = vehicle_expanded.unsqueeze(2).expand(-1, -1, num_jobs, -1)
+            context_for_job   = context_expanded.unsqueeze(2).expand(-1, -1, num_jobs, -1)
+            operator_for_job  = operator_expanded.unsqueeze(2).expand(-1, -1, num_jobs, -1)
 
-            job_logits = self.job_actor(torch.cat([job_exp, veh_for_job, ctx_for_job, op_for_job], dim=-1)).squeeze(-1)
+            job_logits = self.job_actor(torch.cat([job_expanded, vehicle_for_job, context_for_job, operator_for_job], dim=-1)).squeeze(-1)
 
-        if selected_op is not None:
-            veh_logits = veh_logits.squeeze(0)
-            job_logits = job_logits.squeeze(0)
+        if selected_operator is not None:
+            vehicle_logits = vehicle_logits.squeeze(0)
+            job_logits     = job_logits.squeeze(0)
 
         return {
-            "op_logits"  : op_logits,
-            "veh_logits" : veh_logits,
-            "job_logits" : job_logits,
+            "operator_logits" : operator_logits,
+            "vehicle_logits"  : vehicle_logits,
+            "job_logits"      : job_logits,
         }
 
-    def act(self, graph, mask_info=None):
+    def select_action(self, graph, mask_info=None):
         self.eval()
         with torch.no_grad():
-            actor_embeddings, actor_global_ctx, op_logits, state_value = self.forward(graph)
+            actor_embeddings, global_context, operator_logits, state_value = self.forward(graph)
 
-            masked_op_logits = self.masking.mask_operator(op_logits, mask_info)
-            op_distribution  = torch.distributions.Categorical(logits=masked_op_logits.float())
-            selected_op      = op_distribution.sample()
+            masked_operator_logits = self.masker.mask_operator(operator_logits, mask_info)
+            operator_distribution  = torch.distributions.Categorical(logits=masked_operator_logits.float())
+            selected_operator      = operator_distribution.sample()
 
-            op_idx      = int(selected_op.item())
-            op_log_prob = op_distribution.log_prob(selected_op)
+            operator_index    = int(selected_operator.item())
+            operator_log_prob = operator_distribution.log_prob(selected_operator)
 
             logits_result = self.compute_logits(
-                actor_embeddings = actor_embeddings,
-                actor_global_ctx = actor_global_ctx,
-                op_logits        = op_logits,
-                selected_op      = None,
+                actor_embeddings  = actor_embeddings,
+                global_context    = global_context,
+                operator_logits   = operator_logits,
+                selected_operator = None,
             )
 
-            veh_logits_by_op     = logits_result["veh_logits"]
-            job_logits_by_op_veh = logits_result["job_logits"]
+            vehicle_logits_by_operator     = logits_result["vehicle_logits"]
+            job_logits_by_operator_vehicle = logits_result["job_logits"]
 
-            masked_veh_logits = self.masking.mask_vehicle(
-                veh_logits      = veh_logits_by_op[op_idx],
-                mask_info       = mask_info,
-                selected_op_idx = op_idx,
+            masked_vehicle_logits = self.masker.mask_vehicle(
+                vehicle_logits          = vehicle_logits_by_operator[operator_index],
+                mask_info               = mask_info,
+                selected_operator_index = operator_index,
             )
-            vehicle_distribution = torch.distributions.Categorical(logits=masked_veh_logits.float())
+            vehicle_distribution = torch.distributions.Categorical(logits=masked_vehicle_logits.float())
             selected_vehicle     = vehicle_distribution.sample()
-            veh_idx              = int(selected_vehicle.item())
-            veh_log_prob         = vehicle_distribution.log_prob(selected_vehicle)
+            vehicle_index        = int(selected_vehicle.item())
+            vehicle_log_prob     = vehicle_distribution.log_prob(selected_vehicle)
 
-            masked_job_logits = self.masking.mask_job(
-                job_logits       = job_logits_by_op_veh[op_idx, veh_idx],
-                mask_info        = mask_info,
-                selected_op_idx  = op_idx,
-                selected_veh_idx = veh_idx,
+            masked_job_logits = self.masker.mask_job(
+                job_logits              = job_logits_by_operator_vehicle[operator_index, vehicle_index],
+                mask_info               = mask_info,
+                selected_operator_index = operator_index,
+                selected_vehicle_index  = vehicle_index,
             )
             job_distribution = torch.distributions.Categorical(logits=masked_job_logits.float())
             selected_job     = job_distribution.sample()
-            job_idx          = int(selected_job.item())
+            job_index        = int(selected_job.item())
             job_log_prob     = job_distribution.log_prob(selected_job)
 
         action = Action(
-            operator=op_idx,
-            vehicle_index=veh_idx,
-            job_index=job_idx,
+            operator=operator_index,
+            vehicle_index=vehicle_index,
+            job_index=job_index,
         )
 
         results = {
-            "action"           : action,
-            "state_value"      : state_value,
-            "log_prob_op"      : op_log_prob,
-            "log_prob_veh"     : veh_log_prob,
-            "log_prob_job"     : job_log_prob,
-            "op_log_prob"      : op_log_prob,
-            "veh_log_prob"     : veh_log_prob,
-            "job_log_prob"     : job_log_prob,
-            "old_op_logits"    : op_logits,
-            "old_veh_logits"   : veh_logits_by_op,
-            "old_job_logits"   : job_logits_by_op_veh,
-            "masked_op_logits" : masked_op_logits,
+            "action"                 : action,
+            "state_value"            : state_value,
+            "log_prob_operator"      : operator_log_prob,
+            "log_prob_vehicle"       : vehicle_log_prob,
+            "log_prob_job"           : job_log_prob,
+            "operator_log_prob"      : operator_log_prob,
+            "vehicle_log_prob"       : vehicle_log_prob,
+            "job_log_prob"           : job_log_prob,
+            "old_operator_logits"    : operator_logits,
+            "old_vehicle_logits"     : vehicle_logits_by_operator,
+            "old_job_logits"         : job_logits_by_operator_vehicle,
+            "masked_operator_logits" : masked_operator_logits,
         }
 
         self.train()

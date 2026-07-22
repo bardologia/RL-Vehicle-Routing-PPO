@@ -46,11 +46,11 @@ class GNN(nn.Module):
             embeddings = conv(embeddings, edge_index_dict, edge_attr_dict=edge_attr_dict)
             embeddings = {node_type: self.activation(features) for node_type, features in embeddings.items()}
 
-        job_emb = embeddings["job"]
-        veh_emb = embeddings["vehicle"]
+        job_embedding     = embeddings["job"]
+        vehicle_embedding = embeddings["vehicle"]
 
-        job_batch     = graph["job"].batch if "batch" in graph["job"] else torch.zeros(job_emb.size(0), dtype=torch.long, device=job_emb.device)
-        vehicle_batch = graph["vehicle"].batch if "batch" in graph["vehicle"] else torch.zeros(veh_emb.size(0), dtype=torch.long, device=veh_emb.device)
+        job_batch     = graph["job"].batch if "batch" in graph["job"] else torch.zeros(job_embedding.size(0), dtype=torch.long, device=job_embedding.device)
+        vehicle_batch = graph["vehicle"].batch if "batch" in graph["vehicle"] else torch.zeros(vehicle_embedding.size(0), dtype=torch.long, device=vehicle_embedding.device)
 
-        context = torch.cat([global_mean_pool(job_emb, job_batch), global_mean_pool(veh_emb, vehicle_batch)], dim=-1)
+        context = torch.cat([global_mean_pool(job_embedding, job_batch), global_mean_pool(vehicle_embedding, vehicle_batch)], dim=-1)
         return embeddings, context

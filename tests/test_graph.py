@@ -1,6 +1,6 @@
 import torch
 
-from core.shared import Graph, GraphHandler, EntityPool, RoutingState
+from core.shared import Graph, RelationCompleter, EntityPool, RoutingState
 from tests.conftest import make_jobs, make_route, make_vehicles
 
 
@@ -26,7 +26,7 @@ def test_node_feature_shapes(cpu_config):
 def test_all_model_relations_exist(cpu_config):
     data, _, _, _ = build_graph(cpu_config)
 
-    for relation in GraphHandler.required_relations:
+    for relation in RelationCompleter.required_relations:
         assert relation in data.edge_types
         assert data[relation].edge_index.shape[0] == 2
         assert data[relation].edge_attr.shape[1] == 4
@@ -81,7 +81,7 @@ def test_zero_route_state_produces_edge_complete_graph(cpu_config):
 
     data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
 
-    for relation in GraphHandler.required_relations:
+    for relation in RelationCompleter.required_relations:
         assert relation in data.edge_types
 
     assert data[("job", "job_sequence", "job")].edge_index.shape[1] == 0
