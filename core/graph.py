@@ -339,16 +339,10 @@ class Graph:
         4: "job_vehicle_proximity",
     }
 
-    def __init__(
-        self,
-        config,
-        k_near_paths_for_job=3,
-        k_near_vehicles_for_job=3,
-        k_near_jobs_for_unassigned_vehicle=3,
-    ):
-        self.k_near_paths_for_job               = k_near_paths_for_job
-        self.k_near_vehicles_for_job            = k_near_vehicles_for_job
-        self.k_near_jobs_for_unassigned_vehicle = k_near_jobs_for_unassigned_vehicle
+    def __init__(self, config):
+        self.k_near_paths_for_job               = int(config.env.max_path_neighbors)
+        self.k_near_vehicles_for_job            = int(config.env.max_vehicle_neighbors)
+        self.k_near_jobs_for_unassigned_vehicle = int(config.env.max_vehicle_neighbors)
 
         self.jobs = []
         self.vehicles = []
