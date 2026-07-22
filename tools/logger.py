@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Optional
 from torch import nn
 from torch_geometric.nn import GATv2Conv
-from core.model import SelfAttention, CrossAttention, PointerNetwork
 
 
 class Logger:
@@ -97,7 +96,7 @@ class Logger:
 
 
 class TensorLogger:
-    def __init__(self, model, include_types = (nn.Linear, nn.Embedding, nn.LayerNorm, GATv2Conv, SelfAttention, CrossAttention, PointerNetwork)):
+    def __init__(self, model, include_types = (nn.Linear, nn.Embedding, nn.LayerNorm, GATv2Conv)):
         self.model = model
         self.include_types = include_types
         self.records = []

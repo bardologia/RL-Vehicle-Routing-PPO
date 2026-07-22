@@ -236,8 +236,7 @@ class Trainer:
             {'params': ppo.policy.vehicle_actor.parameters(),        'lr': lr_cfg.lr_vehicle_actor,   'name': 'vehicle_actor'},
             {'params': ppo.policy.critic.parameters(),               'lr': lr_cfg.lr_critic,          'name': 'critic'},
             {'params': ppo.policy.graph_embedding.parameters(),      'lr': lr_cfg.lr_embedding,       'name': 'graph_embedding'},
-            {'params': ppo.policy.job_pointer.parameters(),          'lr': lr_cfg.lr_job_pointer,     'name': 'job_pointer'},
-            {'params': ppo.policy.pointer_context_proj.parameters(), 'lr': lr_cfg.lr_pointer_context, 'name': 'pointer_context'},
+            {'params': ppo.policy.job_actor.parameters(),            'lr': lr_cfg.lr_job_actor,       'name': 'job_actor'},
         ]
                        
         self.logger.section("[Optimizer]")
@@ -245,8 +244,7 @@ class Trainer:
         self.logger.subsection(f"Vehicle Actor   = {lr_cfg.lr_vehicle_actor}")
         self.logger.subsection(f"Critic          = {lr_cfg.lr_critic}")
         self.logger.subsection(f"Graph Embedding = {lr_cfg.lr_embedding}")
-        self.logger.subsection(f"Job Pointer     = {lr_cfg.lr_job_pointer}")
-        self.logger.subsection(f"Pointer Context = {lr_cfg.lr_pointer_context} \n")
+        self.logger.subsection(f"Job Actor       = {lr_cfg.lr_job_actor} \n")
 
         optimizer = optim.Adam(param_groups, eps=1e-5)
         ppo.optimizer = optimizer
@@ -349,15 +347,7 @@ class Trainer:
             self.tracker.log_dict('step/reward', rewards, self.global_step_counter)
             self.tracker.log_dict('step/cost', costs, self.global_step_counter)
             self.tracker.log_scalar('step/state_value', value, self.global_step_counter)
-            
-            attn = {
-                'pointer_entropy'    : ppo_output['pointer_entropy'].item(),
-                'glimpse_entropy'    : ppo_output['glimpse_entropy'].item(),
-                'pointer_max_weight' : ppo_output['pointer_max_weight'].item(),
-                'glimpse_max_weight' : ppo_output['glimpse_max_weight'].item(),
-            }
-            self.tracker.log_dict('step/pointer_attention', attn, self.global_step_counter)
-            
+
             experience = {
                 "graph"          : graph,
                 "mask_info"      : mask_info,
