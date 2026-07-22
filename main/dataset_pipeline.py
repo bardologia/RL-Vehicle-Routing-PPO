@@ -1,30 +1,20 @@
-from core.dataset import Dataset
-import ray # type: ignore
 import os
-os.environ['RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO'] = '0'
+import sys
 
-if ray.is_initialized():
-    ray.shutdown()
+proj_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
+if proj_root not in sys.path:
+    sys.path.insert(0, proj_root)
 
+from tools.config import config
+from core.dataset import Dataset
 
-ray.init(
-    ignore_reinit_error=True,
-    include_dashboard=False,
-    log_to_driver=False,
-    num_cpus=None,                 
-    _metrics_export_port=None,
-    object_store_memory=10*1024**3, 
-    _temp_dir=None,                  
-)
-
-dataset = Dataset("datasets/chunked")
+dataset = Dataset(dataset_dir=os.path.join(proj_root, "datasets/chunked"), config=config)
 
 dataset.append(
-    num_events=1024000,      
-    output_dir="datasets/chunked",
-    num_workers=8,        
-    batch_size=128,      
-    chunk_size=1024,      
+    num_events=1024000,
+    output_dir=os.path.join(proj_root, "datasets/chunked"),
+    batch_size=128,
+    chunk_size=1024,
     verbose=True,
     seed=42,
     enable_worker_profiling=True,

@@ -94,7 +94,6 @@ class Dataset:
         seed=None,
         verbose=False,
         chunk_size=10_000,
-        num_workers=None,
         batch_size=100,
         enable_worker_profiling=False,
     ):
@@ -122,7 +121,6 @@ class Dataset:
             print(f"Creating {events_to_create} new events")
             print(f"Generating with batch_size={batch_size}")
         
-        # Generate events sequentially (no Ray / parallelism)
         current_chunk = []
         current_chunk_index = num_existing_chunks
 
@@ -131,20 +129,13 @@ class Dataset:
         if verbose:
             print(f"Generating {num_batches} batches sequentially, batch_size={batch_size}")
 
-        # Capture config in the main process to ensure consistency
-        graph_builder_config = {
-            "k_near_paths_for_job": int(self.config.env.max_path_neighbors),
-            "k_near_vehicles_for_job": int(self.config.env.max_vehicle_neighbors),
-            "k_near_jobs_for_unassigned_vehicle": int(self.config.env.max_vehicle_neighbors),
-        }
-
         with tqdm(total=events_to_create, desc="Generating events", ncols=80) as pbar:
             for i in range(num_batches):
                 batch_seed = (seed or 0) + i if seed is not None else random.randint(0, 2**31)
                 actual_batch_size = min(batch_size, events_to_create - i * batch_size)
                 profile_this = enable_worker_profiling and i == 0
 
-                result = generate_events(actual_batch_size, batch_seed, graph_builder_config, profile_this)
+                result = generate_events(actual_batch_size, batch_seed, self.config, profile_this)
                 batch_items, profile_stats = result
 
                 if profile_stats is not None:
@@ -219,17 +210,17 @@ class Dataset:
         self._current_item_idx = 0
     
 
-def generate_events(batch_size, seed, graph_builder_config=None, enable_profiling=False):  
+def generate_events(batch_size, seed, config, enable_profiling=False):
     random.seed(seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
-    
+
     profile_stats = None
     if enable_profiling:
         profiler = cProfile.Profile()
         profiler.enable()
-    
-    simulation_env = Environment()
+
+    simulation_env = Environment(config)
     batch = [None] * batch_size
     
     for i in range(batch_size):
