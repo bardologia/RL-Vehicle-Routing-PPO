@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from torch_geometric.data import HeteroData
+from torch_geometric.data import Batch, HeteroData
 from .model import Policy
 from tqdm import tqdm
 
@@ -653,14 +653,15 @@ class PPO(nn.Module):
             self.optimizer.step()
 
     def process_batch(self, batch_indices, batch_data):
-        graphs = [self.memory.graphs[idx].to(self.device) for idx in batch_indices]
-        
+        batch_graph = Batch.from_data_list([self.memory.graphs[idx] for idx in batch_indices])
+        per_sample  = self.policy.forward_batch(batch_graph)
+
         accumulated_loss = torch.tensor(0.0, device=self.device)
         accumulated_kl   = 0.0
         batch_size       = len(batch_indices)
-        
+
         for i, sample_idx in enumerate(batch_indices):
-            graph            = graphs[i]
+            sample           = per_sample[i]
             advantage        = batch_data["normalized_advantages"][sample_idx]
             target_return    = batch_data["returns"][sample_idx]
             old_log_prob_op  = batch_data["old_log_prob_op"][sample_idx]
@@ -676,12 +677,12 @@ class PPO(nn.Module):
                 "total" : old_log_prob_op + old_log_prob_veh + old_log_prob_job,
             }
 
-            actor_embeddings, actor_global_ctx, op_logits, pred_state_value = self.policy(graph)
-            
+            pred_state_value = sample["state_value"]
+
             logits_dict = self.policy.compute_logits(
-                actor_embeddings = actor_embeddings,
-                actor_global_ctx = actor_global_ctx,
-                op_logits        = op_logits,
+                actor_embeddings = sample["embeddings"],
+                actor_global_ctx = sample["context"],
+                op_logits        = sample["op_logits"],
                 selected_op      = None,
             )
                 
