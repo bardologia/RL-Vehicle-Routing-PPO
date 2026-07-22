@@ -6,7 +6,7 @@ from core.state import State, StateHandler
 from core.environment import Environment
 from core.graph import Graph
 from core.mask import MaskContext
-from core.model import GraphPolicy, Action
+from core.model import Policy, Action
 
 
 @dataclass
@@ -76,7 +76,7 @@ class InferenceResult:
 class ModelInference:
     def __init__(
         self,
-        model       : GraphPolicy,
+        model       : Policy,
         environment : Environment,
         max_steps   : int = 10,
         device      : str = "cuda",
@@ -160,10 +160,10 @@ class ModelInference:
             
             reward_info = None
            
-            rewards, old_costs, new_costs = self.environment.step(
+            rewards, costs = self.environment.step(
                 old_state, new_state, action.operator
             )
-            reward_info = {**rewards, **old_costs, **new_costs}
+            reward_info = {**rewards, **costs}
             
             operator_names = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING", 3: "REOPTIMIZE"}
             operator_name = operator_names.get(action.operator, f"UNKNOWN({action.operator})")
