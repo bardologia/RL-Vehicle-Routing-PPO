@@ -257,12 +257,7 @@ class PPOTools:
             if grad_norms_before[module_name] > 1e-8:
                 clip_ratios[module_name] = grad_norms_after[module_name] / grad_norms_before[module_name]
 
-        grad_norms = {
-            "grad_norms_before_clip" : grad_norms_before,
-            "grad_norms_after_clip"  : grad_norms_after,
-        }
-        
-        self.tracker.log_dict('batch/gradients_norms',      grad_norms,  batch_step)
+        self.tracker.log_comparison('batch/gradients_norms', grad_norms_before, grad_norms_after, batch_step, label1='before_clip', label2='after_clip')
         self.tracker.log_dict('batch/gradients_stats',      grad_stats,  batch_step)
         self.tracker.log_dict('batch/gradients_clip_ratio', clip_ratios, batch_step)
     
@@ -493,7 +488,7 @@ class PPO(nn.Module):
             "operator_actor"  : self.policy.operator_actor,
             "vehicle_actor"   : self.policy.vehicle_actor,
             "critic"          : self.policy.critic,
-            "embedder_actor"  : self.policy.graph_embedder_actor,
+            "embedder_actor"  : self.policy.graph_embedding,
             "job_pointer"     : self.policy.job_pointer,
             "pointer_context" : self.policy.pointer_context_proj,
         }
@@ -524,7 +519,7 @@ class PPO(nn.Module):
         actions            = np.array([[a.operator, a.vehicle_index, a.job_index] for a in self.memory.actions], dtype=np.int64)
         rewards            = torch.tensor(self.memory.rewards, dtype=torch.float32, device=device)
         dones              = torch.tensor(self.memory.dones, dtype=torch.float32, device=device)
-        mask_infos         = torch.tensor(self.memory.mask_infos, dtype=torch.float32, device=device)
+        mask_infos         = self.memory.mask_infos
         old_log_prob_op    = torch.stack(self.memory.log_prob_op).to(device)
         old_log_prob_veh   = torch.stack(self.memory.log_prob_veh).to(device)
         old_log_prob_job   = torch.stack(self.memory.log_prob_job).to(device)
