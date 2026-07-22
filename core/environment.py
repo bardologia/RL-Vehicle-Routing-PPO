@@ -4,7 +4,7 @@ import numpy as np
 from tools.auxiliary import generate_coords_batch
 from core.graph import Graph
 from core.mask import MaskContext
-from core.services import osrm, vroom
+from core.services import vroom
 from core.state import EntityPool, Job, Route, RoutingState, Vehicle
 
 
@@ -51,9 +51,7 @@ class ActionHandler:
         if solution is None or not solution.routes:
             return None
 
-        route = solution.routes[0]
-        osrm.enrich_polylines([route])
-        return route
+        return solution.routes[0]
 
     def apply_job_insertion(self, env, state: RoutingState, vehicle_id: int, job_id: int) -> RoutingState:
         route           = state.route_of_vehicle(vehicle_id)
@@ -106,7 +104,6 @@ class ActionHandler:
             print("VROOM failed to run")
             return state
 
-        osrm.enrich_polylines(solution.routes)
         return solution
 
 
@@ -182,8 +179,6 @@ class Environment:
             solution = vroom.solve(list(self.jobs), list(self.vehicles))
             if solution is None:
                 continue
-
-            osrm.enrich_polylines(solution.routes)
 
             self.current_state = solution
             self.initial_state = solution.copy()

@@ -51,16 +51,12 @@ class EnvironmentConfig:
     job_insert_max: int = 3
     job_remove_min: int = 1
     job_remove_max: int = 2
-    
+
     vehicle_insert_min: int = 1
     vehicle_insert_max: int = 1
     vehicle_remove_min: int = 1
     vehicle_remove_max: int = 1
-    
-    path_sample_interval  : int = 100
-    max_path_neighbors    : int = 1
-    max_vehicle_neighbors : int = 1
-    
+
     @property
     def outlier_probability(self):
         return 1.0 / self.outlier_frequency if self.outlier_frequency > 0 else 0.0
@@ -69,48 +65,28 @@ class EnvironmentConfig:
 class ModelConfig:
     job_input_dim     : int = 7
     vehicle_input_dim : int = 5
-    path_input_dim    : int = 5
     edge_attr_dim     : int = 4
-    
-    num_operators: int = 4
-    operator_embedding_dim: int = 32
-    
-    gnn_num_layers   : int = 3
-    gnn_edge_dropout : float = 0.1
-    gat_heads        : int = 4
-    gat_dropout      : float = 0.1
-    gat_concat       : bool = False
-    
-    cross_attention_heads   : int = 4
-    cross_attention_dropout : float = 0.1
-    
-    pointer_hidden_dim    : int = 64
-    pointer_num_heads     : int = 4
-    pointer_tanh_clipping : float = 10.0
-    
-    attention_num_heads : int = 4
-    attention_dropout   : float = 0.1
-    
-    policy_gnn_hidden_channels     : int = 64
-    policy_gnn_mlp_hidden_channels : int = 32
-    policy_embedding_dim           : int = 64
-    policy_actor_hidden_1          : int = 128
-    policy_actor_hidden_2          : int = 64
-    
-    value_gnn_hidden_channels     : int = 32
-    value_gnn_mlp_hidden_channels : int = 16
-    value_embedding_dim           : int = 64
-    value_critic_hidden_1         : int = 64
-    value_critic_hidden_2         : int = 64
+
+    num_operators          : int = 4
+    operator_embedding_dim : int = 32
+
+    gnn_num_layers : int = 2
+
+    policy_gnn_hidden_channels : int = 64
+    policy_embedding_dim       : int = 64
+    policy_actor_hidden_1      : int = 128
+    policy_actor_hidden_2      : int = 64
+
+    value_critic_hidden_1 : int = 64
+    value_critic_hidden_2 : int = 64
 
 @dataclass
 class LearningRate:
-    lr_operator_actor  : float = 3e-4
-    lr_vehicle_actor   : float = 3e-4
-    lr_critic          : float = 5e-4
-    lr_embedding       : float = 2e-4
-    lr_job_pointer     : float = 3e-4
-    lr_pointer_context : float = 3e-4
+    lr_operator_actor : float = 3e-4
+    lr_vehicle_actor  : float = 3e-4
+    lr_critic         : float = 5e-4
+    lr_embedding      : float = 2e-4
+    lr_job_actor      : float = 3e-4
     
     lr_warmup_steps: int = 1000
     lr_min: float = 1e-5

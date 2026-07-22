@@ -485,12 +485,11 @@ class PPO(nn.Module):
         self.global_sample_step = 0
 
         self._modules_dict = {
-            "operator_actor"  : self.policy.operator_actor,
-            "vehicle_actor"   : self.policy.vehicle_actor,
-            "critic"          : self.policy.critic,
-            "embedder_actor"  : self.policy.graph_embedding,
-            "job_pointer"     : self.policy.job_pointer,
-            "pointer_context" : self.policy.pointer_context_proj,
+            "operator_actor" : self.policy.operator_actor,
+            "vehicle_actor"  : self.policy.vehicle_actor,
+            "critic"         : self.policy.critic,
+            "embedder_actor" : self.policy.graph_embedding,
+            "job_actor"      : self.policy.job_actor,
         }
 
     def gae(self, rewards, values, dones):
@@ -701,8 +700,7 @@ class PPO(nn.Module):
                 actor_embeddings = actor_embeddings,
                 actor_global_ctx = actor_global_ctx,
                 op_logits        = op_logits,
-                selected_op      = None, 
-                return_attention = False
+                selected_op      = None,
             )
                 
             new_distribution_dict, new_log_prob_dict = self.action_distributions(sample_idx, batch_data, logits_dict, mask_info)
