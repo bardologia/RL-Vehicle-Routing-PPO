@@ -231,13 +231,13 @@ def generate_events(batch_size, seed, config, enable_profiling=False):
         graph, mask_info = simulation_env.observe()
         
         graph_cpu = graph.clone().detach().cpu()
-        
+
         batch[i] = {
-            "event_state": event_state.to_dict(),
-            "graph": graph_cpu,
-            "mask_info": mask_info,
-            "jobs": simulation_env.jobs.copy(),
-            "vehicles": simulation_env.vehicles.copy(),
+            "state"     : event_state.to_payload(),
+            "graph"     : graph_cpu,
+            "mask_info" : mask_info,
+            "jobs"      : [job.to_dict() for job in simulation_env.jobs],
+            "vehicles"  : [vehicle.to_dict() for vehicle in simulation_env.vehicles],
         }
         
         if i % 100 == 0 and torch.cuda.is_available():

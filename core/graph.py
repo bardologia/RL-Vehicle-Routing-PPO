@@ -2,7 +2,8 @@ import numpy as np
 import torch
 from torch_geometric.data import HeteroData # type: ignore
 from scipy.spatial import cKDTree
-from tools.auxiliary import distance_duration, haversine_distance
+from tools.auxiliary import haversine_distance
+from core.services import osrm
 from collections import defaultdict
 
 
@@ -65,60 +66,41 @@ class NodeBuilder:
 
     def vehicle_nodes(self):
         for vehicle in self.graph.vehicles:
-            vehicle_id = int(vehicle["id"])
-            lon, lat = map(float, vehicle["start"])
-            
             metadata = {
-                "vehicle_id": vehicle_id,
-                "time_window": list(map(int, vehicle.get("time_window", []))),
-                "speed_factor": float(vehicle.get("speed_factor", 1.0)),
-                "return_to_depot": bool(vehicle.get("return_to_depot", False)),
+                "vehicle_id": vehicle.id,
+                "time_window": [int(vehicle.time_window[0]), int(vehicle.time_window[1])],
+                "speed_factor": float(vehicle.speed_factor),
+                "return_to_depot": bool(vehicle.return_to_depot),
             }
-            
-            self.add_node(f"veh:{vehicle_id}", "vehicle", lon, lat, metadata)
+
+            self.add_node(f"veh:{vehicle.id}", "vehicle", float(vehicle.start[0]), float(vehicle.start[1]), metadata)
 
     def job_nodes(self):
-        routes = self.graph.state.get("routes", []) or []
+        state = self.graph.state
 
         assigned_vehicle_by_job = {}
-        jobs_in_routes = set()
-        for route in routes:
-            vehicle_id = int(route.get("vehicle"))
-            self.graph.vehicles_with_routes.add(vehicle_id)
-            for step in (route.get("steps") or []):
-                if step.get("type") != "job":
-                    continue
-                job_id = int(step.get("job", step.get("id")))
-                assigned_vehicle_by_job[job_id] = vehicle_id
-                jobs_in_routes.add(job_id)
-
-        unassigned_job_ids = {
-            int(item["id"])
-            for item in self.graph.state.get("unassigned", []) or []
-            if item.get("id") is not None
-        }
+        for route in state.routes:
+            self.graph.vehicles_with_routes.add(route.vehicle_id)
+            for job_id in route.job_ids:
+                assigned_vehicle_by_job[job_id] = route.vehicle_id
 
         for job in self.graph.jobs:
-            job_id = int(job["id"])
-            lon, lat = map(float, job["location"])
             metadata = {
-                "job_id": job_id,
-                "priority": int(job.get("priority", 0)),
-                "service": int(job.get("service", 0)),
-                "setup": int(job.get("setup", 0)),
-                "is_unassigned": job_id in unassigned_job_ids,
-                "in_route": job_id in jobs_in_routes,
-                "assigned_vehicle_id": assigned_vehicle_by_job.get(job_id),
+                "job_id": job.id,
+                "priority": int(job.priority),
+                "service": int(job.service),
+                "setup": int(job.setup),
+                "is_unassigned": job.id in state.unassigned_ids,
+                "in_route": job.id in assigned_vehicle_by_job,
+                "assigned_vehicle_id": assigned_vehicle_by_job.get(job.id),
             }
-            
-            self.add_node(f"job:{job_id}", "job", lon, lat, metadata)
+
+            self.add_node(f"job:{job.id}", "job", float(job.location[0]), float(job.location[1]), metadata)
 
     def path_nodes(self):
-        routes = self.graph.state.get("routes", []) or []
-
-        for route_index, route in enumerate(routes):
-            vehicle_id = int(route.get("vehicle"))
-            path_coordinates = route.get("path_coords") or []
+        for route_index, route in enumerate(self.graph.state.routes):
+            vehicle_id = route.vehicle_id
+            path_coordinates = route.path_coords or []
             if not path_coordinates:
                 continue
             
@@ -163,18 +145,13 @@ class EdgeBuilder:
 
     def job_sequence(self, routes):
         for route in routes:
-            steps = route.get("steps", []) or []
-            job_steps = [s for s in steps if s.get("type") == "job" and s.get("location")]
-            for current_step, next_step in zip(job_steps, job_steps[1:]):
-                current_job_id = int(current_step.get("job", current_step.get("id")))
-                next_job_id = int(next_step.get("job", next_step.get("id")))
-                current_index = self.graph.node_index_by_key.get(("job", f"job:{current_job_id}"))
-                next_index = self.graph.node_index_by_key.get(("job", f"job:{next_job_id}"))
+            for current_stop, next_stop in zip(route.stops, route.stops[1:]):
+                current_index = self.graph.node_index_by_key.get(("job", f"job:{current_stop.job_id}"))
+                next_index    = self.graph.node_index_by_key.get(("job", f"job:{next_stop.job_id}"))
                 if current_index is None or next_index is None:
                     continue
-                current_lon, current_lat = map(float, current_step["location"])
-                next_lon, next_lat = map(float, next_step["location"])
-                dist_m, dur_s = distance_duration(current_lon, current_lat, next_lon, next_lat)
+
+                dist_m, dur_s = osrm.distance_duration(current_stop.location[0], current_stop.location[1], next_stop.location[0], next_stop.location[1])
                 self.add_edge(current_index, next_index, dist_m, dur_s, etype=0, is_same_route=1.0, is_assigned=1.0, is_bidirectional=True)
 
     def get_sorted_path_nodes(self):
@@ -196,22 +173,19 @@ class EdgeBuilder:
 
     def vehicle_assigned(self, routes):
         for route in routes:
-            vehicle_id = int(route.get("vehicle"))
-            vehicle_index = self.graph.node_index_by_key.get(("vehicle", f"veh:{vehicle_id}"))
+            vehicle_index = self.graph.node_index_by_key.get(("vehicle", f"veh:{route.vehicle_id}"))
             if vehicle_index is None:
                 continue
+
             vehicle_node = self.graph.nodes[vehicle_index]
             vehicle_lon, vehicle_lat = vehicle_node["longitude"], vehicle_node["latitude"]
 
-            for step in (route.get("steps") or []):
-                if step.get("type") != "job" or not step.get("location"):
-                    continue
-                job_id = int(step.get("job", step.get("id")))
-                job_index = self.graph.node_index_by_key.get(("job", f"job:{job_id}"))
+            for stop in route.stops:
+                job_index = self.graph.node_index_by_key.get(("job", f"job:{stop.job_id}"))
                 if job_index is None:
                     continue
-                job_lon, job_lat = map(float, step["location"])
-                dist_m, dur_s = distance_duration(vehicle_lon, vehicle_lat, job_lon, job_lat)
+
+                dist_m, dur_s = osrm.distance_duration(vehicle_lon, vehicle_lat, stop.location[0], stop.location[1])
                 self.add_edge(vehicle_index, job_index, dist_m, dur_s, etype=2, is_same_route=1.0, is_assigned=1.0, is_bidirectional=True)
 
     def job_path_proximity(self, routes, job_nodes, path_nodes):
@@ -219,12 +193,9 @@ class EdgeBuilder:
             return
 
         job_to_route = {}
-        for r_idx, route in enumerate(routes):
-            v_id = int(route.get("vehicle"))
-            for step in (route.get("steps") or []):
-                if step.get("type") == "job":
-                    j_id = int(step.get("job", step.get("id")))
-                    job_to_route[j_id] = (r_idx, v_id)
+        for route_index, route in enumerate(routes):
+            for job_id in route.job_ids:
+                job_to_route[job_id] = (route_index, route.vehicle_id)
 
         path_coords = np.array([[p["longitude"], p["latitude"]] for p in path_nodes], dtype=np.float64)
         tree = cKDTree(path_coords)
@@ -244,7 +215,7 @@ class EdgeBuilder:
                     if route_index == path_node["metadata"]["route_index"] and vehicle_id_for_route == path_node["metadata"]["vehicle_id"]:
                         continue
 
-                dist_m, dur_s = distance_duration(job_lon, job_lat, path_node["longitude"], path_node["latitude"])
+                dist_m, dur_s = osrm.distance_duration(job_lon, job_lat, path_node["longitude"], path_node["latitude"])
                 same_route_flag = 0.0
                 is_assigned_flag = float(job_node["metadata"]["assigned_vehicle_id"] is not None)
                 self.add_edge(job_node["index"], path_node["index"], dist_m, dur_s, etype=3, is_same_route=same_route_flag, is_assigned=is_assigned_flag, is_bidirectional=True)
@@ -264,7 +235,7 @@ class EdgeBuilder:
             assigned_vehicle_id = job_node["metadata"].get("assigned_vehicle_id")
             for _, vehicle_index in zip(distances, indices):
                 vehicle_node = vehicle_nodes[int(vehicle_index)]
-                dist_m, dur_s = distance_duration(job_lon, job_lat, vehicle_node["longitude"], vehicle_node["latitude"])
+                dist_m, dur_s = osrm.distance_duration(job_lon, job_lat, vehicle_node["longitude"], vehicle_node["latitude"])
                 is_assigned_flag = float(
                     assigned_vehicle_id is not None
                     and int(vehicle_node["metadata"]["vehicle_id"]) == int(assigned_vehicle_id)
@@ -287,7 +258,7 @@ class EdgeBuilder:
 
             for _, job_index in zip(distances, indices):
                 job_node = job_nodes[int(job_index)]
-                dist_m, dur_s = distance_duration(vehicle_lon, vehicle_lat, job_node["longitude"], job_node["latitude"])
+                dist_m, dur_s = osrm.distance_duration(vehicle_lon, vehicle_lat, job_node["longitude"], job_node["latitude"])
                 self.add_edge(vehicle_node["index"], job_node["index"], dist_m, dur_s, etype=4, is_same_route=0.0, is_assigned=0.0, is_bidirectional=True)
 
     def add_edge(self, src_idx, dst_idx, distance_meters, duration_seconds, *, etype, is_same_route, is_assigned, is_bidirectional=False):
@@ -313,7 +284,7 @@ class EdgeBuilder:
             self.graph.edge_types.append(int(etype))
 
     def build(self):
-        routes = self.graph.state["routes"]
+        routes = self.graph.state.routes
         if not routes:
             print("[EdgeBuilder] No routes found in state")
             return
@@ -362,9 +333,6 @@ class Graph:
         self.node_builder  = NodeBuilder(self)
         self.edge_builder  = EdgeBuilder(self)
         self.graph_handler = GraphHandler(config)
-
-        self.job_id_to_data     = {int(job["id"]): job for job in self.jobs}
-        self.vehicle_id_to_data = {int(v["id"]): v for v in self.vehicles}
 
     def _coordinate_stats(self):
         longitudes = np.array([n["longitude"] for n in self.nodes], dtype=np.float64)
@@ -549,28 +517,24 @@ class GraphHandler:
         self.config = config
         self.device = config.device.device
     
-    def ensure_relations(self, data: HeteroData) -> None:
-        edge_index = data.edge_index_dict
-        edge_attributes = data.edge_types
-        
-        required_relations = [
-            ("job", "job_sequence", "job"),
-            ("path", "path_sequence", "path"),
-            ("vehicle", "vehicle_assigned", "job"),
-            ("job", "vehicle_assigned", "vehicle"),
-            ("job", "job_near_path", "path"),
-            ("path", "job_near_path", "job"),
-            ("job", "job_near_vehicle", "vehicle"),
-            ("vehicle", "job_near_vehicle", "job"),
-            ("vehicle", "vehicle_near_job", "job"),
-            ("job", "vehicle_near_job", "vehicle"),
-        ]
+    required_relations = [
+        ("job", "job_sequence", "job"),
+        ("path", "path_sequence", "path"),
+        ("vehicle", "vehicle_assigned", "job"),
+        ("job", "vehicle_assigned", "vehicle"),
+        ("job", "job_near_path", "path"),
+        ("path", "job_near_path", "job"),
+        ("job", "job_vehicle_proximity", "vehicle"),
+        ("vehicle", "job_vehicle_proximity", "job"),
+    ]
 
-        for relation in required_relations:
-            if relation not in edge_index:
-                data[relation].edge_index = torch.empty((2, 0), dtype=torch.long, device=self.device)
-            if relation not in edge_attributes:
-                data[relation].edge_attr = torch.empty((0, 4), dtype=torch.float32, device=self.device)
+    def ensure_relations(self, data: HeteroData) -> None:
+        for relation in self.required_relations:
+            store = data[relation]
+            if "edge_index" not in store:
+                store.edge_index = torch.empty((2, 0), dtype=torch.long, device=self.device)
+            if "edge_attr" not in store:
+                store.edge_attr = torch.empty((0, 4), dtype=torch.float32, device=self.device)
     
     def populate_node(self, data: HeteroData) -> None:
         for node_type, features in data.x_dict.items():

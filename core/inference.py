@@ -2,7 +2,7 @@ import torch
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 
-from core.state import State, StateHandler
+from core.state import RoutingState
 from core.environment import Environment
 from core.graph import Graph
 from core.mask import MaskContext
@@ -12,7 +12,7 @@ from core.model import Policy, Action
 @dataclass
 class InferenceStep:
     step_number    : int
-    state          : State
+    state          : RoutingState
     action         : Optional[Action] = None
     action_info    : Optional[Dict] = None
     reward_info    : Optional[Dict] = None
@@ -35,8 +35,8 @@ class InferenceStep:
 @dataclass
 class InferenceResult:
     steps          : List[InferenceStep] = field(default_factory=list)
-    initial_state  : Optional[State] = None
-    final_state    : Optional[State] = None
+    initial_state  : Optional[RoutingState] = None
+    final_state    : Optional[RoutingState] = None
     stopped_reason : str = ""
     total_steps    : int = 0
     
@@ -95,16 +95,16 @@ class ModelInference:
         self.graph_builder = Graph(self.environment.config)
         self.mask_builder  = MaskContext()
     
-    def _create_graph(self, state: State):
+    def _create_graph(self, state: RoutingState):
 
         graph = self.graph_builder.build(
             self.environment.jobs,
             self.environment.vehicles,
-            state.to_dict()
+            state
         )
         return graph
     
-    def _get_mask_info(self, state: State) -> Dict:
+    def _get_mask_info(self, state: RoutingState) -> Dict:
       
         original_state = self.environment.current_state
         self.environment.current_state = state
@@ -113,7 +113,7 @@ class ModelInference:
         
         return mask_info
     
-    def _apply_action(self, state: State, action: Action) -> Tuple[State, State]:
+    def _apply_action(self, state: RoutingState, action: Action) -> Tuple[RoutingState, RoutingState]:
  
         original_state = self.environment.current_state
         self.environment.current_state = state
@@ -122,7 +122,7 @@ class ModelInference:
         
         return old_state, new_state
     
-    def run(self, initial_state: State):
+    def run(self, initial_state: RoutingState):
         result               = InferenceResult()
         result.initial_state = initial_state.copy()
         
@@ -168,8 +168,8 @@ class ModelInference:
             operator_names = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING", 3: "REOPTIMIZE"}
             operator_name = operator_names.get(action.operator, f"UNKNOWN({action.operator})")
             
-            vehicle_id = self.environment.vehicles[action.vehicle_index]["id"]
-            job_id = self.environment.jobs[action.job_index]["id"]
+            vehicle_id = self.environment.vehicles[action.vehicle_index].id
+            job_id = self.environment.jobs[action.job_index].id
             
 
             inference_step = InferenceStep(
