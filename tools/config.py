@@ -101,12 +101,6 @@ class Entropy:
 
 @dataclass
 class PPOConfig:
-    ppo_epochs          : int = 4
-    ppo_clip_epsilon    : float = 0.2
-    ppo_value_loss_coef : float = 0.5
-    ppo_entropy_coef    : float = 0.01
-    ppo_max_grad_norm   : float = 0.5
-
     gamma      : float = 0.99
     gae_lambda : float = 0.95
 
@@ -122,7 +116,6 @@ class TrainingConfig:
     load_checkpoint       : bool = False
     resume_from_run       : Optional[str] = None
     max_steps_per_episode : int = 5
-    batch_size            : int = 1024
     minibatch_size        : int = 128
     num_epochs            : int = 5
     print_frequency       : int = 5

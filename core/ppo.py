@@ -227,39 +227,19 @@ class PPOTools:
         self.tracker.log_scalar('sample/advantage', advantage.item(), global_sample_step)
         self.tracker.log_scalar('sample/target_return', target_return.item(), global_sample_step)
     
-    def log_gradients(self, model, modules_dict, batch_step):
-        grad_norms_before = {}
-        grad_stats        = {}
-        grad_norms_after  = {}
-        clip_ratios       = {}
-        
+    def log_gradients(self, modules_dict, batch_step):
+        grad_norms = {}
+        grad_stats = {}
+
         for module_name, module in modules_dict.items():
-            grad_norm = nn.utils.clip_grad_norm_(module.parameters(), max_norm=float('inf'))
-            grad_norms_before[module_name] = grad_norm.item()
-            
-            module_stats = self.compute_gradient_stats(module, module_name)
-            grad_stats.update(module_stats)
-            
+            grad_norms[module_name] = nn.utils.clip_grad_norm_(module.parameters(), max_norm=float('inf')).item()
+            grad_stats.update(self.compute_gradient_stats(module, module_name))
+
             if batch_step % 10 == 0:
                 self.layer_gradients(module_name, module, batch_step)
-        
-        total_grad_norm_before = nn.utils.clip_grad_norm_(model.parameters(), max_norm=float('inf'))
-        grad_stats['total_grad_norm_before_clip'] = total_grad_norm_before.item()
-        
-        total_grad_norm_after = nn.utils.clip_grad_norm_(model.parameters(), max_norm=self.config.ppo.gradient_clip_max_norm)
-        grad_stats['total_grad_norm_after_clip'] = total_grad_norm_after.item()
-        
-        for module_name, module in modules_dict.items():
-            grad_norm = nn.utils.clip_grad_norm_(module.parameters(), max_norm=float('inf'))
-            grad_norms_after[module_name] = grad_norm.item()
-        
-        for module_name in grad_norms_before.keys():
-            if grad_norms_before[module_name] > 1e-8:
-                clip_ratios[module_name] = grad_norms_after[module_name] / grad_norms_before[module_name]
 
-        self.tracker.log_comparison('batch/gradients_norms', grad_norms_before, grad_norms_after, batch_step, label1='before_clip', label2='after_clip')
-        self.tracker.log_dict('batch/gradients_stats',      grad_stats,  batch_step)
-        self.tracker.log_dict('batch/gradients_clip_ratio', clip_ratios, batch_step)
+        self.tracker.log_dict('batch/gradients_norms', grad_norms, batch_step)
+        self.tracker.log_dict('batch/gradients_stats', grad_stats, batch_step)
     
 
 class PPODistribution:
@@ -275,6 +255,53 @@ class PPODistribution:
         old_probabilities = torch.softmax(old_logits, dim=-1)
         return torch.sum(old_probabilities * (old_log_probs - new_log_probs), dim=-1)
 
+    def masked_action_logits(self, veh_logits, job_logits, mask_info):
+        veh_masked = veh_logits.clone()
+        job_masked = job_logits.clone()
+
+        if mask_info is None:
+            return veh_masked, job_masked
+
+        num_vehicles = veh_masked.size(1)
+        num_jobs     = job_masked.size(2)
+        device       = veh_masked.device
+        neg          = self.large_negative_value
+
+        vehicles_with_jobs = mask_info.get("vehicles_with_jobs_indices", [])
+        unassigned_jobs    = mask_info.get("unassigned_job_indices", [])
+        vehicle_to_jobs    = mask_info.get("vehicle_to_job_indices", {})
+
+        if len(vehicles_with_jobs) > 0:
+            blocked = torch.ones(num_vehicles, dtype=torch.bool, device=device)
+            blocked[vehicles_with_jobs] = False
+            veh_masked[1, blocked] = neg
+
+        if num_vehicles > 1:
+            veh_masked[2, 1:] = neg
+            veh_masked[3, 1:] = neg
+
+        if len(unassigned_jobs) > 0:
+            blocked = torch.ones(num_jobs, dtype=torch.bool, device=device)
+            blocked[unassigned_jobs] = False
+            job_masked[0, :, blocked] = neg
+
+        for vehicle_index, job_indices in vehicle_to_jobs.items():
+            if len(job_indices) > 0 and int(vehicle_index) < num_vehicles:
+                blocked = torch.ones(num_jobs, dtype=torch.bool, device=device)
+                blocked[job_indices] = False
+                job_masked[1, int(vehicle_index), blocked] = neg
+
+        if num_jobs > 1:
+            job_masked[2, :, 1:] = neg
+            job_masked[3, :, 1:] = neg
+
+        return veh_masked, job_masked
+
+    @staticmethod
+    def _entropy(logits):
+        log_probs = torch.log_softmax(logits, dim=-1)
+        return -(log_probs.exp() * log_probs).sum(dim=-1)
+
     def compute(
         self,
         old_op_logits,
@@ -285,79 +312,34 @@ class PPODistribution:
         new_job_logits,
         mask_info,
     ):
-        num_operators = new_op_logits.size(0)
-        num_vehicles  = new_veh_logits.size(1)
+        masked_old_op_logits = self.masking.mask_operator(old_op_logits, mask_info).float()
+        masked_new_op_logits = self.masking.mask_operator(new_op_logits, mask_info).float()
 
-        masked_old_op_logits = self.masking.mask_operator(old_op_logits, mask_info)
-        masked_new_op_logits = self.masking.mask_operator(new_op_logits, mask_info)
+        old_veh_masked, old_job_masked = self.masked_action_logits(old_veh_logits, old_job_logits, mask_info)
+        new_veh_masked, new_job_masked = self.masked_action_logits(new_veh_logits, new_job_logits, mask_info)
 
-        operator_kl = self.categorical_kl(masked_old_op_logits, masked_new_op_logits)
+        old_veh_masked = old_veh_masked.float()
+        new_veh_masked = new_veh_masked.float()
+        old_job_masked = old_job_masked.float()
+        new_job_masked = new_job_masked.float()
 
-        new_op_dist      = torch.distributions.Categorical(logits=masked_new_op_logits.float())
-        operator_entropy = new_op_dist.entropy()
-        new_op_probs     = new_op_dist.probs
-        
-        old_op_dist  = torch.distributions.Categorical(logits=masked_old_op_logits.float())
-        old_op_probs = old_op_dist.probs
+        old_op_probs = torch.softmax(masked_old_op_logits, dim=-1)
+        new_op_probs = torch.softmax(masked_new_op_logits, dim=-1)
 
-        veh_kl_exp           = torch.tensor(0.0, device=new_op_logits.device)
-        vehicle_entropy_exp  = torch.tensor(0.0, device=new_op_logits.device)
-        job_kl_exp           = torch.tensor(0.0, device=new_op_logits.device)
-        job_entropy_exp      = torch.tensor(0.0, device=new_op_logits.device)
+        operator_kl      = self.categorical_kl(masked_old_op_logits, masked_new_op_logits)
+        operator_entropy = self._entropy(masked_new_op_logits)
 
-        for operator_index in range(num_operators):
-            old_veh_logits_for_op = old_veh_logits[operator_index]
-            new_veh_logits_for_op = new_veh_logits[operator_index]
+        veh_kl_exp          = (old_op_probs * self.categorical_kl(old_veh_masked, new_veh_masked)).sum()
+        vehicle_entropy_exp = (new_op_probs * self._entropy(new_veh_masked)).sum()
 
-            masked_old_veh_logits = self.masking.mask_vehicle(
-                veh_logits      = old_veh_logits_for_op,
-                mask_info       = mask_info,
-                selected_op_idx = operator_index,
-            )
-            
-            masked_new_veh_logits = self.masking.mask_vehicle(
-                veh_logits      = new_veh_logits_for_op,
-                mask_info       = mask_info,
-                selected_op_idx = operator_index,
-            )
+        old_veh_probs = torch.softmax(old_veh_masked, dim=-1)
+        new_veh_probs = torch.softmax(new_veh_masked, dim=-1)
 
-            vehicle_kl  = self.categorical_kl(masked_old_veh_logits, masked_new_veh_logits)
-            veh_kl_exp += old_op_probs[operator_index] * vehicle_kl
+        joint_old  = old_op_probs.unsqueeze(-1) * old_veh_probs
+        joint_new  = new_op_probs.unsqueeze(-1) * new_veh_probs
 
-            new_veh_dist         = torch.distributions.Categorical(logits=masked_new_veh_logits.float())
-            vehicle_entropy      = new_veh_dist.entropy()
-            vehicle_entropy_exp += new_op_probs[operator_index] * vehicle_entropy
-            
-            new_veh_probs = new_veh_dist.probs
-            old_veh_dist  = torch.distributions.Categorical(logits=masked_old_veh_logits.float())
-            old_veh_probs = old_veh_dist.probs
-
-            for vehicle_index in range(num_vehicles):
-                old_job_logits_for_veh = old_job_logits[operator_index, vehicle_index]
-                new_job_logits_for_veh = new_job_logits[operator_index, vehicle_index]
-
-                masked_old_job_logits = self.masking.mask_job(
-                    job_logits       = old_job_logits_for_veh,
-                    mask_info        = mask_info,
-                    selected_op_idx  = operator_index,
-                    selected_veh_idx = vehicle_index,
-                )
-                
-                masked_new_job_logits = self.masking.mask_job(
-                    job_logits       = new_job_logits_for_veh,
-                    mask_info        = mask_info,
-                    selected_op_idx  = operator_index,
-                    selected_veh_idx = vehicle_index,
-                )
-
-                job_kl         = self.categorical_kl(masked_old_job_logits, masked_new_job_logits)
-                joint_prob_old = old_op_probs[operator_index] * old_veh_probs[vehicle_index]
-                job_kl_exp    += joint_prob_old * job_kl
-
-                new_job_dist     = torch.distributions.Categorical(logits=masked_new_job_logits.float())
-                job_entropy      = new_job_dist.entropy()
-                joint_prob_new   = new_op_probs[operator_index] * new_veh_probs[vehicle_index]
-                job_entropy_exp += joint_prob_new * job_entropy
+        job_kl_exp      = (joint_old * self.categorical_kl(old_job_masked, new_job_masked)).sum()
+        job_entropy_exp = (joint_new * self._entropy(new_job_masked)).sum()
 
         total_entropy = operator_entropy + vehicle_entropy_exp + job_entropy_exp
         entropy = {
@@ -383,16 +365,15 @@ class PPOMemory:
     def __init__(self):
         self.graphs           = []
         self.actions          = []
-        self.log_prob_op      = []  
-        self.log_prob_veh     = []  
-        self.log_prob_job     = []  
+        self.log_prob_op      = []
+        self.log_prob_veh     = []
+        self.log_prob_job     = []
         self.rewards          = []
         self.state_values     = []
         self.mask_infos       = []
         self.dones            = []
-        self.true_veh_ids     = []
-        self.true_job_ids     = []
-        
+        self.bootstrap_values = []
+
         self.old_op_logits    = []
         self.old_veh_logits   = []
         self.old_job_logits   = []
@@ -418,11 +399,10 @@ class PPOMemory:
         state_value,
         mask_info,
         done,
+        bootstrap_value=0.0,
         old_op_logits=None,
         old_veh_logits=None,
         old_job_logits=None,
-        true_veh_id = None,                
-        true_job_id = None,
     ):
         self.graphs.append(self._clone_detached(graph))
         self.actions.append(action)
@@ -435,9 +415,7 @@ class PPOMemory:
         self.state_values.append(state_value.detach().cpu())
         self.mask_infos.append(mask_info)
         self.dones.append(done)
-
-        self.true_job_ids.append(true_job_id)
-        self.true_veh_ids.append(true_veh_id)
+        self.bootstrap_values.append(float(bootstrap_value))
 
         if old_op_logits is not None:
             self.old_op_logits.append(old_op_logits.detach().cpu().clone())
@@ -469,7 +447,7 @@ class PPO(nn.Module):
         self.num_epochs     = config.training.num_epochs
         self.minibatch_size = config.training.minibatch_size
 
-        self.current_entropy_coef = config.ppo.ppo_entropy_coef
+        self.current_entropy_coef = config.entropy.entropy_start
         self.num_operators        = config.model.num_operators
 
         self.policy       = Policy(config).to(self.device)
@@ -492,24 +470,24 @@ class PPO(nn.Module):
             "job_actor"      : self.policy.job_actor,
         }
 
-    def gae(self, rewards, values, dones):
+    def gae(self, rewards, values, dones, bootstrap_values):
         advantages = torch.zeros_like(rewards)
         gamma   = self.config.ppo.gamma
         lambda_ = self.config.ppo.gae_lambda
-        
-        last_advantage = 0
+
+        last_advantage = 0.0
         for t in reversed(range(len(rewards))):
-            if t == len(rewards) - 1:
-                next_non_terminal = 1.0 - dones[t]
-                next_value = 0.0
+            if dones[t] > 0.5:
+                next_value     = bootstrap_values[t]
+                next_advantage = 0.0
             else:
-                next_non_terminal = 1.0 - dones[t]
-                next_value = values[t + 1]
-            
-            delta = rewards[t] + gamma * next_value * next_non_terminal - values[t]
-            advantages[t] = delta + gamma * lambda_ * next_non_terminal * last_advantage
+                next_value     = values[t + 1]
+                next_advantage = last_advantage
+
+            delta          = rewards[t] + gamma * next_value - values[t]
+            advantages[t]  = delta + gamma * lambda_ * next_advantage
             last_advantage = advantages[t]
-            
+
         returns = advantages + values
         return advantages, returns
 
@@ -518,6 +496,7 @@ class PPO(nn.Module):
         actions            = np.array([[a.operator, a.vehicle_index, a.job_index] for a in self.memory.actions], dtype=np.int64)
         rewards            = torch.tensor(self.memory.rewards, dtype=torch.float32, device=device)
         dones              = torch.tensor(self.memory.dones, dtype=torch.float32, device=device)
+        bootstrap_values   = torch.tensor(self.memory.bootstrap_values, dtype=torch.float32, device=device)
         mask_infos         = self.memory.mask_infos
         old_log_prob_op    = torch.stack(self.memory.log_prob_op).to(device)
         old_log_prob_veh   = torch.stack(self.memory.log_prob_veh).to(device)
@@ -525,7 +504,7 @@ class PPO(nn.Module):
         values             = torch.stack(self.memory.state_values).to(device)
         actions_tensor     = torch.from_numpy(actions).to(device)
 
-        advantages, returns = self.gae(rewards, values, dones)
+        advantages, returns = self.gae(rewards, values, dones, bootstrap_values)
         normalized_advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         batch = {
@@ -655,15 +634,18 @@ class PPO(nn.Module):
 
     def backward(self, total_loss, batch_step=0):
         self.optimizer.zero_grad()
-        
+
         if self.config.training.use_mixed_precision:
             self.scaler.scale(total_loss).backward()
             self.scaler.unscale_(self.optimizer)
         else:
             total_loss.backward()
 
-        self.tools.log_gradients(self, self._modules_dict, batch_step)
-        
+        self.tools.log_gradients(self._modules_dict, batch_step)
+
+        total_norm = nn.utils.clip_grad_norm_(self.parameters(), max_norm=self.config.ppo.gradient_clip_max_norm)
+        self.tracker.log_scalar('batch/grad_norm_before_clip', total_norm.item(), batch_step)
+
         if self.config.training.use_mixed_precision:
             self.scaler.step(self.optimizer)
             self.scaler.update()

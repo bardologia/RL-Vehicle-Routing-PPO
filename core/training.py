@@ -328,15 +328,8 @@ class Trainer:
             action  = ppo_output["action"]
             value   = ppo_output["state_value"].item()
             op_idx  = action.operator
-            veh_idx = action.vehicle_index
-            job_idx = action.job_index
-
-            true_veh_id = int(self.environment.vehicles[veh_idx].id)
-            true_job_id = int(self.environment.jobs[job_idx].id)
 
             old_state, next_state = self.environment.apply_action(action)
-            if next_state is None:
-                break
 
             rewards, costs = self.environment.step(old_state, next_state, op_idx)
             reward = sum(rewards.values())
@@ -349,27 +342,31 @@ class Trainer:
             self.tracker.log_scalar('step/state_value', value, self.global_step_counter)
 
             experience = {
-                "graph"          : graph,
-                "mask_info"      : mask_info,
-                "reward"         : float(reward),
-                "action"         : ppo_output["action"],
-                "log_prob_op"    : ppo_output["log_prob_op"].detach().cpu(),
-                "log_prob_veh"   : ppo_output["log_prob_veh"].detach().cpu(),
-                "log_prob_job"   : ppo_output["log_prob_job"].detach().cpu(),
-                "state_value"    : ppo_output["state_value"].detach().cpu(),
-                "old_op_logits"  : ppo_output["old_op_logits"].detach().cpu(),
-                "old_veh_logits" : ppo_output["old_veh_logits"].detach().cpu(),
-                "old_job_logits" : ppo_output["old_job_logits"].detach().cpu(),
-                "true_veh_id"    : true_veh_id,
-                "true_job_id"    : true_job_id,
-                "done"           : False,
+                "graph"           : graph,
+                "mask_info"       : mask_info,
+                "reward"          : float(reward),
+                "action"          : ppo_output["action"],
+                "log_prob_op"     : ppo_output["log_prob_op"].detach().cpu(),
+                "log_prob_veh"    : ppo_output["log_prob_veh"].detach().cpu(),
+                "log_prob_job"    : ppo_output["log_prob_job"].detach().cpu(),
+                "state_value"     : ppo_output["state_value"].detach().cpu(),
+                "old_op_logits"   : ppo_output["old_op_logits"].detach().cpu(),
+                "old_veh_logits"  : ppo_output["old_veh_logits"].detach().cpu(),
+                "old_job_logits"  : ppo_output["old_job_logits"].detach().cpu(),
+                "bootstrap_value" : 0.0,
+                "done"            : False,
             }
-            
+
             experiences.append(experience)
             self.environment.current_state = next_state
-  
+
         if experiences:
             experiences[-1]["done"] = True
+
+            tail_graph, _ = self.environment.observe()
+            with torch.no_grad():
+                _, _, _, tail_value = self.ppo.policy(tail_graph.to(self.device))
+            experiences[-1]["bootstrap_value"] = float(tail_value.item())
 
         return experiences
 
