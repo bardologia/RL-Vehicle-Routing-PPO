@@ -24,4 +24,4 @@ dependencies    = [
 dev = ["pytest==9.1.1"]
 
 [tool.setuptools.packages.find]
-include = ["core*", "tools*", "configuration*"]
+include = ["core*", "tools*", "configuration*", "model*"]
