@@ -305,15 +305,14 @@ class GraphHandler:
 
     def __init__(self, config):
         self.config = config
-        self.device = config.device.device
 
     def ensure_relations(self, data: HeteroData) -> None:
         for relation in self.required_relations:
             store = data[relation]
             if "edge_index" not in store:
-                store.edge_index = torch.empty((2, 0), dtype=torch.long, device=self.device)
+                store.edge_index = torch.empty((2, 0), dtype=torch.long)
             if "edge_attr" not in store:
-                store.edge_attr = torch.empty((0, 4), dtype=torch.float32, device=self.device)
+                store.edge_attr = torch.empty((0, 4), dtype=torch.float32)
 
     def build(self, data: HeteroData) -> HeteroData:
         self.ensure_relations(data)

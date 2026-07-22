@@ -3,10 +3,11 @@ import re
 import gc
 import glob
 import random
+import multiprocessing
 import torch
 import numpy as np
 from tqdm import tqdm
-from .environment import *
+from core.environment import Environment
 import cProfile
 import pstats
 from io import StringIO
@@ -95,6 +96,7 @@ class Dataset:
         verbose=False,
         chunk_size=10_000,
         batch_size=100,
+        num_workers=None,
         enable_worker_profiling=False,
     ):
 
@@ -116,49 +118,48 @@ class Dataset:
             return output_dir
 
         events_to_create = num_events - existing_events
+        num_batches      = int(np.ceil(events_to_create / batch_size))
+        num_workers      = num_workers or max(1, (os.cpu_count() or 2) - 2)
 
         if verbose:
             print(f"Creating {events_to_create} new events")
-            print(f"Generating with batch_size={batch_size}")
-        
-        current_chunk = []
+            print(f"Generating {num_batches} batches with batch_size={batch_size} on {num_workers} workers")
+
+        tasks = []
+        for i in range(num_batches):
+            batch_seed        = (seed or 0) + i if seed is not None else random.randint(0, 2**31)
+            actual_batch_size = min(batch_size, events_to_create - i * batch_size)
+            profile_this      = enable_worker_profiling and i == 0
+            tasks.append((actual_batch_size, batch_seed, self.config, profile_this))
+
+        current_chunk       = []
         current_chunk_index = num_existing_chunks
 
-        num_batches = int(np.ceil(events_to_create / batch_size))
+        context = multiprocessing.get_context("fork")
+        with context.Pool(processes=num_workers) as pool:
+            with tqdm(total=events_to_create, desc="Generating events", ncols=80) as pbar:
+                for batch_items, profile_stats in pool.imap(generate_events_task, tasks):
+                    if profile_stats is not None:
+                        print(f"\n{'='*80}")
+                        print("WORKER PROFILE (first batch)")
+                        print(f"{'='*80}")
+                        print(profile_stats)
+                        print(f"{'='*80}\n")
 
-        if verbose:
-            print(f"Generating {num_batches} batches sequentially, batch_size={batch_size}")
+                    for item in batch_items:
+                        current_chunk.append(item)
+                        pbar.update(1)
 
-        with tqdm(total=events_to_create, desc="Generating events", ncols=80) as pbar:
-            for i in range(num_batches):
-                batch_seed = (seed or 0) + i if seed is not None else random.randint(0, 2**31)
-                actual_batch_size = min(batch_size, events_to_create - i * batch_size)
-                profile_this = enable_worker_profiling and i == 0
+                        if len(current_chunk) >= chunk_size:
+                            chunk_path = self.get_chunk_path(current_chunk_index)
+                            if verbose:
+                                print(f"\nSaving chunk {current_chunk_index} with {len(current_chunk)} events to {chunk_path}")
 
-                result = generate_events(actual_batch_size, batch_seed, self.config, profile_this)
-                batch_items, profile_stats = result
+                            torch.save(current_chunk, chunk_path)
+                            current_chunk = []
+                            current_chunk_index += 1
+                            gc.collect()
 
-                if profile_stats is not None:
-                    print(f"\n{'='*80}")
-                    print(f"WORKER PROFILE (batch {i}, profiled run)")
-                    print(f"{'='*80}")
-                    print(profile_stats)
-                    print(f"{'='*80}\n")
-
-                for item in batch_items:
-                    current_chunk.append(item)
-                    pbar.update(1)
-
-                    if len(current_chunk) >= chunk_size:
-                        chunk_path = self.get_chunk_path(current_chunk_index)
-                        if verbose:
-                            print(f"\nSaving chunk {current_chunk_index} with {len(current_chunk)} events to {chunk_path}")
-
-                        torch.save(current_chunk, chunk_path)
-                        current_chunk = []
-                        current_chunk_index += 1
-                        gc.collect()
-        
         if current_chunk:
             chunk_path = self.get_chunk_path(current_chunk_index)
             print(f"\nSaving final chunk {current_chunk_index} with {len(current_chunk)} events to {chunk_path}")
@@ -222,14 +223,14 @@ def generate_events(batch_size, seed, config, enable_profiling=False):
 
     simulation_env = Environment(config)
     batch = [None] * batch_size
-    
+
     for i in range(batch_size):
         simulation_env.reset()
         initial_state = simulation_env.initial_state
         event_type, num_items = simulation_env.generate_event()
         event_state = simulation_env.apply_event(initial_state, event_type, num_items)
         graph, mask_info = simulation_env.observe()
-        
+
         graph_cpu = graph.clone().detach().cpu()
 
         batch[i] = {
@@ -239,10 +240,7 @@ def generate_events(batch_size, seed, config, enable_profiling=False):
             "jobs"      : [job.to_dict() for job in simulation_env.jobs],
             "vehicles"  : [vehicle.to_dict() for vehicle in simulation_env.vehicles],
         }
-        
-        if i % 100 == 0 and torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    
+
     if enable_profiling:
         profiler.disable()
         s = StringIO()
@@ -250,5 +248,9 @@ def generate_events(batch_size, seed, config, enable_profiling=False):
         stats.sort_stats('cumulative')
         stats.print_stats(50)
         profile_stats = s.getvalue()
-    
+
     return batch, profile_stats
+
+
+def generate_events_task(task):
+    return generate_events(*task)
