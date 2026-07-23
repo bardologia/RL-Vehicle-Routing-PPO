@@ -18,9 +18,14 @@ from .session import RunDirectory
 
 
 class RegretInsertionTeacher:
-    def __init__(self, config, reoptimize_margin=None):
+    def __init__(self, config, reoptimize_margin=None, allow_removal=True):
         self.config            = config
         self.reoptimize_margin = reoptimize_margin
+        self.allow_removal     = allow_removal
+
+    def no_op_reward(self, environment, state):
+        rewards, _ = environment.step(state, state, 2)
+        return sum(rewards.values())
 
     def insertion_options(self, environment, state):
         assigned_ids = state.assigned_job_ids
@@ -41,11 +46,13 @@ class RegretInsertionTeacher:
 
         return options
 
-    def best_insertion(self, options):
+    def best_insertion(self, options, baseline):
         best = None
 
         for job_id in sorted(options):
-            scored = sorted(options[job_id], key=lambda entry: (-entry[0], entry[1]))
+            scored = sorted((entry for entry in options[job_id] if entry[0] >= baseline), key=lambda entry: (-entry[0], entry[1]))
+            if not scored:
+                continue
 
             top_reward, top_vehicle = scored[0]
             regret = math.inf if len(scored) == 1 else top_reward - scored[1][0]
@@ -55,33 +62,121 @@ class RegretInsertionTeacher:
 
         return best
 
-    def reoptimize_reward(self, environment, state):
-        new_state = environment.action_handler.apply_reoptimize(environment, state)
-        if new_state is state:
+    def refresh_options(self, environment, state, options, inserted_job_id, vehicle_id):
+        options.pop(inserted_job_id, None)
+
+        vehicle = environment.vehicles.by_id(vehicle_id)
+        route   = state.route_of_vehicle(vehicle_id)
+        is_open = (len(route.stops) if route is not None else 0) < vehicle.capacity
+
+        for job_id in list(options):
+            entries = [entry for entry in options[job_id] if entry[1] != vehicle_id]
+
+            if is_open:
+                new_state = environment.action_handler.apply_job_insertion(environment, state, vehicle_id, job_id)
+                if new_state is not state:
+                    rewards, _ = environment.step(state, new_state, 0)
+                    entries.append((sum(rewards.values()), vehicle_id))
+
+            if entries:
+                options[job_id] = entries
+            else:
+                options.pop(job_id)
+
+        return options
+
+    def insertion_plan(self, environment, state, horizon, baseline):
+        plan     = {"value": 0.0, "action": None}
+        discount = 1.0
+        options  = self.insertion_options(environment, state)
+
+        for _ in range(max(horizon, 0)):
+            best = self.best_insertion(options, baseline)
+            if best is None:
+                break
+
+            new_state = environment.action_handler.apply_job_insertion(environment, state, best["vehicle_id"], best["job_id"])
+            if new_state is state:
+                break
+
+            if plan["action"] is None:
+                plan["action"] = Action(operator=0, vehicle_index=environment.vehicles.index_of(best["vehicle_id"]), job_index=environment.jobs.index_of(best["job_id"]))
+
+            rewards, _     = environment.step(state, new_state, 0)
+            plan["value"] += discount * sum(rewards.values())
+            discount      *= self.config.ppo.gamma
+            state          = new_state
+            options        = self.refresh_options(environment, state, options, best["job_id"], best["vehicle_id"])
+
+        return plan
+
+    def removal_options(self, environment, state):
+        options = []
+
+        for route in state.routes:
+            if environment.vehicles.index_of(route.vehicle_id) is None:
+                continue
+
+            for job_id in route.job_ids:
+                if not environment.jobs.contains(job_id):
+                    continue
+
+                new_state = environment.action_handler.apply_job_removal(environment, state, route.vehicle_id, job_id)
+                if new_state is state:
+                    continue
+
+                rewards, _ = environment.step(state, new_state, 1)
+                options.append((sum(rewards.values()), route.vehicle_id, job_id))
+
+        return options
+
+    def best_removal(self, environment, state, baseline):
+        options = sorted(self.removal_options(environment, state), key=lambda entry: (-entry[0], entry[1], entry[2]))
+        if not options or options[0][0] <= baseline:
             return None
 
-        rewards, _ = environment.step(state, new_state, 3)
-        return sum(rewards.values())
+        reward, vehicle_id, job_id = options[0]
+        return {"reward": reward, "vehicle_id": vehicle_id, "job_id": job_id}
 
-    def no_op_reward(self, environment, state):
-        rewards, _ = environment.step(state, state, 2)
-        return sum(rewards.values())
+    def reoptimize_outcome(self, environment, state):
+        new_state = environment.action_handler.apply_reoptimize(environment, state)
+        if new_state is state:
+            return None, None
+
+        rewards, _ = environment.step(state, new_state, 3)
+        return sum(rewards.values()), new_state
 
     def select_action(self, environment, state):
-        insertion  = self.best_insertion(self.insertion_options(environment, state))
-        no_op      = self.no_op_reward(environment, state)
-        reoptimize = self.reoptimize_reward(environment, state)
+        baseline = self.no_op_reward(environment, state)
+        horizon  = self.config.pretrain.plan_horizon
+        gamma    = self.config.ppo.gamma
 
-        if insertion is not None and insertion["reward"] >= no_op:
-            chosen_reward = insertion["reward"]
-            action        = Action(operator=0, vehicle_index=environment.vehicles.index_of(insertion["vehicle_id"]), job_index=environment.jobs.index_of(insertion["job_id"]))
-        else:
-            chosen_reward = no_op
-            action        = Action(operator=2, vehicle_index=0, job_index=0)
+        plan = self.insertion_plan(environment, state, horizon, baseline)
+
+        chosen_value = baseline
+        action       = Action(operator=2, vehicle_index=0, job_index=0)
+
+        if plan["action"] is not None and plan["value"] >= baseline:
+            chosen_value = plan["value"]
+            action       = plan["action"]
+
+        if self.allow_removal:
+            removal = self.best_removal(environment, state, baseline)
+            if removal is not None and removal["reward"] > chosen_value:
+                chosen_value = removal["reward"]
+                action       = Action(operator=1, vehicle_index=environment.vehicles.index_of(removal["vehicle_id"]), job_index=environment.jobs.index_of(removal["job_id"]))
 
         margin = self.reoptimize_margin if self.reoptimize_margin is not None else self.config.pretrain.reoptimize_margin
-        if reoptimize is not None and reoptimize > chosen_reward + margin:
-            action = Action(operator=3, vehicle_index=0, job_index=0)
+        if margin == math.inf:
+            return action
+
+        reoptimize_reward, reoptimize_state = self.reoptimize_outcome(environment, state)
+        if reoptimize_reward is not None:
+            continuation     = self.insertion_plan(environment, reoptimize_state, horizon - 1, baseline)
+            reoptimize_value = reoptimize_reward + gamma * continuation["value"]
+
+            if reoptimize_value > chosen_value + margin:
+                action = Action(operator=3, vehicle_index=0, job_index=0)
 
         return action
 

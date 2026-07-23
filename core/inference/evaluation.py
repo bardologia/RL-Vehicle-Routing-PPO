@@ -140,7 +140,7 @@ class EvaluationPipeline:
         self.agents = {
             "model"             : ModelAgent(self.model),
             "teacher"           : TeacherAgent(RegretInsertionTeacher(self.config)),
-            "insertion_only"    : TeacherAgent(RegretInsertionTeacher(self.config, reoptimize_margin=math.inf)),
+            "insertion_only"    : TeacherAgent(RegretInsertionTeacher(self.config, reoptimize_margin=math.inf, allow_removal=False)),
             "always_reoptimize" : FixedOperatorAgent(3),
             "do_nothing"        : FixedOperatorAgent(2),
         }
