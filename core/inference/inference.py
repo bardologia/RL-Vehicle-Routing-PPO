@@ -112,9 +112,8 @@ class ModelInference:
         while step < self.max_steps:
             step += 1
             
-            graph = self.environment.graph_for(current_state)
+            graph, mask_info = self.environment.observe(current_state)
             graph = graph.to(self.device)
-            mask_info = self.environment.mask_info_for(current_state)
 
             with torch.no_grad():
                 action_result = self.model.select_action(graph, mask_info=mask_info)
