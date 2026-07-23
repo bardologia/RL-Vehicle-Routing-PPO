@@ -1,3 +1,4 @@
+import json
 from typing import List, Optional, Tuple
 
 import polyline as polyline_module
@@ -70,6 +71,7 @@ class VroomClient:
     def __init__(self, service_config, logger=None):
         self.service = service_config
         self.logger  = logger or NullLogger()
+        self._solve_cache = {}
 
     @retry_api_call(max_retries=3, backoff_factor=0.5)
     def _post(self, payload) -> Optional[dict]:
@@ -86,11 +88,18 @@ class VroomClient:
             "options"  : self.service.options,
         }
 
-        solution = self._post(payload)
-        if solution is None:
-            return None
+        key = json.dumps(payload, sort_keys=True)
+        if key not in self._solve_cache:
+            if len(self._solve_cache) > 50_000:
+                self._solve_cache.clear()
 
-        return RoutingState.from_vroom(solution)
+            solution = self._post(payload)
+            if solution is None:
+                return None
+
+            self._solve_cache[key] = RoutingState.from_vroom(solution)
+
+        return self._solve_cache[key].copy()
 
 
 osrm  = OsrmClient(config.service)
