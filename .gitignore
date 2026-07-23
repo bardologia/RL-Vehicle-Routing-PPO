@@ -91,3 +91,7 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# VROOM container runtime artifacts (mounted /conf)
+vroom-conf/*
+!vroom-conf/config.yml
