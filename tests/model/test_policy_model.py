@@ -115,9 +115,10 @@ def test_forward_batch_gradients_reach_encoder(policy, cpu_config):
 def test_select_action_is_deterministic_under_fixed_seed(policy, cpu_config):
     graph     = build_graph(cpu_config, num_jobs=5, num_vehicles=3)
     mask_info = {
-        "unassigned_job_indices"     : [2, 3],
-        "vehicles_with_jobs_indices" : [0],
-        "vehicle_to_job_indices"     : {0: [0, 1], 1: [], 2: []},
+        "unassigned_job_indices"         : [2, 3],
+        "vehicles_with_jobs_indices"     : [0],
+        "vehicle_to_job_indices"         : {0: [0, 1], 1: [], 2: []},
+        "vehicles_with_capacity_indices" : [1, 2],
     }
 
     torch.manual_seed(123)
@@ -143,15 +144,17 @@ def test_select_action_output_contract(policy, cpu_config):
 def test_act_respects_masks(policy, cpu_config, seeded):
     graph     = build_graph(cpu_config, num_jobs=5, num_vehicles=3)
     mask_info = {
-        "unassigned_job_indices"     : [2, 3],
-        "vehicles_with_jobs_indices" : [0],
-        "vehicle_to_job_indices"     : {0: [0, 1], 1: [], 2: []},
+        "unassigned_job_indices"         : [2, 3],
+        "vehicles_with_jobs_indices"     : [0],
+        "vehicle_to_job_indices"         : {0: [0, 1], 1: [], 2: []},
+        "vehicles_with_capacity_indices" : [1, 2],
     }
 
     for _ in range(60):
         action = policy.select_action(graph, mask_info=mask_info)["action"]
 
         if action.operator == 0:
+            assert action.vehicle_index in {1, 2}
             assert action.job_index in {2, 3}
         elif action.operator == 1:
             assert action.vehicle_index == 0
@@ -164,9 +167,10 @@ def test_act_respects_masks(policy, cpu_config, seeded):
 def test_act_never_selects_blocked_operators(policy, cpu_config, seeded):
     graph     = build_graph(cpu_config, num_jobs=4, num_vehicles=2)
     mask_info = {
-        "unassigned_job_indices"     : [],
-        "vehicles_with_jobs_indices" : [],
-        "vehicle_to_job_indices"     : {0: [], 1: []},
+        "unassigned_job_indices"         : [],
+        "vehicles_with_jobs_indices"     : [],
+        "vehicle_to_job_indices"         : {0: [], 1: []},
+        "vehicles_with_capacity_indices" : [0, 1],
     }
 
     operators = {policy.select_action(graph, mask_info=mask_info)["action"].operator for _ in range(60)}

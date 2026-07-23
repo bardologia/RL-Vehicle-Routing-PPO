@@ -31,7 +31,7 @@ class ScenarioSampler:
 
     def sample_vehicles(self, pool: EntityPool, count: int):
         coords     = generate_coords_batch(self.env_config.center, self.env_config.radius, count, 0, self.env_config.outlier_multiplier)
-        capacities = np.random.choice([1, 2, 3], size=count)
+        capacities = np.random.choice([3, 4, 5], size=count)
         speeds     = np.random.choice([0.9, 1.0, 1.1], size=count)
         first_id   = pool.next_id()
 
@@ -57,7 +57,7 @@ class ActionHandler:
 
         vehicle = env.vehicles.by_id(vehicle_id)
         if len(current_job_ids) >= vehicle.capacity:
-            vehicle = vehicle.with_capacity(len(current_job_ids) + 1)
+            raise ValueError(f"Job insertion beyond capacity for vehicle_id={vehicle_id}: load={len(current_job_ids)} capacity={vehicle.capacity}")
 
         candidate_ids  = current_job_ids + [job_id]
         candidate_jobs = [env.jobs.by_id(jid) for jid in candidate_ids if env.jobs.contains(jid)]

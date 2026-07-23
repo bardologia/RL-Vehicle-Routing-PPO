@@ -139,19 +139,45 @@ def test_generate_event_remove_vehicle_capped_by_fleet(environment, monkeypatch)
     assert 0 <= num_items <= max(0, len(environment.vehicles) - 1)
 
 
+def load_insertion_scenario(environment, num_jobs=3, loaded_stops=1):
+    jobs     = make_jobs(num_jobs)
+    vehicles = make_vehicles(2)
+    state    = RoutingState(
+        routes         = [make_route(vehicles[0], jobs[:loaded_stops], cost=100 * loaded_stops)],
+        unassigned_ids = {job.id for job in jobs[loaded_stops:]},
+    )
+
+    environment.load_from_dataset({
+        "jobs"     : [job.to_dict() for job in jobs],
+        "vehicles" : [vehicle.to_dict() for vehicle in vehicles],
+        "state"    : state.to_payload(),
+    })
+
+    return jobs, vehicles
+
+
 def test_insertion_action_assigns_unassigned_job(environment, fake_vroom):
-    environment.apply_event(environment.current_state, "new_job", 1)
+    jobs, _ = load_insertion_scenario(environment)
 
-    new_job_id    = environment.jobs.ids[-1]
-    job_index     = environment.jobs.index_of(new_job_id)
-    vehicle_index = 0
+    new_job_id = jobs[1].id
+    action     = Action(operator=0, vehicle_index=0, job_index=environment.jobs.index_of(new_job_id))
 
-    action = Action(operator=0, vehicle_index=vehicle_index, job_index=job_index)
     old_state, new_state = environment.apply_action(action)
 
     assert new_job_id in new_state.assigned_job_ids
     assert new_job_id not in new_state.unassigned_ids
     assert new_job_id in old_state.unassigned_ids
+
+
+def test_insertion_beyond_capacity_raises(environment, fake_vroom):
+    jobs, vehicles = load_insertion_scenario(environment, num_jobs=4, loaded_stops=2)
+
+    assert vehicles[0].capacity == 2
+
+    action = Action(operator=0, vehicle_index=0, job_index=environment.jobs.index_of(jobs[2].id))
+
+    with pytest.raises(ValueError):
+        environment.apply_action(action)
 
 
 def test_removal_action_moves_job_to_unassigned(environment):
