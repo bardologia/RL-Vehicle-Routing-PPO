@@ -6,6 +6,7 @@ import torch.optim as optim
 from tqdm import tqdm
 
 from tools.inspection import ModelSummary, TensorLogger
+from tools.parallel import Batcher, ForkPool
 from tools.resource_monitor import ResourceMonitor
 from tools.telemetry import PPOTelemetry
 from core.shared import Environment, ActionMasker, vroom
@@ -83,32 +84,19 @@ class Checkpoint:
         self.logger.subsection(f"Checkpoint saved to {os.path.join(save_dir, self.filename)}")
 
 
-class EpisodeRunner:
-    def __init__(self, environment, policy, telemetry, tensor_logger, logger, config):
-        self.environment   = environment
-        self.policy        = policy
-        self.telemetry     = telemetry
-        self.tensor_logger = tensor_logger
-        self.logger        = logger
-        self.config        = config
+class EpisodeRollout:
+    def __init__(self, environment, policy, config):
+        self.environment = environment
+        self.policy      = policy
+        self.config      = config
 
         self.device    = config.training.device
         self.max_steps = config.training.max_steps_per_episode
-        self.attached  = True
 
-    def select_action(self, graph, mask_info):
+    def forward_action(self, graph, mask_info):
         graph = graph.to(self.device)
-
         with torch.no_grad():
             ppo_output = self.policy.select_action(graph, mask_info)
-
-        if self.attached:
-            self.tensor_logger.save_markdown(path=os.path.join(self.config.io.logdir, "tensor_shape.md"), title="Tensor Shapes")
-            self.tensor_logger.detach()
-            self.attached = False
-            self.logger.section("[Tensor Logger]")
-            self.logger.subsection("Tensor Shape Saved - Detaching Tensor Logger \n")
-
         return graph, ppo_output
 
     def build_experience(self, graph, mask_info, reward, ppo_output):
@@ -136,9 +124,10 @@ class EpisodeRunner:
             _, _, _, tail_value = self.policy(tail_graph.to(self.device))
         experiences[-1]["bootstrap_value"] = float(tail_value.item())
 
-    def run(self, dataset_item, global_step_counter):
+    def rollout(self, dataset_item):
         experiences    = []
         operator_stats = {'count': {i: 0 for i in range(3)}, 'rewards': {i: [] for i in range(3)}}
+        step_payloads  = []
 
         self.environment.load_from_dataset(dataset_item)
         for step_in_episode in range(self.max_steps):
@@ -147,12 +136,11 @@ class EpisodeRunner:
                 self.environment.advance_execution()
                 self.environment.apply_random_event()
 
-            graph, mask_info = self.environment.observe()
-
-            graph, ppo_output = self.select_action(graph, mask_info)
+            graph, mask_info  = self.environment.observe()
+            graph, ppo_output = self.forward_action(graph, mask_info)
 
             action         = ppo_output["action"]
-            value          = ppo_output["state_value"].item()
+            value          = float(ppo_output["state_value"].item())
             operator_index = action.operator
 
             old_state, next_state = self.environment.apply_action(action)
@@ -162,8 +150,7 @@ class EpisodeRunner:
 
             operator_stats['count'][operator_index] += 1
             operator_stats['rewards'][operator_index].append(reward)
-
-            self.telemetry.step(rewards, costs, value, global_step_counter)
+            step_payloads.append((rewards, costs, value))
 
             experiences.append(self.build_experience(graph, mask_info, reward, ppo_output))
             self.environment.current_state = next_state
@@ -171,7 +158,56 @@ class EpisodeRunner:
         if experiences:
             self.bootstrap(experiences)
 
-        return experiences, operator_stats
+        return experiences, operator_stats, step_payloads
+
+
+_ROLLOUT_WORKER = {}
+
+
+def _rollout_worker_init(config, state_dict):
+    policy = Policy(config).to("cpu")
+    policy.load_state_dict(state_dict)
+    policy.eval()
+
+    worker_config                = config
+    worker_config.training.device = "cpu"
+
+    _ROLLOUT_WORKER["rollout"] = EpisodeRollout(Environment(worker_config), policy, worker_config)
+
+
+def _rollout_worker_task(task):
+    import random
+
+    import numpy as np
+
+    index, batch = task
+    seed         = 500_009 + index
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    rollout = _ROLLOUT_WORKER["rollout"]
+    return [rollout.rollout(item) for item in batch]
+
+
+class ParallelRolloutCollector:
+    def __init__(self, config):
+        self.config     = config
+        self.workers    = config.training.rollout_workers
+        self.batch_size = config.training.rollout_batch_size
+
+    def collect(self, chunk_data, policy):
+        state_dict = {key: value.detach().cpu() for key, value in policy.state_dict().items()}
+        batches    = Batcher(self.batch_size).split(chunk_data)
+        tasks      = list(enumerate(batches))
+
+        pool    = ForkPool(self.workers)
+        results = pool.map(_rollout_worker_task, tasks, initializer=_rollout_worker_init, initargs=(self.config, state_dict), desc="Rollouts")
+
+        episodes = []
+        for batch_result in results:
+            episodes.extend(batch_result)
+        return episodes
 
 
 class Trainer:
@@ -203,14 +239,8 @@ class Trainer:
         self.environment = Environment(config, logger=self.logger)
         self.summary     = ModelSummary(self.ppo)
 
-        self.episode_runner = EpisodeRunner(
-            environment   = self.environment,
-            policy        = self.ppo.policy,
-            telemetry     = self.telemetry,
-            tensor_logger = TensorLogger(self.ppo).attach(),
-            logger        = self.logger,
-            config        = self.config,
-        )
+        self.rollout            = EpisodeRollout(self.environment, self.ppo.policy, self.config)
+        self.parallel_collector = ParallelRolloutCollector(self.config)
 
         self.clear_memory()
         self.logger.subsection("Trainer initialized successfully")
@@ -326,17 +356,30 @@ class Trainer:
 
         return state
     
+    def rollout_worker_count(self):
+        if self.device.startswith("cuda"):
+            return 1
+        return self.config.training.rollout_workers
+
+    def collect_rollouts(self, chunk_data):
+        if self.rollout_worker_count() <= 1:
+            return [self.rollout.rollout(item) for item in tqdm(chunk_data, desc="Processing episodes in chunk", leave=False)]
+
+        return self.parallel_collector.collect(chunk_data, self.ppo.policy)
+
     def run_chunk(self, chunk_data):
         self.logger.section("[Chunk Processing]")
         self.logger.subsection(f"Total episodes in chunk : {len(chunk_data)}")
         self.logger.subsection(f"Starting episode index  : {self.episode_index} \n")
 
+        episodes           = self.collect_rollouts(chunk_data)
         episodes_processed = 0
-        for dataset_item in tqdm(chunk_data, desc="Processing episodes in chunk", leave=False):
-            experiences, operator_stats = self.episode_runner.run(dataset_item, self.global_step_counter)
 
-            episode_reward = sum([exp['reward'] for exp in experiences])
-            episode_length = len(experiences)
+        for experiences, operator_stats, step_payloads in episodes:
+            for rewards, costs, value in step_payloads:
+                self.telemetry.step(rewards, costs, value, self.global_step_counter)
+
+            episode_reward = sum(experience['reward'] for experience in experiences)
 
             for experience in experiences:
                 self.ppo.memory.add(**experience)
@@ -345,7 +388,7 @@ class Trainer:
             self.episode_index += 1
             episodes_processed += 1
 
-            self.telemetry.episode(episode_reward, episode_length, operator_stats, self.episode_index)
+            self.telemetry.episode(episode_reward, len(experiences), operator_stats, self.episode_index)
 
         self.logger.subsection(f"Chunk complete: {episodes_processed} episodes processed")
         return episodes_processed
@@ -353,6 +396,16 @@ class Trainer:
     def ppo_update(self):
         self.logger.section("[PPO Update]")
         self.ppo.update()
+
+    def dump_tensor_shapes(self):
+        tensor_logger = TensorLogger(self.ppo).attach()
+
+        graph, _ = self.environment.observe()
+        with torch.no_grad():
+            self.ppo.policy(graph.to(self.device))
+
+        tensor_logger.save_markdown(path=os.path.join(self.config.io.logdir, "tensor_shape.md"), title="Tensor Shapes")
+        tensor_logger.detach()
 
     def train(self):
         self.ppo.train()
@@ -363,17 +416,22 @@ class Trainer:
 
         self.logger.section("[Output Directory]")
         self.logger.subsection(f"Log Directory: {self.config.io.logdir} \n")
-        
+
         self.logger.section("Model Summary")
         self.logger.subsection("Generating model architecture summary")
         self.summary.run()
         self.summary.save_markdown(os.path.join(self.config.io.logdir, "model_summary.md"), title="PPO Model Summary")
+        self.dump_tensor_shapes()
         self.logger.subsection("Model summary saved \n")
-        
+
         self.logger.section("[Training Loop]")
         chunk_paths = self.dataset.chunk_paths
         total_chunks = len(chunk_paths)
-        self.logger.subsection(f"Total chunks to process: {total_chunks} \n")
+        self.logger.subsection(f"Total chunks to process: {total_chunks}")
+
+        if self.config.training.rollout_workers > 1 and self.device.startswith("cuda"):
+            self.logger.subsection("Rollout runs serially: fork-based workers deadlock against a CUDA context")
+        self.logger.subsection(f"Rollout workers: {self.rollout_worker_count() or 'auto'} \n")
 
         self.resource_monitor.start()
         try:

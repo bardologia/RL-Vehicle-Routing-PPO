@@ -12,3 +12,5 @@ class TrainingConfig:
     use_mixed_precision   : bool = False
     large_negative_value  : float = -1e8
     verbose               : bool = False
+    rollout_workers       : int = 0
+    rollout_batch_size    : int = 8

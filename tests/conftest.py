@@ -206,8 +206,10 @@ def make_route(vehicle, jobs, cost=1000):
 @pytest.fixture
 def cpu_config():
     config = Config()
-    config.training.device = "cpu"
-    config.device.device   = "cpu"
+    config.training.device          = "cpu"
+    config.device.device            = "cpu"
+    config.training.rollout_workers = 1
+    config.pretrain.collect_workers = 1
     return config
 
 
