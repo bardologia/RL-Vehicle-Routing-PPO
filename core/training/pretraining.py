@@ -194,7 +194,7 @@ class TeacherRolloutCollector:
             graph, mask_info = self.environment.observe()
             action           = self.teacher.select_action(self.environment, self.environment.current_state, self.max_steps - step_in_episode)
 
-            old_state, new_state = self.environment.apply_action(action)
+            old_state, new_state = self.environment.apply_action_to(self.environment.current_state, action)
             rewards, _           = self.environment.step(old_state, new_state, action.operator)
 
             records.append({

@@ -37,16 +37,6 @@ def test_apply_action_to_operates_on_given_state_without_touching_current(enviro
     assert environment.current_state is baseline
 
 
-def test_apply_action_delegates_to_apply_action_to(environment):
-    action = Action(operator=2, vehicle_index=0, job_index=0)
-
-    direct_old, direct_new       = environment.apply_action_to(environment.current_state, action)
-    delegated_old, delegated_new = environment.apply_action(action)
-
-    assert delegated_new is delegated_old
-    assert direct_new is direct_old
-
-
 def test_evaluate_cost_does_not_mutate_state(environment):
     state          = environment.current_state
     payload_before = state.to_payload()

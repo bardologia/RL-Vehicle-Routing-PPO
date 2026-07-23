@@ -141,7 +141,7 @@ class EpisodeRollout:
             value          = float(ppo_output["state_value"].item())
             operator_index = action.operator
 
-            old_state, next_state = self.environment.apply_action(action)
+            old_state, next_state = self.environment.apply_action_to(self.environment.current_state, action)
 
             rewards, costs = self.environment.step(old_state, next_state, operator_index)
             reward = sum(rewards.values())

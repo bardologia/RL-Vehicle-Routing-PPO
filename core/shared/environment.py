@@ -381,9 +381,6 @@ class Environment:
 
         return old_state, new_state
 
-    def apply_action(self, action):
-        return self.apply_action_to(self.current_state, action)
-
     def evaluate_cost(self, state: RoutingState):
         base_cost       = float(state.cost)
         num_unassigned  = state.num_unassigned
