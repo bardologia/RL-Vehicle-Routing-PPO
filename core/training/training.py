@@ -138,7 +138,7 @@ class EpisodeRunner:
 
     def run(self, dataset_item, global_step_counter):
         experiences    = []
-        operator_stats = {'count': {i: 0 for i in range(4)}, 'rewards': {i: [] for i in range(4)}}
+        operator_stats = {'count': {i: 0 for i in range(3)}, 'rewards': {i: [] for i in range(3)}}
 
         self.environment.load_from_dataset(dataset_item)
         for step_in_episode in range(self.max_steps):

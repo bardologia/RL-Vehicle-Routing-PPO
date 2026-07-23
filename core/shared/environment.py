@@ -103,14 +103,6 @@ class ActionHandler:
 
         return solution.routes[0]
 
-    def apply_reoptimize(self, env, state: RoutingState) -> RoutingState:
-        solution = vroom.solve(list(env.jobs), list(env.vehicles))
-        if solution is None:
-            self.logger.warning("Reoptimize failed: VROOM returned no solution")
-            return state
-
-        return solution
-
 
 class EventHandler:
     def __init__(self, sampler: ScenarioSampler):
@@ -266,8 +258,6 @@ class Environment:
             new_state = self.action_handler.apply_job_removal(self, old_state, vehicle_id, job_id)
         elif operator == 2:
             new_state = old_state
-        elif operator == 3:
-            new_state = self.action_handler.apply_reoptimize(self, old_state)
         else:
             raise ValueError(f"Unknown operator index: {operator}")
 
@@ -316,7 +306,6 @@ class Environment:
             0: reward_config.add_job_cost,
             1: reward_config.remove_job_cost,
             2: reward_config.no_action_cost,
-            3: reward_config.reoptimize_cost
         }
 
         disruption    = self.evaluate_disruption(old_state, new_state)

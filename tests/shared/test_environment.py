@@ -222,18 +222,10 @@ def test_do_nothing_action_returns_same_state(environment):
     assert new_state is old_state
 
 
-def test_reoptimize_action_returns_solved_state(environment, fake_vroom):
-    action = Action(operator=3, vehicle_index=0, job_index=0)
-
-    old_state, new_state = environment.apply_action(action)
-
-    assert new_state is not old_state
-    assert new_state.num_routes >= 1
-
-
 def test_apply_action_rejects_unknown_operator(environment):
-    with pytest.raises(ValueError):
-        environment.apply_action(Action(operator=9, vehicle_index=0, job_index=0))
+    for operator in (3, 9):
+        with pytest.raises(ValueError):
+            environment.apply_action(Action(operator=operator, vehicle_index=0, job_index=0))
 
 
 def test_evaluate_cost_matches_reward_config(environment):
@@ -273,7 +265,6 @@ def test_step_action_reward_subtracts_operator_cost(environment):
         0: environment.config.reward.add_job_cost,
         1: environment.config.reward.remove_job_cost,
         2: environment.config.reward.no_action_cost,
-        3: environment.config.reward.reoptimize_cost,
     }
 
     for operator_index, expected in operator_costs.items():

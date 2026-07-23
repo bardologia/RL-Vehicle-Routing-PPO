@@ -56,8 +56,8 @@ def test_compute_logits_shapes(policy, cpu_config):
     embeddings, context, operator_logits, _ = policy(graph)
     logits = policy.compute_logits(embeddings, context, operator_logits)
 
-    assert logits["vehicle_logits"].shape == (4, 3)
-    assert logits["job_logits"].shape == (4, 3, 5)
+    assert logits["vehicle_logits"].shape == (3, 3)
+    assert logits["job_logits"].shape == (3, 3, 5)
 
 
 def test_compute_logits_selected_operator_squeezes(policy, cpu_config):

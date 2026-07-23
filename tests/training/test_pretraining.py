@@ -51,36 +51,6 @@ def test_teacher_no_ops_when_everything_is_assigned(environment, fake_vroom):
     assert action.job_index == 0
 
 
-def test_teacher_reoptimizes_when_margin_allows_it(environment, fake_vroom):
-    jobs     = make_jobs(2)
-    vehicles = make_vehicles(1)
-    state    = RoutingState(routes=[make_route(vehicles[0], jobs, cost=200)], unassigned_ids=set())
-
-    load_scenario(environment, jobs, vehicles, state)
-    environment.config.pretrain.reoptimize_margin = -5.0
-
-    teacher = RegretInsertionTeacher(environment.config)
-    action  = teacher.select_action(environment, environment.current_state)
-
-    assert action.operator == 3
-
-
-def test_teacher_margin_override_beats_config_margin(environment, fake_vroom):
-    import math
-
-    jobs     = make_jobs(2)
-    vehicles = make_vehicles(1)
-    state    = RoutingState(routes=[make_route(vehicles[0], jobs, cost=200)], unassigned_ids=set())
-
-    load_scenario(environment, jobs, vehicles, state)
-    environment.config.pretrain.reoptimize_margin = -5.0
-
-    teacher = RegretInsertionTeacher(environment.config, reoptimize_margin=math.inf)
-    action  = teacher.select_action(environment, environment.current_state)
-
-    assert action.operator == 2
-
-
 def test_teacher_prefers_higher_priority_job_under_scarce_capacity(environment, fake_vroom):
     jobs     = make_jobs(3)
     vehicles = make_vehicles(1)
@@ -132,7 +102,7 @@ def test_insertion_plan_value_grows_with_horizon(environment, fake_vroom):
     assert long_plan["action"].job_index == short_plan["action"].job_index
 
 
-def test_teacher_prefers_sequential_insertions_over_reoptimize(environment, fake_vroom):
+def test_teacher_inserts_sequentially_when_multiple_jobs_waiting(environment, fake_vroom):
     jobs     = make_jobs(2)
     vehicles = make_vehicles(2)
     state    = RoutingState(routes=[], unassigned_ids={jobs[0].id, jobs[1].id})
@@ -146,15 +116,13 @@ def test_teacher_prefers_sequential_insertions_over_reoptimize(environment, fake
 
 
 def test_teacher_removes_job_when_removal_pays(environment, fake_vroom):
-    import math
-
     jobs     = make_jobs(2)
     vehicles = make_vehicles(1)
     state    = RoutingState(routes=[make_route(vehicles[0], jobs, cost=5000)], unassigned_ids=set())
 
     load_scenario(environment, jobs, vehicles, state)
 
-    teacher = RegretInsertionTeacher(environment.config, reoptimize_margin=math.inf)
+    teacher = RegretInsertionTeacher(environment.config)
     action  = teacher.select_action(environment, environment.current_state)
 
     assert action.operator == 1
@@ -163,8 +131,6 @@ def test_teacher_removes_job_when_removal_pays(environment, fake_vroom):
 
 
 def test_teacher_relocates_job_when_pair_beats_staying(environment, fake_vroom):
-    import math
-
     jobs     = make_jobs(2)
     vehicles = make_vehicles(2)
     state    = RoutingState(
@@ -174,7 +140,7 @@ def test_teacher_relocates_job_when_pair_beats_staying(environment, fake_vroom):
 
     load_scenario(environment, jobs, vehicles, state)
 
-    teacher = RegretInsertionTeacher(environment.config, reoptimize_margin=math.inf)
+    teacher = RegretInsertionTeacher(environment.config)
     action  = teacher.select_action(environment, environment.current_state)
 
     assert action.operator == 1
@@ -183,8 +149,6 @@ def test_teacher_relocates_job_when_pair_beats_staying(environment, fake_vroom):
 
 
 def test_teacher_does_not_relocate_on_final_step(environment, fake_vroom):
-    import math
-
     jobs     = make_jobs(2)
     vehicles = make_vehicles(2)
     state    = RoutingState(
@@ -194,7 +158,7 @@ def test_teacher_does_not_relocate_on_final_step(environment, fake_vroom):
 
     load_scenario(environment, jobs, vehicles, state)
 
-    teacher = RegretInsertionTeacher(environment.config, reoptimize_margin=math.inf)
+    teacher = RegretInsertionTeacher(environment.config)
     action  = teacher.select_action(environment, environment.current_state, remaining_steps=1)
 
     assert action.operator == 2
@@ -221,15 +185,13 @@ def test_best_removal_value_includes_reinsertion_continuation(environment, fake_
 
 
 def test_teacher_removal_disabled_falls_back_to_no_op(environment, fake_vroom):
-    import math
-
     jobs     = make_jobs(2)
     vehicles = make_vehicles(1)
     state    = RoutingState(routes=[make_route(vehicles[0], jobs, cost=5000)], unassigned_ids=set())
 
     load_scenario(environment, jobs, vehicles, state)
 
-    teacher = RegretInsertionTeacher(environment.config, reoptimize_margin=math.inf, allow_removal=False)
+    teacher = RegretInsertionTeacher(environment.config, allow_removal=False)
     action  = teacher.select_action(environment, environment.current_state)
 
     assert action.operator == 2

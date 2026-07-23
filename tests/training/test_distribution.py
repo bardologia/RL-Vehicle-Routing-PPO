@@ -34,7 +34,7 @@ def test_categorical_kl_is_positive_for_different_logits():
 
 
 def test_entropy_is_maximal_for_uniform_logits():
-    uniform = ActionDistribution._entropy(torch.zeros(4))
+    uniform = ActionDistribution._entropy(torch.zeros(3))
     peaked  = ActionDistribution._entropy(torch.tensor([10.0, 0.0, 0.0, 0.0]))
 
     assert uniform.item() > peaked.item()
@@ -43,8 +43,8 @@ def test_entropy_is_maximal_for_uniform_logits():
 def test_masked_action_logits_none_info_returns_clones(cpu_config):
     _, distribution = build_distribution(cpu_config)
 
-    vehicle_logits = torch.randn(4, 6)
-    job_logits     = torch.randn(4, 6, 20)
+    vehicle_logits = torch.randn(3, 6)
+    job_logits     = torch.randn(3, 6, 20)
 
     vehicle_masked, job_masked = distribution.masked_action_logits(vehicle_logits, job_logits, None)
 
@@ -54,7 +54,7 @@ def test_masked_action_logits_none_info_returns_clones(cpu_config):
 
 def test_masked_action_logits_matches_per_row_masking(cpu_config, seeded):
     masker, distribution = build_distribution(cpu_config)
-    O, V, J              = 4, 6, 20
+    O, V, J              = 3, 6, 20
 
     vehicle_logits = torch.randn(O, V)
     job_logits     = torch.randn(O, V, J)
@@ -73,9 +73,9 @@ def test_masked_action_logits_matches_per_row_masking(cpu_config, seeded):
 def test_compute_returns_zero_kl_for_unchanged_policy(cpu_config, seeded):
     masker, distribution = build_distribution(cpu_config)
 
-    operator_logits = torch.randn(4)
-    vehicle_logits  = torch.randn(4, 6)
-    job_logits      = torch.randn(4, 6, 20)
+    operator_logits = torch.randn(3)
+    vehicle_logits  = torch.randn(3, 6)
+    job_logits      = torch.randn(3, 6, 20)
 
     entropy, kl = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits, vehicle_logits, job_logits, MASK_INFO)
 
@@ -86,11 +86,11 @@ def test_compute_returns_zero_kl_for_unchanged_policy(cpu_config, seeded):
 def test_compute_mean_kl_is_total_over_three(cpu_config, seeded):
     _, distribution = build_distribution(cpu_config)
 
-    operator_logits = torch.randn(4)
-    vehicle_logits  = torch.randn(4, 6)
-    job_logits      = torch.randn(4, 6, 20)
+    operator_logits = torch.randn(3)
+    vehicle_logits  = torch.randn(3, 6)
+    job_logits      = torch.randn(3, 6, 20)
 
-    _, kl = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits + torch.randn(4), vehicle_logits + torch.randn(4, 6), job_logits + torch.randn(4, 6, 20), MASK_INFO)
+    _, kl = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits + torch.randn(3), vehicle_logits + torch.randn(3, 6), job_logits + torch.randn(3, 6, 20), MASK_INFO)
 
     assert kl["mean_kl"] == kl["total_kl"] / 3
 
@@ -98,12 +98,12 @@ def test_compute_mean_kl_is_total_over_three(cpu_config, seeded):
 def test_compute_kl_grows_with_policy_change(cpu_config, seeded):
     masker, distribution = build_distribution(cpu_config)
 
-    operator_logits = torch.randn(4)
-    vehicle_logits  = torch.randn(4, 6)
-    job_logits      = torch.randn(4, 6, 20)
+    operator_logits = torch.randn(3)
+    vehicle_logits  = torch.randn(3, 6)
+    job_logits      = torch.randn(3, 6, 20)
 
-    _, kl_small = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits + 0.01 * torch.randn(4), vehicle_logits + 0.01 * torch.randn(4, 6), job_logits + 0.01 * torch.randn(4, 6, 20), MASK_INFO)
-    _, kl_large = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits + torch.randn(4), vehicle_logits + torch.randn(4, 6), job_logits + torch.randn(4, 6, 20), MASK_INFO)
+    _, kl_small = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits + 0.01 * torch.randn(3), vehicle_logits + 0.01 * torch.randn(3, 6), job_logits + 0.01 * torch.randn(3, 6, 20), MASK_INFO)
+    _, kl_large = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits + torch.randn(3), vehicle_logits + torch.randn(3, 6), job_logits + torch.randn(3, 6, 20), MASK_INFO)
 
     assert kl_small["total_kl"] > 0.0
     assert kl_large["total_kl"] > kl_small["total_kl"]
@@ -112,9 +112,9 @@ def test_compute_kl_grows_with_policy_change(cpu_config, seeded):
 def test_compute_entropy_ignores_masked_entries(cpu_config):
     masker, distribution = build_distribution(cpu_config)
 
-    operator_logits = torch.zeros(4)
-    vehicle_logits  = torch.zeros(4, 6)
-    job_logits      = torch.zeros(4, 6, 20)
+    operator_logits = torch.zeros(3)
+    vehicle_logits  = torch.zeros(3, 6)
+    job_logits      = torch.zeros(3, 6, 20)
 
     entropy, _        = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits, vehicle_logits, job_logits, None)
     entropy_masked, _ = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits, vehicle_logits, job_logits, MASK_INFO)

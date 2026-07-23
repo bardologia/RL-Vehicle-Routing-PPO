@@ -134,7 +134,7 @@ class ModelInference:
             )
             reward_info = {**rewards, **costs}
             
-            operator_names = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING", 3: "REOPTIMIZE"}
+            operator_names = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING"}
             operator_name  = operator_names.get(action.operator, f"UNKNOWN({action.operator})")
             
             vehicle_id = self.environment.vehicles[action.vehicle_index].id

@@ -1,5 +1,4 @@
 import json
-import math
 import os
 import random
 
@@ -54,7 +53,7 @@ class EpisodeEvaluator:
         self.environment.load_from_dataset(dataset_item)
 
         total_reward    = 0.0
-        operator_counts = {operator: 0 for operator in range(4)}
+        operator_counts = {operator: 0 for operator in range(3)}
 
         for step_in_episode in range(self.max_steps):
             if step_in_episode > 0:
@@ -139,11 +138,10 @@ class EvaluationPipeline:
 
     def build_agents(self):
         self.agents = {
-            "model"             : ModelAgent(self.model),
-            "teacher"           : TeacherAgent(RegretInsertionTeacher(self.config)),
-            "insertion_only"    : TeacherAgent(RegretInsertionTeacher(self.config, reoptimize_margin=math.inf, allow_removal=False)),
-            "always_reoptimize" : FixedOperatorAgent(3),
-            "do_nothing"        : FixedOperatorAgent(2),
+            "model"          : ModelAgent(self.model),
+            "teacher"        : TeacherAgent(RegretInsertionTeacher(self.config)),
+            "insertion_only" : TeacherAgent(RegretInsertionTeacher(self.config, allow_removal=False)),
+            "do_nothing"     : FixedOperatorAgent(2),
         }
 
     def aggregate(self, episodes):
@@ -152,7 +150,7 @@ class EvaluationPipeline:
         unassigned = [episode["final_unassigned"] for episode in episodes]
 
         total_actions   = sum(sum(episode["operator_counts"].values()) for episode in episodes)
-        operator_totals = {operator: sum(episode["operator_counts"][operator] for episode in episodes) for operator in range(4)}
+        operator_totals = {operator: sum(episode["operator_counts"][operator] for episode in episodes) for operator in range(3)}
 
         return {
             "episodes"              : len(episodes),

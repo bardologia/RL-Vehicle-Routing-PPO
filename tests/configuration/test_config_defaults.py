@@ -80,7 +80,7 @@ def test_model_config_defaults():
     assert config.job_input_dim == 7
     assert config.vehicle_input_dim == 7
     assert config.edge_attr_dim == 4
-    assert config.num_operators == 4
+    assert config.num_operators == 3
     assert config.operator_embedding_dim == 32
     assert config.gnn_num_layers == 2
     assert config.policy_gnn_hidden_channels == 64
@@ -135,7 +135,6 @@ def test_pretrain_config_defaults():
     assert config.lr == 3e-4
     assert config.value_loss_coef == 0.5
     assert config.gradient_clip_max_norm == 3.0
-    assert config.reoptimize_margin == 0.0
     assert config.plan_horizon == 3
 
 
@@ -149,7 +148,6 @@ def test_reward_config_defaults():
     assert config.add_job_cost == 0.1
     assert config.remove_job_cost == 0.1
     assert config.no_action_cost == 0.0
-    assert config.reoptimize_cost == 0.5
     assert config.disruption_cost == 0.3
 
 

@@ -26,8 +26,8 @@ def add_one(memory, graph, with_old_logits=True):
         done                = False,
         bootstrap_value     = 2.0,
         old_operator_logits = torch.zeros(4) if with_old_logits else None,
-        old_vehicle_logits  = torch.zeros(4, 2) if with_old_logits else None,
-        old_job_logits      = torch.zeros(4, 2, 4) if with_old_logits else None,
+        old_vehicle_logits  = torch.zeros(3, 2) if with_old_logits else None,
+        old_job_logits      = torch.zeros(3, 2, 4) if with_old_logits else None,
     )
 
 

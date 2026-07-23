@@ -18,10 +18,9 @@ from .session import RunDirectory
 
 
 class RegretInsertionTeacher:
-    def __init__(self, config, reoptimize_margin=None, allow_removal=True):
-        self.config            = config
-        self.reoptimize_margin = reoptimize_margin
-        self.allow_removal     = allow_removal
+    def __init__(self, config, allow_removal=True):
+        self.config        = config
+        self.allow_removal = allow_removal
 
     def no_op_reward(self, environment, state):
         rewards, _ = environment.step(state, state, 2)
@@ -147,18 +146,9 @@ class RegretInsertionTeacher:
 
         return best
 
-    def reoptimize_outcome(self, environment, state):
-        new_state = environment.action_handler.apply_reoptimize(environment, state)
-        if new_state is state:
-            return None, None
-
-        rewards, _ = environment.step(state, new_state, 3)
-        return sum(rewards.values()), new_state
-
     def select_action(self, environment, state, remaining_steps=None):
         baseline = self.no_op_reward(environment, state)
         horizon  = self.config.pretrain.plan_horizon
-        gamma    = self.config.ppo.gamma
 
         if remaining_steps is not None:
             horizon = min(horizon, remaining_steps)
@@ -177,18 +167,6 @@ class RegretInsertionTeacher:
             if removal is not None and removal["value"] > chosen_value:
                 chosen_value = removal["value"]
                 action       = Action(operator=1, vehicle_index=environment.vehicles.index_of(removal["vehicle_id"]), job_index=environment.jobs.index_of(removal["job_id"]))
-
-        margin = self.reoptimize_margin if self.reoptimize_margin is not None else self.config.pretrain.reoptimize_margin
-        if margin == math.inf:
-            return action
-
-        reoptimize_reward, reoptimize_state = self.reoptimize_outcome(environment, state)
-        if reoptimize_reward is not None:
-            continuation     = self.insertion_plan(environment, reoptimize_state, horizon - 1, baseline)
-            reoptimize_value = reoptimize_reward + gamma * continuation["value"]
-
-            if reoptimize_value > chosen_value + margin:
-                action = Action(operator=3, vehicle_index=0, job_index=0)
 
         return action
 
@@ -421,7 +399,7 @@ class PretrainingPipeline:
                 episode_records = self.collector.rollout(item)
 
                 episode_reward  = sum(record["reward"] for record in episode_records)
-                operator_counts = {operator: 0 for operator in range(4)}
+                operator_counts = {operator: 0 for operator in range(3)}
                 for record in episode_records:
                     operator_counts[record["action"].operator] += 1
 

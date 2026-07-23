@@ -37,7 +37,7 @@ def test_do_nothing_operator_stops_the_loop(cpu_config, seeded, fake_vroom):
     environment   = Environment(cpu_config)
     initial_state = environment.current_state.copy()
 
-    scripted  = ScriptedPolicy([Action(3, 0, 0), Action(3, 0, 0), Action(2, 0, 0), Action(3, 0, 0)])
+    scripted  = ScriptedPolicy([Action(1, 0, 0), Action(1, 0, 0), Action(2, 0, 0), Action(1, 0, 0)])
     inference = ModelInference(scripted, environment, max_steps=10, device="cpu", verbose=False)
 
     result = inference.run(initial_state)
@@ -51,7 +51,7 @@ def test_max_steps_cap_stops_the_loop(cpu_config, seeded, fake_vroom):
     environment   = Environment(cpu_config)
     initial_state = environment.current_state.copy()
 
-    scripted  = ScriptedPolicy([Action(3, 0, 0)])
+    scripted  = ScriptedPolicy([Action(1, 0, 0)])
     inference = ModelInference(scripted, environment, max_steps=4, device="cpu", verbose=False)
 
     result = inference.run(initial_state)
@@ -79,14 +79,14 @@ def test_applied_steps_record_action_info_and_costs(cpu_config, seeded, fake_vro
     environment   = Environment(cpu_config)
     initial_state = environment.current_state.copy()
 
-    scripted  = ScriptedPolicy([Action(3, 0, 0), Action(2, 0, 0)])
+    scripted  = ScriptedPolicy([Action(1, 0, 0), Action(2, 0, 0)])
     inference = ModelInference(scripted, environment, max_steps=5, device="cpu", verbose=False)
 
     result = inference.run(initial_state)
     applied = result.steps[1]
 
-    assert applied.action.operator == 3
-    assert applied.action_info["operator_name"] == "REOPTIMIZE"
+    assert applied.action.operator == 1
+    assert applied.action_info["operator_name"] == "REMOVE"
     assert applied.reward_info is not None
     assert applied.cost == applied.state.cost
 
@@ -95,7 +95,7 @@ def test_summary_cost_accounting_matches_states(cpu_config, seeded, fake_vroom):
     environment   = Environment(cpu_config)
     initial_state = environment.current_state.copy()
 
-    scripted  = ScriptedPolicy([Action(3, 0, 0), Action(2, 0, 0)])
+    scripted  = ScriptedPolicy([Action(1, 0, 0), Action(2, 0, 0)])
     inference = ModelInference(scripted, environment, max_steps=5, device="cpu", verbose=False)
 
     result  = inference.run(initial_state)
