@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from torch import nn
 from torch_geometric.nn import GATv2Conv
 

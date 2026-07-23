@@ -1,7 +1,9 @@
 import math
+from collections import defaultdict
+
 import torch
 from torch_geometric.data import HeteroData # type: ignore
-from collections import defaultdict
+
 from tools.auxiliary import haversine_distance
 
 
@@ -12,10 +14,10 @@ class NodeBuilder:
     def vehicle_nodes(self):
         for vehicle in self.graph.vehicles:
             metadata = {
-                "vehicle_id": vehicle.id,
-                "time_window": [int(vehicle.time_window[0]), int(vehicle.time_window[1])],
-                "speed_factor": float(vehicle.speed_factor),
-                "return_to_depot": bool(vehicle.return_to_depot),
+                "vehicle_id"      : vehicle.id,
+                "time_window"     : [int(vehicle.time_window[0]), int(vehicle.time_window[1])],
+                "speed_factor"    : float(vehicle.speed_factor),
+                "return_to_depot" : bool(vehicle.return_to_depot),
             }
 
             self.add_node(f"veh:{vehicle.id}", "vehicle", float(vehicle.start[0]), float(vehicle.start[1]), metadata)
@@ -30,13 +32,13 @@ class NodeBuilder:
 
         for job in self.graph.jobs:
             metadata = {
-                "job_id": job.id,
-                "priority": int(job.priority),
-                "service": int(job.service),
-                "setup": int(job.setup),
-                "is_unassigned": job.id in state.unassigned_ids,
-                "in_route": job.id in assigned_vehicle_by_job,
-                "assigned_vehicle_id": assigned_vehicle_by_job.get(job.id),
+                "job_id"              : job.id,
+                "priority"            : int(job.priority),
+                "service"             : int(job.service),
+                "setup"               : int(job.setup),
+                "is_unassigned"       : job.id in state.unassigned_ids,
+                "in_route"            : job.id in assigned_vehicle_by_job,
+                "assigned_vehicle_id" : assigned_vehicle_by_job.get(job.id),
             }
 
             self.add_node(f"job:{job.id}", "job", float(job.location[0]), float(job.location[1]), metadata)
@@ -46,12 +48,12 @@ class NodeBuilder:
 
         self.graph.nodes.append(
             {
-                "index": idx,
-                "identifier": identifier,
-                "node_type": node_type,
-                "longitude": float(longitude),
-                "latitude": float(latitude),
-                "metadata": metadata,
+                "index"      : idx,
+                "identifier" : identifier,
+                "node_type"  : node_type,
+                "longitude"  : float(longitude),
+                "latitude"   : float(latitude),
+                "metadata"   : metadata,
             }
         )
 
@@ -267,11 +269,11 @@ class Graph:
         return {
             "index_to_node": [
                 {
-                    "index": n["index"],
-                    "identifier": n["identifier"],
-                    "node_type": n["node_type"],
-                    "longitude": n["longitude"],
-                    "latitude": n["latitude"],
+                    "index"      : n["index"],
+                    "identifier" : n["identifier"],
+                    "node_type"  : n["node_type"],
+                    "longitude"  : n["longitude"],
+                    "latitude"   : n["latitude"],
                     **n["metadata"],
                 }
                 for n in self.nodes

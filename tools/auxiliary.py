@@ -1,7 +1,8 @@
 import math
 import time
-import numpy as np
 from functools import wraps
+
+import numpy as np
 from requests.exceptions import RequestException, Timeout, ConnectionError # type: ignore
 
 

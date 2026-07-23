@@ -1,9 +1,10 @@
-import random
-import torch
-import numpy as np
 import cProfile
 import pstats
+import random
 from io import StringIO
+
+import numpy as np
+import torch
 
 from core.shared import Environment
 

@@ -1,7 +1,9 @@
 import os
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
+
 from core.shared.mask import ActionMasker
 from model.gnn_model import GNN
 

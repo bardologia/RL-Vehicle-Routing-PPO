@@ -8,8 +8,8 @@ if proj_root not in sys.path:
 from configuration import Config
 from tools.logger import Logger
 from core.shared import Environment
-from model.policy_model import Policy
 from core.inference import ModelInference
+from model.policy_model import Policy
 
 def main(config):
     env = Environment(config)
