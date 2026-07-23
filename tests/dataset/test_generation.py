@@ -15,19 +15,17 @@ def batch(cpu_config, seeded, fake_vroom):
 
 def test_generate_events_item_schema(batch):
     for item in batch:
-        assert set(item.keys()) == {"state", "graph", "mask_info", "jobs", "vehicles"}
-        assert item["state"]["schema"] == "routing-state-v1"
+        assert set(item.keys()) == {"state", "depot", "clock", "jobs", "vehicles"}
+        assert item["state"]["schema"] == "routing-state-v2"
         assert len(item["jobs"]) > 0
         assert len(item["vehicles"]) > 0
-        assert set(item["mask_info"].keys()) == {"unassigned_job_indices", "vehicles_with_jobs_indices", "vehicle_to_job_indices", "vehicles_with_capacity_indices"}
+        assert item["state"]["schema"] == "routing-state-v2"
 
 
-def test_generate_events_graphs_are_cpu_and_complete(batch):
+def test_generate_events_items_carry_depot_and_clock(batch):
     for item in batch:
-        graph = item["graph"]
-        assert graph["job"].x.shape[1] == 7
-        assert graph["vehicle"].x.shape[1] == 7
-        assert graph["job"].x.device.type == "cpu"
+        assert len(item["depot"]) == 2
+        assert item["clock"] == 28800
 
 
 def test_generate_events_batch_size_matches_request(batch):
@@ -41,7 +39,6 @@ def test_generate_events_is_deterministic_per_seed(cpu_config, seeded, fake_vroo
     for a, b in zip(first, second):
         assert a["state"] == b["state"]
         assert a["jobs"] == b["jobs"]
-        assert torch.equal(a["graph"]["job"].x, b["graph"]["job"].x)
 
 
 def test_generate_events_differs_across_seeds(cpu_config, seeded, fake_vroom):
@@ -79,7 +76,10 @@ def test_environment_reconstructs_dataset_item(cpu_config, seeded, fake_vroom, b
     assert [job.to_dict() for job in environment.jobs] == item["jobs"]
     assert environment.current_state.to_payload() == item["state"]
 
+    assert environment.depot == tuple(item["depot"])
+    assert environment.clock == item["clock"]
+
     graph, mask_info = environment.observe()
 
-    assert mask_info == item["mask_info"]
-    assert torch.equal(graph["job"].x, item["graph"]["job"].x)
+    assert graph["job"].x.shape[1] == 9
+    assert set(mask_info.keys()) == {"unassigned_job_indices", "vehicles_with_jobs_indices", "vehicle_to_job_indices"}

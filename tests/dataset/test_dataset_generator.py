@@ -40,7 +40,7 @@ def test_append_parallel_pool_writes_all_events(cpu_config, seeded, fake_vroom, 
     assert num_chunks == 2
 
     items = store.load(store.existing_chunks()[0])
-    assert set(items[0].keys()) == {"state", "graph", "mask_info", "jobs", "vehicles"}
+    assert set(items[0].keys()) == {"state", "depot", "clock", "jobs", "vehicles"}
 
 
 def test_append_skips_when_enough_events_exist(cpu_config, seeded, fake_vroom, tmp_path):

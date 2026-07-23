@@ -17,6 +17,8 @@ def load_scenario(environment, jobs, vehicles, state):
     environment.load_from_dataset({
         "jobs"     : [job.to_dict() for job in jobs],
         "vehicles" : [vehicle.to_dict() for vehicle in vehicles],
+        "depot"    : [-46.63, -23.55],
+        "clock"    : 28800,
         "state"    : state.to_payload(),
     })
 

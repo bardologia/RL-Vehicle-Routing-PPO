@@ -81,12 +81,31 @@ class VroomClient:
             return None
         return response.json()
 
-    def solve(self, jobs: List[Job], vehicles: List[Vehicle]) -> Optional[RoutingState]:
+    def solve(self, jobs: List[Job], vehicles: List[Vehicle], depot=None, clock=None) -> Optional[RoutingState]:
+        job_payloads = []
+        shipments    = []
+
+        for job in jobs:
+            if job.kind == "repossession":
+                if depot is None:
+                    raise ValueError(f"Repossession job {job.id} requires a depot")
+                shipments.append(job.shipment_payload(depot, config.env.depot_service))
+            else:
+                job_payloads.append(job.vroom_payload())
+
+        for vehicle in vehicles:
+            if vehicle.onboard > 0:
+                if depot is None:
+                    raise ValueError(f"Vehicle {vehicle.id} carries onboard load and requires a depot")
+                job_payloads.append(vehicle.drop_payload(depot, config.env.depot_service))
+
         payload = {
-            "jobs"     : [job.vroom_payload() for job in jobs],
-            "vehicles" : [vehicle.vroom_payload() for vehicle in vehicles],
+            "jobs"     : job_payloads,
+            "vehicles" : [vehicle.vroom_payload(clock) for vehicle in vehicles],
             "options"  : self.service.options,
         }
+        if shipments:
+            payload["shipments"] = shipments
 
         key = json.dumps(payload, sort_keys=True)
         if key not in self._solve_cache:

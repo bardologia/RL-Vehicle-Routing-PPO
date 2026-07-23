@@ -4,13 +4,18 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterator, List, Optional, Set, Tuple
 
 
+DELIVERY_ID_OFFSET = 10_000_000
+DROP_JOB_ID_OFFSET = 20_000_000
+
+
 @dataclass
 class Job:
     id          : int
     location    : Tuple[float, float]
+    kind        : str = "support"
     service     : int = 300
     setup       : int = 0
-    amount      : int = 1
+    amount      : int = 0
     priority    : int = 1
     description : str = ""
 
@@ -20,15 +25,33 @@ class Job:
             "location"    : [float(self.location[0]), float(self.location[1])],
             "setup"       : int(self.setup),
             "service"     : int(self.service),
-            "amount"      : [int(self.amount)],
+            "delivery"    : [int(self.amount)],
             "priority"    : int(self.priority),
             "description" : self.description,
+        }
+
+    def shipment_payload(self, depot: Tuple[float, float], depot_service: int) -> Dict:
+        return {
+            "amount"   : [int(self.amount)],
+            "priority" : int(self.priority),
+            "pickup"   : {
+                "id"       : int(self.id),
+                "location" : [float(self.location[0]), float(self.location[1])],
+                "setup"    : int(self.setup),
+                "service"  : int(self.service),
+            },
+            "delivery" : {
+                "id"       : int(self.id) + DELIVERY_ID_OFFSET,
+                "location" : [float(depot[0]), float(depot[1])],
+                "service"  : int(depot_service),
+            },
         }
 
     def to_dict(self) -> Dict:
         return {
             "id"          : int(self.id),
             "location"    : [float(self.location[0]), float(self.location[1])],
+            "kind"        : self.kind,
             "service"     : int(self.service),
             "setup"       : int(self.setup),
             "amount"      : int(self.amount),
@@ -41,6 +64,7 @@ class Job:
         return cls(
             id          = int(data["id"]),
             location    = (float(data["location"][0]), float(data["location"][1])),
+            kind        = data["kind"],
             service     = int(data["service"]),
             setup       = int(data["setup"]),
             amount      = int(data["amount"]),
@@ -54,20 +78,34 @@ class Vehicle:
     id              : int
     start           : Tuple[float, float]
     capacity        : int = 1
+    onboard         : int = 0
     speed_factor    : float = 1.0
     time_window     : Tuple[int, int] = (8 * 3600, 20 * 3600)
     return_to_depot : bool = False
     description     : str = ""
 
-    def vroom_payload(self) -> Dict:
+    def vroom_payload(self, clock: Optional[int] = None) -> Dict:
+        window_start = int(self.time_window[0]) if clock is None else max(int(clock), int(self.time_window[0]))
+
         return {
             "id"              : int(self.id),
             "start"           : [float(self.start[0]), float(self.start[1])],
             "capacity"        : [int(self.capacity)],
-            "time_window"     : [int(self.time_window[0]), int(self.time_window[1])],
+            "skills"          : [int(self.id) + 1],
+            "time_window"     : [window_start, int(self.time_window[1])],
             "speed_factor"    : float(self.speed_factor),
             "return_to_depot" : bool(self.return_to_depot),
             "description"     : self.description,
+        }
+
+    def drop_payload(self, depot: Tuple[float, float], depot_service: int) -> Dict:
+        return {
+            "id"       : DROP_JOB_ID_OFFSET + int(self.id),
+            "location" : [float(depot[0]), float(depot[1])],
+            "service"  : int(depot_service),
+            "delivery" : [int(self.onboard)],
+            "skills"   : [int(self.id) + 1],
+            "priority" : 100,
         }
 
     def to_dict(self) -> Dict:
@@ -75,6 +113,7 @@ class Vehicle:
             "id"              : int(self.id),
             "start"           : [float(self.start[0]), float(self.start[1])],
             "capacity"        : int(self.capacity),
+            "onboard"         : int(self.onboard),
             "speed_factor"    : float(self.speed_factor),
             "time_window"     : [int(self.time_window[0]), int(self.time_window[1])],
             "return_to_depot" : bool(self.return_to_depot),
@@ -87,6 +126,7 @@ class Vehicle:
             id              = int(data["id"]),
             start           = (float(data["start"][0]), float(data["start"][1])),
             capacity        = int(data["capacity"]),
+            onboard         = int(data["onboard"]),
             speed_factor    = float(data["speed_factor"]),
             time_window     = (int(data["time_window"][0]), int(data["time_window"][1])),
             return_to_depot = bool(data["return_to_depot"]),
@@ -98,17 +138,25 @@ class Vehicle:
 class Stop:
     job_id   : int
     location : Tuple[float, float]
+    kind     : str = "job"
     arrival  : int = 0
     duration : int = 0
+    setup    : int = 0
     service  : int = 0
     load     : int = 0
+
+    @property
+    def completion(self) -> int:
+        return int(self.arrival) + int(self.setup) + int(self.service)
 
     def to_dict(self) -> Dict:
         return {
             "job_id"   : int(self.job_id),
             "location" : [float(self.location[0]), float(self.location[1])],
+            "kind"     : self.kind,
             "arrival"  : int(self.arrival),
             "duration" : int(self.duration),
+            "setup"    : int(self.setup),
             "service"  : int(self.service),
             "load"     : int(self.load),
         }
@@ -118,8 +166,10 @@ class Stop:
         return cls(
             job_id   = int(data["job_id"]),
             location = (float(data["location"][0]), float(data["location"][1])),
+            kind     = data["kind"],
             arrival  = int(data["arrival"]),
             duration = int(data["duration"]),
+            setup    = int(data["setup"]),
             service  = int(data["service"]),
             load     = int(data["load"]),
         )
@@ -141,7 +191,7 @@ class Route:
 
     @property
     def job_ids(self) -> List[int]:
-        return [stop.job_id for stop in self.stops]
+        return [stop.job_id for stop in self.stops if stop.kind in ("job", "pickup")]
 
     @property
     def locations(self) -> List[Tuple[float, float]]:
@@ -203,21 +253,34 @@ class Route:
         stops = []
 
         for step in route.get("steps") or []:
-            kind     = step.get("type")
-            location = tuple(map(float, step["location"])) if step.get("location") else None
+            step_type = step.get("type")
+            location  = tuple(map(float, step["location"])) if step.get("location") else None
 
-            if kind == "start":
+            if step_type == "start":
                 start = location
-            elif kind == "end":
+            elif step_type == "end":
                 end = location
-            elif kind == "job" and location is not None:
-                load = step.get("load") or [0]
+            elif step_type in ("job", "pickup", "delivery") and location is not None:
+                load    = step.get("load") or [0]
+                step_id = int(step.get("job", step.get("id")))
+
+                if step_type == "pickup":
+                    kind, job_id = "pickup", step_id
+                elif step_type == "delivery":
+                    kind, job_id = "delivery", step_id - DELIVERY_ID_OFFSET
+                elif step_id >= DROP_JOB_ID_OFFSET:
+                    kind, job_id = "delivery", -1
+                else:
+                    kind, job_id = "job", step_id
+
                 stops.append(
                     Stop(
-                        job_id   = int(step.get("job", step.get("id"))),
+                        job_id   = job_id,
                         location = location,
+                        kind     = kind,
                         arrival  = int(step.get("arrival", 0)),
                         duration = int(step.get("duration", 0)),
+                        setup    = int(step.get("setup", 0)),
                         service  = int(step.get("service", 0)),
                         load     = int(load[0]),
                     )
@@ -272,7 +335,7 @@ class RoutingState:
 
     @property
     def assigned_job_ids(self) -> Set[int]:
-        return {stop.job_id for route in self.routes for stop in route.stops}
+        return {stop.job_id for route in self.routes for stop in route.stops if stop.kind in ("job", "pickup")}
 
     @property
     def vehicle_ids_with_routes(self) -> Set[int]:
@@ -326,14 +389,14 @@ class RoutingState:
 
     def to_payload(self) -> Dict:
         return {
-            "schema"     : "routing-state-v1",
+            "schema"     : "routing-state-v2",
             "routes"     : [route.to_dict() for route in self.routes],
             "unassigned" : sorted(self.unassigned_ids),
         }
 
     @classmethod
     def from_payload(cls, payload: Dict) -> "RoutingState":
-        if payload.get("schema") != "routing-state-v1":
+        if payload.get("schema") != "routing-state-v2":
             raise ValueError(f"Unsupported state payload schema: {payload.get('schema')!r}")
 
         return cls(
@@ -345,11 +408,18 @@ class RoutingState:
     def from_vroom(cls, solution: Dict) -> "RoutingState":
         routes = [Route.from_vroom(route) for route in solution.get("routes") or []]
 
-        unassigned_ids = {
-            int(entry["id"])
-            for entry in solution.get("unassigned") or []
-            if entry.get("id") is not None
-        }
+        unassigned_ids = set()
+        for entry in solution.get("unassigned") or []:
+            if entry.get("id") is None:
+                continue
+
+            entry_id = int(entry["id"])
+            if entry_id >= DROP_JOB_ID_OFFSET:
+                continue
+            if entry_id >= DELIVERY_ID_OFFSET:
+                entry_id -= DELIVERY_ID_OFFSET
+
+            unassigned_ids.add(entry_id)
 
         return cls(routes=routes, unassigned_ids=unassigned_ids)
 

@@ -23,6 +23,7 @@ class ScenarioView {
     this.templateKey = "";
     this.activeTemplate = null;
     this.assignment = null;
+    this.depot = null;
 
     this.runOptions = { agent: "model", run_name: null, greedy: true, max_steps: 8, seed: 0, event_probability: 0.0 };
   }
@@ -88,6 +89,13 @@ class ScenarioView {
     }
     if (this.mode === "job") this._addJob([e.latlng.lng, e.latlng.lat]);
     else if (this.mode === "vehicle") this._addVehicle([e.latlng.lng, e.latlng.lat]);
+    else if (this.mode === "depot") {
+      this.depot = [e.latlng.lng, e.latlng.lat];
+      this.solveState = null;
+      this.runResult = null;
+      this._renderRail();
+      this._draw();
+    }
   }
 
   _nextId(list) {
@@ -96,14 +104,14 @@ class ScenarioView {
 
   _addJob(location) {
     const id = this._nextId(this.jobs);
-    this.jobs.push({ id, location, service: 300, setup: 0, amount: 1, priority: 3, description: `Job ${id}` });
+    this.jobs.push({ id, location, kind: "support", service: 600, setup: 0, amount: 0, priority: 3, description: `Job ${id}` });
     this.selected = { type: "job", id };
     this._invalidate();
   }
 
   _addVehicle(location) {
     const id = this._nextId(this.vehicles);
-    this.vehicles.push({ id, start: location, capacity: 4, speed_factor: 1.0, time_window: [28800, 72000], return_to_depot: false, description: `Vehicle ${id}` });
+    this.vehicles.push({ id, start: location, capacity: 4, onboard: 0, speed_factor: 1.0, time_window: [28800, 72000], return_to_depot: false, description: `Vehicle ${id}` });
     this.selected = { type: "vehicle", id };
     this._invalidate();
   }
@@ -128,6 +136,7 @@ class ScenarioView {
     this._invalidate();
     this.activeTemplate = template;
     this.assignment = template.assignment ? structuredClone(template.assignment) : null;
+    this.depot = structuredClone(template.depot);
 
     const pts = [...this.jobs.map((j) => [j.location[1], j.location[0]]), ...this.vehicles.map((v) => [v.start[1], v.start[0]])];
     if (pts.length) this.map.fitBounds(L.latLngBounds(pts).pad(0.2));
@@ -141,6 +150,7 @@ class ScenarioView {
       <button class="btn btn--sm ${this.mode === "pan" ? "is-on" : ""}" data-mode="pan">Pan</button>
       <button class="btn btn--sm ${this.mode === "job" ? "is-on" : ""}" data-mode="job">+ Job</button>
       <button class="btn btn--sm ${this.mode === "vehicle" ? "is-on" : ""}" data-mode="vehicle">+ Vehicle</button>
+      <button class="btn btn--sm ${this.mode === "depot" ? "is-on" : ""}" data-mode="depot">Depot</button>
       <button class="btn btn--sm btn--teal" data-act="solve">Solve</button>
       <button class="btn btn--sm" data-act="clear">Clear</button>`;
 
@@ -192,6 +202,17 @@ class ScenarioView {
       }
     }
 
+    if (this.depot) {
+      const depotIcon = L.divIcon({
+        className: "",
+        html: `<div class="veh-icon" style="width:24px;height:24px;background:#1a1a1a;border-radius:4px">D</div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+      const depotMarker = L.marker([this.depot[1], this.depot[0]], { icon: depotIcon }).addTo(this.markerLayer);
+      depotMarker.bindTooltip("Depot (drop point)");
+    }
+
     for (const vehicle of vehicles) {
       const hasRoute = state && state.routes.some((r) => r.vehicle_id === vehicle.id);
       const color = hasRoute ? this._color(vehicle.id) : "#5b636a";
@@ -209,15 +230,16 @@ class ScenarioView {
       const assignedTo = assignment[job.id];
       const isUnassigned = state ? assignedTo == null : false;
       const color = assignedTo != null ? this._color(assignedTo) : isUnassigned ? "#b91c1c" : "#5b636a";
+      const isRepossession = job.kind === "repossession";
       const marker = L.circleMarker([job.location[1], job.location[0]], {
         radius: 5 + job.priority * 0.8,
-        color: isUnassigned ? "#b91c1c" : color,
+        color: isUnassigned ? "#b91c1c" : isRepossession ? "#1a1a1a" : color,
         fillColor: color,
         fillOpacity: assignedTo != null ? 0.85 : 0.35,
-        weight: isUnassigned ? 2.5 : 1.5,
+        weight: isRepossession ? 2.5 : isUnassigned ? 2.5 : 1.5,
         dashArray: isUnassigned ? "3 3" : null,
       }).addTo(this.markerLayer);
-      marker.bindTooltip(`Job ${job.id} · p${job.priority}${assignedTo != null ? ` · veh ${assignedTo}` : isUnassigned ? " · unassigned" : ""}`);
+      marker.bindTooltip(`Job ${job.id} · ${isRepossession ? "repossession" : "support"} · p${job.priority}${assignedTo != null ? ` · veh ${assignedTo}` : isUnassigned ? " · unassigned" : ""}`);
       marker.on("click", () => this._selectEntity("job", job.id));
     }
   }
@@ -367,8 +389,12 @@ class ScenarioView {
         <div class="card">
           <h3 class="card__title">Job ${id}</h3>
           <div class="editor-grid">
+            <label class="field"><span class="field__label"><span>Kind</span></span>
+              <select data-k="kind">
+                <option value="support" ${entity.kind === "support" ? "selected" : ""}>support (no capacity)</option>
+                <option value="repossession" ${entity.kind === "repossession" ? "selected" : ""}>repossession (carries bike)</option>
+              </select></label>
             <label class="field"><span class="field__label"><span>Priority (1-5)</span></span><input type="number" data-k="priority" value="${entity.priority}" min="1" max="5" step="1"></label>
-            <label class="field"><span class="field__label"><span>Amount</span></span><input type="number" data-k="amount" value="${entity.amount}" min="1" step="1"></label>
             <label class="field"><span class="field__label"><span>Service (s)</span></span><input type="number" data-k="service" value="${entity.service}" min="0" step="60"></label>
             <label class="field"><span class="field__label"><span>Setup (s)</span></span><input type="number" data-k="setup" value="${entity.setup}" min="0" step="60"></label>
           </div>
@@ -393,6 +419,10 @@ class ScenarioView {
       el.addEventListener("change", () => {
         const k = el.dataset.k;
         if (k === "return_to_depot") entity.return_to_depot = el.checked;
+        else if (k === "kind") {
+          entity.kind = el.value;
+          entity.amount = el.value === "repossession" ? 1 : 0;
+        }
         else if (k === "tw0") entity.time_window = [Math.round(Number(el.value) * 3600), entity.time_window[1]];
         else if (k === "tw1") entity.time_window = [entity.time_window[0], Math.round(Number(el.value) * 3600)];
         else if (k === "speed_factor") entity[k] = Number(el.value);
@@ -424,6 +454,7 @@ class ScenarioView {
     this.vehicles = res.vehicles;
     this.selected = null;
     this._invalidate();
+    this.depot = res.depot;
 
     const pts = [...this.jobs.map((j) => [j.location[1], j.location[0]]), ...this.vehicles.map((v) => [v.start[1], v.start[0]])];
     if (pts.length) this.map.fitBounds(L.latLngBounds(pts).pad(0.2));
@@ -435,9 +466,13 @@ class ScenarioView {
       toast("place at least one job and one vehicle", "error");
       return;
     }
+    if (!this.depot) {
+      toast("place a depot first (Depot mode, click the map)", "error");
+      return;
+    }
     this.runResult = null;
     toast("solving…");
-    const res = await apiPost("/api/scenario/solve", { jobs: this.jobs, vehicles: this.vehicles, assignment: this.assignment });
+    const res = await apiPost("/api/scenario/solve", { jobs: this.jobs, vehicles: this.vehicles, assignment: this.assignment, depot: this.depot });
     if (res.error) { toast(res.error, "error"); return; }
 
     this.solveState = res.state;
@@ -488,6 +523,10 @@ class ScenarioView {
       toast("build a scenario first (Build tab)", "error");
       return;
     }
+    if (!this.depot) {
+      toast("place a depot first (Build tab, Depot mode)", "error");
+      return;
+    }
 
     const o = this.runOptions;
     o.run_name = (document.getElementById("scn-ckpt") || {}).value || null;
@@ -503,6 +542,7 @@ class ScenarioView {
       jobs: this.jobs,
       vehicles: this.vehicles,
       assignment: this.assignment,
+      depot: this.depot,
       agent: o.agent,
       run_name: o.run_name,
       greedy: o.greedy,
@@ -583,12 +623,27 @@ class ScenarioView {
     this._draw();
   }
 
+  _clockLabel(clock) {
+    if (clock == null) return "";
+    const hours = Math.floor(clock / 3600);
+    const minutes = Math.floor((clock % 3600) / 60);
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
   _stepInfoHtml(step) {
     if (step.index === 0) {
-      return `<div class="step-action is-noop">Initial VROOM plan · cost ${fmtNum(step.state.cost, 0)} · ${step.state.num_unassigned} unassigned</div>`;
+      return `<div class="step-action is-noop">Initial plan at ${this._clockLabel(step.clock)} · cost ${fmtNum(step.state.cost, 0)} · ${step.state.num_unassigned} unassigned</div>`;
     }
 
     const parts = [];
+    parts.push(`<div class="step-event">clock ${this._clockLabel(step.clock)}</div>`);
+
+    const executed = step.executed;
+    if (executed) {
+      if (executed.served.length) parts.push(`<div class="step-event">served job(s) ${executed.served.join(", ")}</div>`);
+      if (executed.failed.length) parts.push(`<div class="step-event">repossession(s) ${executed.failed.join(", ")} failed (bike not found)</div>`);
+      if (executed.dropped > 0) parts.push(`<div class="step-event">dropped ${executed.dropped} bike(s) at the depot</div>`);
+    }
 
     for (const event of step.events || []) {
       const label = { new_job: "new job(s) appeared", remove_job: "job(s) cancelled", new_vehicle: "vehicle(s) arrived", remove_vehicle: "vehicle(s) broke down" }[event.type] || event.type;

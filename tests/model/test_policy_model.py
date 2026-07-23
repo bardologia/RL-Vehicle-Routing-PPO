@@ -14,7 +14,7 @@ def build_graph(cpu_config, num_jobs, num_vehicles):
         routes         = [make_route(vehicles[0], jobs[:2])] if num_jobs >= 2 else [],
         unassigned_ids = {job.id for job in jobs[2:]},
     )
-    return Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
+    return Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
 
 
 @pytest.fixture
@@ -174,7 +174,7 @@ def test_act_respects_masks(policy, cpu_config, seeded):
         action = policy.select_action(graph, mask_info=mask_info)["action"]
 
         if action.operator == 0:
-            assert action.vehicle_index in {1, 2}
+            assert action.vehicle_index in {0, 1, 2}
             assert action.job_index in {2, 3}
         elif action.operator == 1:
             assert action.vehicle_index == 0

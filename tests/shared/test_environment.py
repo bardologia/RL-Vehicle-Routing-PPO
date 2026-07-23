@@ -21,7 +21,7 @@ def test_reset_stores_independent_initial_state(environment):
 
 def test_reset_raises_when_solver_never_returns_solution(cpu_config, seeded, monkeypatch):
     class DeadVroom:
-        def solve(self, jobs, vehicles):
+        def solve(self, jobs, vehicles, depot=None, clock=None):
             return None
 
     monkeypatch.setattr("core.shared.environment.vroom", DeadVroom())
@@ -139,8 +139,8 @@ def test_generate_event_remove_vehicle_capped_by_fleet(environment, monkeypatch)
     assert 0 <= num_items <= max(0, len(environment.vehicles) - 1)
 
 
-def load_insertion_scenario(environment, num_jobs=3, loaded_stops=1):
-    jobs     = make_jobs(num_jobs)
+def load_insertion_scenario(environment, num_jobs=3, loaded_stops=1, kind="support"):
+    jobs     = make_jobs(num_jobs, kind=kind)
     vehicles = make_vehicles(2)
     state    = RoutingState(
         routes         = [make_route(vehicles[0], jobs[:loaded_stops], cost=100 * loaded_stops)],
@@ -150,6 +150,8 @@ def load_insertion_scenario(environment, num_jobs=3, loaded_stops=1):
     environment.load_from_dataset({
         "jobs"     : [job.to_dict() for job in jobs],
         "vehicles" : [vehicle.to_dict() for vehicle in vehicles],
+        "depot"    : [-46.63, -23.55],
+        "clock"    : 28800,
         "state"    : state.to_payload(),
     })
 
@@ -169,15 +171,18 @@ def test_insertion_action_assigns_unassigned_job(environment, fake_vroom):
     assert new_job_id in old_state.unassigned_ids
 
 
-def test_insertion_beyond_capacity_raises(environment, fake_vroom):
-    jobs, vehicles = load_insertion_scenario(environment, num_jobs=4, loaded_stops=2)
+def test_insertion_beyond_capacity_adds_depot_drop(environment, fake_vroom):
+    jobs, vehicles = load_insertion_scenario(environment, num_jobs=4, loaded_stops=2, kind="repossession")
 
     assert vehicles[0].capacity == 2
 
     action = Action(operator=0, vehicle_index=0, job_index=environment.jobs.index_of(jobs[2].id))
 
-    with pytest.raises(ValueError):
-        environment.apply_action(action)
+    _, new_state = environment.apply_action(action)
+    route        = new_state.route_of_vehicle(vehicles[0].id)
+
+    assert jobs[2].id in new_state.assigned_job_ids
+    assert any(stop.kind == "delivery" for stop in route.stops)
 
 
 def test_removal_action_moves_job_to_unassigned(environment):
@@ -299,6 +304,8 @@ def test_insert_then_remove_cycle_has_negative_total_reward(environment, fake_vr
     environment.load_from_dataset({
         "jobs"     : [job.to_dict() for job in jobs],
         "vehicles" : [vehicle.to_dict() for vehicle in vehicles],
+        "depot"    : [-46.63, -23.55],
+        "clock"    : 28800,
         "state"    : state.to_payload(),
     })
 
@@ -320,6 +327,8 @@ def test_insert_then_remove_cycle_has_negative_total_reward(environment, fake_vr
 def test_load_from_dataset_round_trips(environment):
     item = {
         "state"    : environment.current_state.to_payload(),
+        "depot"    : list(environment.depot),
+        "clock"    : int(environment.clock),
         "jobs"     : [job.to_dict() for job in environment.jobs],
         "vehicles" : [vehicle.to_dict() for vehicle in environment.vehicles],
     }

@@ -64,10 +64,12 @@ def test_count_events_on_empty_store_is_zero(tmp_path):
     assert num_chunks == 0
 
 
-def test_save_then_reload_preserves_graph_tensor(tmp_path, batch):
+def test_save_then_reload_preserves_items(tmp_path, batch):
     store = ChunkStore(str(tmp_path))
     store.save(batch, 0)
 
     reloaded = store.load(store.existing_chunks()[0])
 
-    assert torch.equal(reloaded[0]["graph"]["job"].x, batch[0]["graph"]["job"].x)
+    assert reloaded[0]["state"] == batch[0]["state"]
+    assert reloaded[0]["depot"] == batch[0]["depot"]
+    assert reloaded[0]["jobs"] == batch[0]["jobs"]

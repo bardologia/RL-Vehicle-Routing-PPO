@@ -50,22 +50,12 @@ def test_mask_context_maps_vehicles_to_their_route_jobs():
     assert info["vehicles_with_jobs_indices"] == [0]
 
 
-def test_mask_context_reports_vehicles_with_spare_capacity():
+def test_mask_context_has_no_capacity_gate():
     jobs, vehicles, state = build_context()
 
     info = ActionMaskBuilder().build(jobs, vehicles, state)
 
-    assert info["vehicles_with_capacity_indices"] == [1, 2]
-
-
-def test_mask_context_counts_route_load_against_capacity():
-    jobs     = make_jobs(3)
-    vehicles = make_vehicles(2)
-    state    = RoutingState(routes=[make_route(vehicles[0], jobs[:1])], unassigned_ids={jobs[1].id, jobs[2].id})
-
-    info = ActionMaskBuilder().build(EntityPool(jobs), EntityPool(vehicles), state)
-
-    assert info["vehicles_with_capacity_indices"] == [0, 1]
+    assert set(info.keys()) == {"unassigned_job_indices", "vehicles_with_jobs_indices", "vehicle_to_job_indices"}
 
 
 def test_mask_context_skips_route_of_vehicle_absent_from_pool():
@@ -92,18 +82,7 @@ def test_mask_operator_none_info_returns_clone_unchanged():
 def test_mask_operator_blocks_insert_without_unassigned(cpu_config):
     masker          = ActionMasker(cpu_config)
     operator_logits = torch.zeros(4)
-    info            = {"unassigned_job_indices": [], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1]}, "vehicles_with_capacity_indices": [0]}
-
-    masked = masker.mask_operator(operator_logits, info)
-
-    assert masked[0] == cpu_config.training.large_negative_value
-    assert masked[1] == 0.0
-
-
-def test_mask_operator_blocks_insert_without_capacity(cpu_config):
-    masker          = ActionMasker(cpu_config)
-    operator_logits = torch.zeros(4)
-    info            = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1]}, "vehicles_with_capacity_indices": []}
+    info            = {"unassigned_job_indices": [], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1]}}
 
     masked = masker.mask_operator(operator_logits, info)
 
@@ -114,7 +93,7 @@ def test_mask_operator_blocks_insert_without_capacity(cpu_config):
 def test_mask_operator_blocks_remove_without_loaded_vehicles(cpu_config):
     masker          = ActionMasker(cpu_config)
     operator_logits = torch.zeros(4)
-    info            = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [], "vehicle_to_job_indices": {}, "vehicles_with_capacity_indices": [0]}
+    info            = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [], "vehicle_to_job_indices": {}}
 
     masked = masker.mask_operator(operator_logits, info)
 
@@ -125,7 +104,7 @@ def test_mask_operator_blocks_remove_without_loaded_vehicles(cpu_config):
 def test_mask_operator_blocks_both_when_no_actions(cpu_config):
     masker          = ActionMasker(cpu_config)
     operator_logits = torch.zeros(4)
-    info            = {"unassigned_job_indices": [], "vehicles_with_jobs_indices": [], "vehicle_to_job_indices": {}, "vehicles_with_capacity_indices": []}
+    info            = {"unassigned_job_indices": [], "vehicles_with_jobs_indices": [], "vehicle_to_job_indices": {}}
 
     masked = masker.mask_operator(operator_logits, info)
 
@@ -147,7 +126,7 @@ def test_mask_vehicle_none_info_returns_clone_unchanged():
 def test_mask_vehicle_restricts_remove_to_loaded_vehicles(cpu_config):
     masker         = ActionMasker(cpu_config)
     vehicle_logits = torch.zeros(3)
-    info           = {"unassigned_job_indices": [], "vehicles_with_jobs_indices": [1], "vehicle_to_job_indices": {1: [0]}, "vehicles_with_capacity_indices": [0, 2]}
+    info           = {"unassigned_job_indices": [], "vehicles_with_jobs_indices": [1], "vehicle_to_job_indices": {1: [0]}}
 
     masked = masker.mask_vehicle(vehicle_logits, info, selected_operator_index=1)
 
@@ -156,14 +135,14 @@ def test_mask_vehicle_restricts_remove_to_loaded_vehicles(cpu_config):
     assert masked[2] == cpu_config.training.large_negative_value
 
 
-def test_mask_vehicle_restricts_insert_to_spare_capacity(cpu_config):
+def test_mask_vehicle_allows_all_vehicles_for_insert(cpu_config):
     masker         = ActionMasker(cpu_config)
     vehicle_logits = torch.zeros(3)
-    info           = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1]}, "vehicles_with_capacity_indices": [1, 2]}
+    info           = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1]}}
 
     masked = masker.mask_vehicle(vehicle_logits, info, selected_operator_index=0)
 
-    assert masked[0] == cpu_config.training.large_negative_value
+    assert masked[0] == 0.0
     assert masked[1] == 0.0
     assert masked[2] == 0.0
 
@@ -171,7 +150,7 @@ def test_mask_vehicle_restricts_insert_to_spare_capacity(cpu_config):
 def test_mask_vehicle_no_op_operator_collapses_to_first_index(cpu_config):
     masker         = ActionMasker(cpu_config)
     vehicle_logits = torch.zeros(3)
-    info           = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1]}, "vehicles_with_capacity_indices": [1]}
+    info           = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1]}}
 
     masked = masker.mask_vehicle(vehicle_logits, info, selected_operator_index=2)
 
@@ -192,7 +171,7 @@ def test_mask_job_none_info_returns_clone_unchanged():
 def test_mask_job_restricts_remove_to_selected_vehicle_jobs(cpu_config):
     masker     = ActionMasker(cpu_config)
     job_logits = torch.zeros(5)
-    info       = {"unassigned_job_indices": [], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1, 3]}, "vehicles_with_capacity_indices": [1]}
+    info       = {"unassigned_job_indices": [], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1, 3]}}
 
     masked = masker.mask_job(job_logits, info, selected_operator_index=1, selected_vehicle_index=0)
 
@@ -205,7 +184,7 @@ def test_mask_job_restricts_remove_to_selected_vehicle_jobs(cpu_config):
 def test_mask_job_restricts_insert_to_unassigned(cpu_config):
     masker     = ActionMasker(cpu_config)
     job_logits = torch.zeros(4)
-    info       = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [], "vehicle_to_job_indices": {}, "vehicles_with_capacity_indices": [0]}
+    info       = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [], "vehicle_to_job_indices": {}}
 
     masked = masker.mask_job(job_logits, info, selected_operator_index=0, selected_vehicle_index=0)
 
@@ -216,7 +195,7 @@ def test_mask_job_restricts_insert_to_unassigned(cpu_config):
 def test_mask_job_no_op_collapses_to_first_index(cpu_config):
     masker     = ActionMasker(cpu_config)
     job_logits = torch.zeros(4)
-    info       = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1]}, "vehicles_with_capacity_indices": [0]}
+    info       = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1]}}
 
     masked = masker.mask_job(job_logits, info, selected_operator_index=2, selected_vehicle_index=0)
 

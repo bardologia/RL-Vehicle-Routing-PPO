@@ -37,6 +37,8 @@ def test_catalog_keys_and_required_fields():
         assert template["expected"]
         assert template["jobs"]
         assert template["vehicles"]
+        assert LON_BOUNDS[0] <= template["depot"][0] <= LON_BOUNDS[1]
+        assert LAT_BOUNDS[0] <= template["depot"][1] <= LAT_BOUNDS[1]
 
 
 def test_catalog_entities_parse_and_stay_in_bounds():
@@ -48,6 +50,8 @@ def test_catalog_entities_parse_and_stay_in_bounds():
 
         for job in template["jobs"]:
             parsed = Job.from_dict(job)
+            assert parsed.kind in ("support", "repossession")
+            assert parsed.amount == (1 if parsed.kind == "repossession" else 0)
             assert 1 <= parsed.priority <= 5
             assert LON_BOUNDS[0] <= parsed.location[0] <= LON_BOUNDS[1]
             assert LAT_BOUNDS[0] <= parsed.location[1] <= LAT_BOUNDS[1]
@@ -66,12 +70,11 @@ def test_catalog_assignments_reference_known_entities_within_capacity():
             continue
 
         job_ids      = {job["id"] for job in template["jobs"]}
-        capacity_by  = {vehicle["id"]: vehicle["capacity"] for vehicle in template["vehicles"]}
+        vehicle_ids  = {vehicle["id"] for vehicle in template["vehicles"]}
         assigned_ids = []
 
         for vehicle_key, assigned in assignment.items():
-            assert int(vehicle_key) in capacity_by
-            assert len(assigned) <= capacity_by[int(vehicle_key)]
+            assert int(vehicle_key) in vehicle_ids
             assert set(assigned) <= job_ids
             assigned_ids.extend(assigned)
 
@@ -84,7 +87,7 @@ def test_assigned_state_builds_pinned_routes_and_leftovers(monkeypatch):
     jobs     = EntityPool(make_jobs(4))
     vehicles = EntityPool(make_vehicles(2))
 
-    state, error = lab()._assigned_state(jobs, vehicles, {"0": [0, 1], "1": [2]})
+    state, error = lab()._assigned_state(jobs, vehicles, {"0": [0, 1], "1": [2]}, (-46.63, -23.55), 28800)
 
     assert error is None
     assert state.route_of_vehicle(0).job_ids == [0, 1]
@@ -99,13 +102,12 @@ def test_assigned_state_rejects_bad_assignments(monkeypatch):
     vehicles = EntityPool(make_vehicles(1))
 
     cases = [
-        ({"9": [0]},         "unknown vehicle"),
-        ({"0": [7]},         "unknown jobs"),
-        ({"0": [0, 1, 2]},   "capacity"),
+        ({"9": [0]}, "unknown vehicle"),
+        ({"0": [7]}, "unknown jobs"),
     ]
 
     for assignment, fragment in cases:
-        state, error = lab()._assigned_state(jobs, vehicles, assignment)
+        state, error = lab()._assigned_state(jobs, vehicles, assignment, (-46.63, -23.55), 28800)
         assert state is None
         assert fragment in error
 
@@ -116,7 +118,7 @@ def test_assigned_state_rejects_duplicate_jobs(monkeypatch):
     jobs     = EntityPool(make_jobs(2))
     vehicles = EntityPool(make_vehicles(2))
 
-    state, error = lab()._assigned_state(jobs, vehicles, {"0": [0], "1": [0]})
+    state, error = lab()._assigned_state(jobs, vehicles, {"0": [0], "1": [0]}, (-46.63, -23.55), 28800)
 
     assert state is None
     assert "repeats" in error

@@ -32,16 +32,13 @@ def generate_events(batch_size, seed, config, enable_profiling=False):
         initial_state = simulation_env.initial_state
         event_type, num_items = simulation_env.generate_event()
         event_state = simulation_env.apply_event(initial_state, event_type, num_items)
-        graph, mask_info = simulation_env.observe()
-
-        graph_cpu = graph.clone().detach().cpu()
 
         batch[i] = {
-            "state"     : event_state.to_payload(),
-            "graph"     : graph_cpu,
-            "mask_info" : mask_info,
-            "jobs"      : [job.to_dict() for job in simulation_env.jobs],
-            "vehicles"  : [vehicle.to_dict() for vehicle in simulation_env.vehicles],
+            "state"    : event_state.to_payload(),
+            "depot"    : list(simulation_env.depot),
+            "clock"    : int(simulation_env.clock),
+            "jobs"     : [job.to_dict() for job in simulation_env.jobs],
+            "vehicles" : [vehicle.to_dict() for vehicle in simulation_env.vehicles],
         }
 
     if enable_profiling:

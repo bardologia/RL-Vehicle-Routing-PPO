@@ -10,7 +10,7 @@ def build_graph(cpu_config):
     jobs     = make_jobs(4)
     vehicles = make_vehicles(2)
     state    = RoutingState(routes=[make_route(vehicles[0], jobs[:2])], unassigned_ids={jobs[2].id, jobs[3].id})
-    return Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
+    return Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
 
 
 def add_one(memory, graph, with_old_logits=True):

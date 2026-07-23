@@ -18,39 +18,70 @@ from core.shared import Job, Route, RoutingState, Stop, Vehicle
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
+FAKE_DEPOT = (-46.63, -23.55)
+
+
 class FakeVroom:
     def __init__(self):
         self.calls = 0
 
-    def solve(self, jobs, vehicles):
+    def _vehicle_route(self, vehicle, taken, depot, clock):
+        stops = []
+        load  = vehicle.onboard
+        t     = max(int(clock or 0), int(vehicle.time_window[0]))
+
+        if load > 0:
+            t += 300
+            stops.append(Stop(job_id=-1, location=depot, kind="delivery", arrival=t, service=120, load=0))
+            t   += 120
+            load = 0
+
+        for job in taken:
+            t += 300
+            if job.kind == "repossession":
+                stops.append(Stop(job_id=job.id, location=job.location, kind="pickup", arrival=t, service=job.service, load=load + 1))
+                t   += job.setup + job.service
+                load = load + 1
+                if load >= vehicle.capacity:
+                    t += 300
+                    stops.append(Stop(job_id=job.id, location=depot, kind="delivery", arrival=t, service=120, load=0))
+                    t   += 120
+                    load = 0
+            else:
+                stops.append(Stop(job_id=job.id, location=job.location, kind="job", arrival=t, service=job.service, load=load))
+                t += job.setup + job.service
+
+        if load > 0:
+            t += 300
+            stops.append(Stop(job_id=-1, location=depot, kind="delivery", arrival=t, service=120, load=0))
+            t += 120
+
+        return Route(
+            vehicle_id = vehicle.id,
+            stops      = stops,
+            start      = vehicle.start,
+            end        = stops[-1].location,
+            cost       = 100 * len(stops),
+            duration   = 60 * len(stops),
+            service    = sum(stop.service for stop in stops),
+        )
+
+    def solve(self, jobs, vehicles, depot=None, clock=None):
         self.calls += 1
         jobs     = list(jobs)
         vehicles = list(vehicles)
-
-        if not jobs or not vehicles:
-            return RoutingState(routes=[], unassigned_ids={job.id for job in jobs})
+        depot    = depot or FAKE_DEPOT
 
         routes    = []
         remaining = list(jobs)
 
         for vehicle in vehicles:
-            taken     = remaining[:vehicle.capacity]
-            remaining = remaining[vehicle.capacity:]
-            if not taken:
-                break
+            taken     = remaining if len(vehicles) == 1 else remaining[:vehicle.capacity]
+            remaining = [] if len(vehicles) == 1 else remaining[vehicle.capacity:]
+            if not taken and vehicle.onboard == 0:
+                continue
 
-            stops = [Stop(job_id=job.id, location=job.location, service=job.service, load=1) for job in taken]
-            routes.append(
-                Route(
-                    vehicle_id = vehicle.id,
-                    stops      = stops,
-                    start      = vehicle.start,
-                    end        = stops[-1].location,
-                    cost       = 100 * len(stops),
-                    duration   = 60 * len(stops),
-                    service    = sum(stop.service for stop in stops),
-                )
-            )
+            routes.append(self._vehicle_route(vehicle, taken, depot, clock))
 
         return RoutingState(routes=routes, unassigned_ids={job.id for job in remaining})
 
@@ -141,9 +172,9 @@ def load_fixture(name):
     return json.load(open(FIXTURES / f"{name}.json"))
 
 
-def make_jobs(count, first_id=0):
+def make_jobs(count, first_id=0, kind="support"):
     return [
-        Job(id=first_id + i, location=(-46.63 + 0.01 * i, -23.55 - 0.004 * i), priority=(i % 5) + 1)
+        Job(id=first_id + i, location=(-46.63 + 0.01 * i, -23.55 - 0.004 * i), kind=kind, amount=1 if kind == "repossession" else 0, priority=(i % 5) + 1)
         for i in range(count)
     ]
 

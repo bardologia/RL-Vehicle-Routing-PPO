@@ -13,7 +13,7 @@ def build_graph(cpu_config, num_jobs, num_vehicles):
         routes         = [make_route(vehicles[0], jobs[:2])] if num_jobs >= 2 else [],
         unassigned_ids = {job.id for job in jobs[2:]},
     )
-    return Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
+    return Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
 
 
 def test_encoders_match_input_dims(cpu_config):

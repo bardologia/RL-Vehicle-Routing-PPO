@@ -12,16 +12,20 @@ class NodeBuilder:
         self.graph = graph
 
     def vehicle_nodes(self):
-        load_by_vehicle_id = {route.vehicle_id: len(route.stops) for route in self.graph.state.routes}
+        load_by_vehicle_id = {route.vehicle_id: len(route.job_ids) for route in self.graph.state.routes}
 
         for vehicle in self.graph.vehicles:
+            depot_m, _ = haversine_distance(vehicle.start[0], vehicle.start[1], self.graph.depot[0], self.graph.depot[1])
+
             metadata = {
                 "vehicle_id"      : vehicle.id,
                 "time_window"     : [int(vehicle.time_window[0]), int(vehicle.time_window[1])],
                 "speed_factor"    : float(vehicle.speed_factor),
                 "return_to_depot" : bool(vehicle.return_to_depot),
                 "capacity"        : int(vehicle.capacity),
+                "onboard"         : int(vehicle.onboard),
                 "load"            : int(load_by_vehicle_id.get(vehicle.id, 0)),
+                "depot_distance"  : float(depot_m),
             }
 
             self.add_node(f"veh:{vehicle.id}", "vehicle", float(vehicle.start[0]), float(vehicle.start[1]), metadata)
@@ -35,14 +39,18 @@ class NodeBuilder:
                 assigned_vehicle_by_job[job_id] = route.vehicle_id
 
         for job in self.graph.jobs:
+            depot_m, _ = haversine_distance(job.location[0], job.location[1], self.graph.depot[0], self.graph.depot[1])
+
             metadata = {
                 "job_id"              : job.id,
+                "kind"                : job.kind,
                 "priority"            : int(job.priority),
                 "service"             : int(job.service),
                 "setup"               : int(job.setup),
                 "is_unassigned"       : job.id in state.unassigned_ids,
                 "in_route"            : job.id in assigned_vehicle_by_job,
                 "assigned_vehicle_id" : assigned_vehicle_by_job.get(job.id),
+                "depot_distance"      : float(depot_m),
             }
 
             self.add_node(f"job:{job.id}", "job", float(job.location[0]), float(job.location[1]), metadata)
@@ -158,6 +166,8 @@ class Graph:
         self.jobs     = []
         self.vehicles = []
         self.state    = None
+        self.depot    = None
+        self.clock    = None
 
         self.nodes             = []
         self.node_index_by_key = {}
@@ -207,6 +217,8 @@ class Graph:
                     float(metadata["setup"]) / 3600.0,
                     float(metadata["is_unassigned"]),
                     0.0 if metadata["assigned_vehicle_id"] is None else 1.0,
+                    1.0 if metadata["kind"] == "repossession" else 0.0,
+                    float(metadata["depot_distance"]) / 50_000.0,
                 ]
             )
             global_to_local[job_global_idx] = ("job", job_local_idx)
@@ -224,10 +236,12 @@ class Graph:
                     (node["longitude"] - lon_mean) / lon_std,
                     (node["latitude"] - lat_mean) / lat_std,
                     float(metadata["speed_factor"]),
-                    float((time_window[1] - time_window[0]) / 3600.0),
+                    float(max(time_window[1] - self.clock, 0)) / 43200.0,
                     float(metadata["return_to_depot"]),
                     float(metadata["capacity"]) / 10.0,
+                    float(metadata["onboard"]) / max(float(metadata["capacity"]), 1.0),
                     float(metadata["load"]) / max(float(metadata["capacity"]), 1.0),
+                    float(metadata["depot_distance"]) / 50_000.0,
                 ]
             )
             global_to_local[vehicle_global_idx] = ("vehicle", vehicle_local_idx)
@@ -287,11 +301,13 @@ class Graph:
             "edge_type_ids": dict(self.edge_names),
         }
 
-    def build(self, jobs, vehicles, state):
+    def build(self, jobs, vehicles, state, depot, clock):
         self._reset()
         self.jobs     = jobs
         self.vehicles = vehicles
         self.state    = state
+        self.depot    = depot
+        self.clock    = clock
 
         self.node_builder.build()
         self.edge_builder.build()

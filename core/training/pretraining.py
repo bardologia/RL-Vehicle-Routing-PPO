@@ -30,12 +30,9 @@ class RegretInsertionTeacher:
         assigned_ids = state.assigned_job_ids
         eligible_ids = sorted(job_id for job_id in state.unassigned_ids if environment.jobs.contains(job_id) and job_id not in assigned_ids)
 
-        load_by_vehicle_id = {route.vehicle_id: len(route.stops) for route in state.routes}
-        open_vehicles      = [vehicle for vehicle in environment.vehicles if load_by_vehicle_id.get(vehicle.id, 0) < vehicle.capacity]
-
         options = {}
         for job_id in eligible_ids:
-            for vehicle in open_vehicles:
+            for vehicle in environment.vehicles:
                 new_state = environment.action_handler.apply_job_insertion(environment, state, vehicle.id, job_id)
                 if new_state is state:
                     continue
@@ -64,18 +61,13 @@ class RegretInsertionTeacher:
     def refresh_options(self, environment, state, options, inserted_job_id, vehicle_id):
         options.pop(inserted_job_id, None)
 
-        vehicle = environment.vehicles.by_id(vehicle_id)
-        route   = state.route_of_vehicle(vehicle_id)
-        is_open = (len(route.stops) if route is not None else 0) < vehicle.capacity
-
         for job_id in list(options):
             entries = [entry for entry in options[job_id] if entry[1] != vehicle_id]
 
-            if is_open:
-                new_state = environment.action_handler.apply_job_insertion(environment, state, vehicle_id, job_id)
-                if new_state is not state:
-                    rewards, _ = environment.step(state, new_state, 0)
-                    entries.append((sum(rewards.values()), vehicle_id))
+            new_state = environment.action_handler.apply_job_insertion(environment, state, vehicle_id, job_id)
+            if new_state is not state:
+                rewards, _ = environment.step(state, new_state, 0)
+                entries.append((sum(rewards.values()), vehicle_id))
 
             if entries:
                 options[job_id] = entries
@@ -195,6 +187,7 @@ class TeacherRolloutCollector:
         records = []
         for step_in_episode in range(self.max_steps):
             if step_in_episode > 0:
+                self.environment.advance_execution()
                 self.environment.apply_random_event()
 
             graph, mask_info = self.environment.observe()
