@@ -24,7 +24,7 @@ class ScenarioView {
     this.activeTemplate = null;
     this.assignment = null;
 
-    this.runOptions = { agent: "model", run_name: null, max_steps: 8, seed: 0, event_probability: 0.0 };
+    this.runOptions = { agent: "model", run_name: null, greedy: true, max_steps: 8, seed: 0, event_probability: 0.0 };
   }
 
   async enter() {
@@ -462,6 +462,7 @@ class ScenarioView {
             </select></label>
           <label class="field" id="scn-ckpt-wrap" style="${o.agent === "model" ? "" : "display:none"}"><span class="field__label"><span>Checkpoint</span></span>
             <select id="scn-ckpt">${ckptOptions || `<option value="">no checkpoints</option>`}</select></label>
+          <label class="switch" id="scn-greedy-wrap" style="align-self:end;${o.agent === "model" ? "" : "display:none"}"><input type="checkbox" id="scn-greedy" ${o.greedy ? "checked" : ""}><i></i><span>greedy (argmax)</span></label>
           <label class="field"><span class="field__label"><span>Max steps</span></span><input type="number" id="scn-steps" value="${o.max_steps}" min="1" max="50" step="1"></label>
           <label class="field"><span class="field__label"><span>Seed</span></span><input type="number" id="scn-seed" value="${o.seed}" step="1"></label>
           <label class="field"><span class="field__label"><span>Event prob.</span></span><input type="number" id="scn-events" value="${o.event_probability}" min="0" max="1" step="0.1"></label>
@@ -475,6 +476,7 @@ class ScenarioView {
     document.getElementById("scn-agent").addEventListener("change", (e) => {
       o.agent = e.target.value;
       document.getElementById("scn-ckpt-wrap").style.display = o.agent === "model" ? "" : "none";
+      document.getElementById("scn-greedy-wrap").style.display = o.agent === "model" ? "" : "none";
     });
     document.getElementById("scn-run").addEventListener("click", () => this._run());
 
@@ -489,6 +491,7 @@ class ScenarioView {
 
     const o = this.runOptions;
     o.run_name = (document.getElementById("scn-ckpt") || {}).value || null;
+    o.greedy = !!(document.getElementById("scn-greedy") || {}).checked;
     o.max_steps = Number(document.getElementById("scn-steps").value) || 8;
     o.seed = Number(document.getElementById("scn-seed").value) || 0;
     o.event_probability = Number(document.getElementById("scn-events").value) || 0;
@@ -502,6 +505,7 @@ class ScenarioView {
       assignment: this.assignment,
       agent: o.agent,
       run_name: o.run_name,
+      greedy: o.greedy,
       max_steps: o.max_steps,
       seed: o.seed,
       event_probability: o.event_probability,
