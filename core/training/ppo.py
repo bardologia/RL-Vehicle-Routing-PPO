@@ -73,7 +73,7 @@ class ActionDistribution:
         log_probs = torch.log_softmax(logits, dim=-1)
         return -(log_probs.exp() * log_probs).sum(dim=-1)
 
-    def compute(
+    def kl_terms(
         self,
         old_operator_logits,
         old_vehicle_logits,
@@ -95,22 +95,53 @@ class ActionDistribution:
         new_job_masked     = new_job_masked.float()
 
         old_operator_probs = torch.softmax(masked_old_operator_logits, dim=-1)
+        old_vehicle_probs  = torch.softmax(old_vehicle_masked, dim=-1)
+        joint_old          = old_operator_probs.unsqueeze(-1) * old_vehicle_probs
+
+        operator_kl    = self.categorical_kl(masked_old_operator_logits, masked_new_operator_logits)
+        vehicle_kl_exp = (old_operator_probs * self.categorical_kl(old_vehicle_masked, new_vehicle_masked)).sum()
+        job_kl_exp     = (joint_old * self.categorical_kl(old_job_masked, new_job_masked)).sum()
+
+        return {
+            "operator_kl"    : operator_kl,
+            "vehicle_kl_exp" : vehicle_kl_exp,
+            "job_kl_exp"     : job_kl_exp,
+            "total_kl"       : operator_kl + vehicle_kl_exp + job_kl_exp,
+        }
+
+    def compute(
+        self,
+        old_operator_logits,
+        old_vehicle_logits,
+        old_job_logits,
+        new_operator_logits,
+        new_vehicle_logits,
+        new_job_logits,
+        mask_info,
+    ):
+        kl_tensors = self.kl_terms(
+            old_operator_logits = old_operator_logits,
+            old_vehicle_logits  = old_vehicle_logits,
+            old_job_logits      = old_job_logits,
+            new_operator_logits = new_operator_logits,
+            new_vehicle_logits  = new_vehicle_logits,
+            new_job_logits      = new_job_logits,
+            mask_info           = mask_info,
+        )
+
+        masked_new_operator_logits         = self.masker.mask_operator(new_operator_logits, mask_info).float()
+        new_vehicle_masked, new_job_masked = self.masked_action_logits(new_vehicle_logits, new_job_logits, mask_info)
+
+        new_vehicle_masked = new_vehicle_masked.float()
+        new_job_masked     = new_job_masked.float()
+
         new_operator_probs = torch.softmax(masked_new_operator_logits, dim=-1)
+        new_vehicle_probs  = torch.softmax(new_vehicle_masked, dim=-1)
+        joint_new          = new_operator_probs.unsqueeze(-1) * new_vehicle_probs
 
-        operator_kl      = self.categorical_kl(masked_old_operator_logits, masked_new_operator_logits)
-        operator_entropy = self._entropy(masked_new_operator_logits)
-
-        vehicle_kl_exp      = (old_operator_probs * self.categorical_kl(old_vehicle_masked, new_vehicle_masked)).sum()
+        operator_entropy    = self._entropy(masked_new_operator_logits)
         vehicle_entropy_exp = (new_operator_probs * self._entropy(new_vehicle_masked)).sum()
-
-        old_vehicle_probs = torch.softmax(old_vehicle_masked, dim=-1)
-        new_vehicle_probs = torch.softmax(new_vehicle_masked, dim=-1)
-
-        joint_old  = old_operator_probs.unsqueeze(-1) * old_vehicle_probs
-        joint_new  = new_operator_probs.unsqueeze(-1) * new_vehicle_probs
-
-        job_kl_exp      = (joint_old * self.categorical_kl(old_job_masked, new_job_masked)).sum()
-        job_entropy_exp = (joint_new * self._entropy(new_job_masked)).sum()
+        job_entropy_exp     = (joint_new * self._entropy(new_job_masked)).sum()
 
         total_entropy = operator_entropy + vehicle_entropy_exp + job_entropy_exp
         entropy = {
@@ -120,13 +151,13 @@ class ActionDistribution:
             "job_entropy_exp"     : job_entropy_exp,
         }
 
-        total_kl = operator_kl + vehicle_kl_exp + job_kl_exp
-        kl ={
-            "total_kl"          : float(total_kl.item()),
-            "operator_kl"       : float(operator_kl.item()),
-            "vehicle_kl_exp"    : float(vehicle_kl_exp.item()),
-            "job_kl_exp"        : float(job_kl_exp.item()),
-            "mean_kl"           : float(total_kl.item()) / 3
+        total_kl = kl_tensors["total_kl"]
+        kl = {
+            "total_kl"       : float(total_kl.item()),
+            "operator_kl"    : float(kl_tensors["operator_kl"].item()),
+            "vehicle_kl_exp" : float(kl_tensors["vehicle_kl_exp"].item()),
+            "job_kl_exp"     : float(kl_tensors["job_kl_exp"].item()),
+            "mean_kl"        : float(total_kl.item()) / 3
         }
 
         return entropy, kl
@@ -227,6 +258,10 @@ class PPO(nn.Module):
         self.telemetry    = None
         self.masker       = None
         self.distribution = None
+
+        self.reference_policy    = None
+        self.anchor_scheduler    = None
+        self.current_anchor_coef = 0.0
 
         self.global_epoch_step  = 0
         self.global_batch_step  = 0
@@ -403,13 +438,40 @@ class PPO(nn.Module):
 
         return entropy_dict, kl_dict
 
+    def anchor_loss(self, reference_sample, logits_dict, mask_info):
+        with torch.no_grad():
+            reference_logits = self.reference_policy.compute_logits(
+                actor_embeddings  = reference_sample["embeddings"],
+                global_context    = reference_sample["context"],
+                operator_logits   = reference_sample["operator_logits"],
+                selected_operator = None,
+            )
+
+        anchor_terms = self.distribution.kl_terms(
+            old_operator_logits = reference_logits["operator_logits"],
+            old_vehicle_logits  = reference_logits["vehicle_logits"],
+            old_job_logits      = reference_logits["job_logits"],
+            new_operator_logits = logits_dict["operator_logits"],
+            new_vehicle_logits  = logits_dict["vehicle_logits"],
+            new_job_logits      = logits_dict["job_logits"],
+            mask_info           = mask_info,
+        )
+
+        return anchor_terms["total_kl"]
+
     def process_batch(self, batch_indices, batch_data):
         batch_graph = Batch.from_data_list([self.memory.graphs[idx] for idx in batch_indices])
         per_sample  = self.policy.forward_batch(batch_graph)
 
-        accumulated_loss = torch.tensor(0.0, device=self.device)
-        accumulated_kl   = 0.0
-        batch_size       = len(batch_indices)
+        reference_samples = None
+        if self.reference_policy is not None:
+            with torch.no_grad():
+                reference_samples = self.reference_policy.forward_batch(batch_graph)
+
+        accumulated_loss   = torch.tensor(0.0, device=self.device)
+        accumulated_kl     = 0.0
+        accumulated_anchor = 0.0
+        batch_size         = len(batch_indices)
 
         for i, sample_index in enumerate(batch_indices):
             sample                = per_sample[i]
@@ -449,6 +511,11 @@ class PPO(nn.Module):
             entropy_loss = self.current_entropy_coef * entropy_dict["total_entropy"]
             total_loss   = policy_loss_dict["policy_loss"] + self.config.ppo.value_loss_coef * value_loss_dict["value_loss"] - entropy_loss
 
+            if reference_samples is not None:
+                anchor_kl           = self.anchor_loss(reference_samples[i], logits_dict, mask_info)
+                total_loss          = total_loss + self.current_anchor_coef * anchor_kl
+                accumulated_anchor += float(anchor_kl.item())
+
             accumulated_loss = accumulated_loss + total_loss
             accumulated_kl   += kl_dict["mean_kl"]
 
@@ -471,8 +538,9 @@ class PPO(nn.Module):
         mean_loss_tensor = accumulated_loss / batch_size
         mean_loss_value  = accumulated_loss.item() / batch_size
         mean_kl          = accumulated_kl / batch_size
+        mean_anchor_kl   = accumulated_anchor / batch_size if reference_samples is not None else None
 
-        return mean_loss_tensor, mean_loss_value, mean_kl
+        return mean_loss_tensor, mean_loss_value, mean_kl, mean_anchor_kl
 
     def backward(self, total_loss, batch_step=0):
         self.optimizer.zero_grad()
@@ -495,13 +563,17 @@ class PPO(nn.Module):
             self.optimizer.step()
 
     def minibatch_step(self, batch_indices, batch_data):
-        mean_batch_loss_tensor, mean_batch_loss_value, mean_batch_kl = self.process_batch(batch_indices, batch_data)
+        mean_batch_loss_tensor, mean_batch_loss_value, mean_batch_kl, mean_anchor_kl = self.process_batch(batch_indices, batch_data)
 
         self.global_batch_step += 1
 
         self.backward(mean_batch_loss_tensor, self.global_batch_step)
         self.lr_scheduler.step()
         self.current_entropy_coef = self.entropy_scheduler.step()
+
+        if self.reference_policy is not None:
+            self.current_anchor_coef = self.anchor_scheduler.step()
+            self.telemetry.anchor(mean_anchor_kl, self.current_anchor_coef, self.global_batch_step)
 
         self.telemetry.batch(mean_batch_loss_value, mean_batch_kl, self.global_batch_step)
         self.telemetry.learning_rates(self.optimizer, self.global_batch_step)

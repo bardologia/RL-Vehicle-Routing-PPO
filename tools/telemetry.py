@@ -137,6 +137,13 @@ class PPOTelemetry:
     def entropy_coefficient(self, value, step):
         self.tracker.log_scalar('batch/entropy_coefficient', value, step)
 
+    def anchor(self, mean_anchor_kl, coef, step):
+        if not self.tracker.active:
+            return
+
+        self.tracker.log_scalar('batch/anchor_kl', mean_anchor_kl, step)
+        self.tracker.log_scalar('batch/anchor_coefficient', coef, step)
+
     def pretrain_rollout(self, episode_reward, operator_counts, episode_index):
         if not self.tracker.active or episode_index % self.gates.episode_every != 0:
             return
