@@ -369,15 +369,6 @@ class EntityPool:
     def ids(self) -> List[int]:
         return [item.id for item in self._items]
 
-    def __len__(self) -> int:
-        return len(self._items)
-
-    def __iter__(self) -> Iterator:
-        return iter(self._items)
-
-    def __getitem__(self, index: int):
-        return self._items[index]
-
     def contains(self, item_id: int) -> bool:
         return item_id in self._index_by_id
 
@@ -398,8 +389,17 @@ class EntityPool:
         self._items = [item for item in self._items if item.id not in item_ids]
         self._reindex()
 
+    def _reindex(self) -> None:
+        self._index_by_id = {item.id: index for index, item in enumerate(self._items)}
+
     def sample_ids(self, count: int) -> List[int]:
         return random.sample(self.ids, count)
 
-    def _reindex(self) -> None:
-        self._index_by_id = {item.id: index for index, item in enumerate(self._items)}
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def __iter__(self) -> Iterator:
+        return iter(self._items)
+
+    def __getitem__(self, index: int):
+        return self._items[index]

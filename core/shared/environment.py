@@ -50,13 +50,6 @@ class ActionHandler:
     def __init__(self, logger):
         self.logger = logger
 
-    def _solve_vehicle_route(self, jobs, vehicle: Vehicle):
-        solution = vroom.solve(jobs, [vehicle])
-        if solution is None or not solution.routes:
-            return None
-
-        return solution.routes[0]
-
     def apply_job_insertion(self, env, state: RoutingState, vehicle_id: int, job_id: int) -> RoutingState:
         route           = state.route_of_vehicle(vehicle_id)
         current_job_ids = route.job_ids if route is not None else []
@@ -101,6 +94,13 @@ class ActionHandler:
         new_state.replace_route(new_route)
         new_state.add_unassigned({job_id})
         return new_state
+
+    def _solve_vehicle_route(self, jobs, vehicle: Vehicle):
+        solution = vroom.solve(jobs, [vehicle])
+        if solution is None or not solution.routes:
+            return None
+
+        return solution.routes[0]
 
     def apply_reoptimize(self, env, state: RoutingState) -> RoutingState:
         solution = vroom.solve(list(env.jobs), list(env.vehicles))

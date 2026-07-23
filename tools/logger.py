@@ -101,6 +101,10 @@ class Logger:
         self.console.print(table)
         self._to_file(f"{title or 'table'}: " + ", ".join(f"{k}={v}" for k, v in data.items()))
 
+    def _to_file(self, message: str) -> None:
+        if self._file_handler is not None:
+            self._file_handler.handle(self.logger.makeRecord(self.name, logging.INFO, "", 0, message, None, None))
+
     def debug(self, message: str) -> None:
         self.logger.debug(message)
 
@@ -115,10 +119,6 @@ class Logger:
 
     def critical(self, message: str) -> None:
         self.logger.critical(message)
-
-    def _to_file(self, message: str) -> None:
-        if self._file_handler is not None:
-            self._file_handler.handle(self.logger.makeRecord(self.name, logging.INFO, "", 0, message, None, None))
 
     def close(self) -> None:
         elapsed = datetime.now() - self.start_time

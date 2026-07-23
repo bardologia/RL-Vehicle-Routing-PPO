@@ -31,6 +31,19 @@ class Dataset:
         self._current_item_idx = 0
         self._total_items_yielded = 0
     
+    @property
+    def total_events(self):
+        if self._total_events is None:
+            self._count_events()
+        return self._total_events
+
+    def _count_events(self):
+        self._total_events = 0
+        for path in self.chunk_paths:
+            data = torch.load(path, weights_only=False)
+            self._total_events += len(data)
+            del data
+
     def get_state(self):
         return {
             "current_chunk_idx": self._current_chunk_idx,
@@ -44,19 +57,6 @@ class Dataset:
         self._total_items_yielded = state["total_items_yielded"]
         self.logger.info(f"Dataset: resuming from chunk {self._current_chunk_idx}, item {self._current_item_idx} (total yielded: {self._total_items_yielded})")
              
-    def _count_events(self):
-        self._total_events = 0
-        for path in self.chunk_paths:
-            data = torch.load(path, weights_only=False)
-            self._total_events += len(data)
-            del data
-    
-    @property
-    def total_events(self):
-        if self._total_events is None:
-            self._count_events()
-        return self._total_events
-    
     def get_existing_chunks(self, output_dir):
         if not os.path.exists(output_dir):
             return []

@@ -9,23 +9,6 @@ class NodeBuilder:
     def __init__(self, graph):
         self.graph = graph
 
-    def add_node(self, identifier, node_type, longitude, latitude, metadata):
-        idx = len(self.graph.nodes)
-
-        self.graph.nodes.append(
-            {
-                "index": idx,
-                "identifier": identifier,
-                "node_type": node_type,
-                "longitude": float(longitude),
-                "latitude": float(latitude),
-                "metadata": metadata,
-            }
-        )
-
-        self.graph.node_index_by_key[(node_type, identifier)] = idx
-        self.graph.nodes_by_type[node_type].append(idx)
-
     def vehicle_nodes(self):
         for vehicle in self.graph.vehicles:
             metadata = {
@@ -57,6 +40,23 @@ class NodeBuilder:
             }
 
             self.add_node(f"job:{job.id}", "job", float(job.location[0]), float(job.location[1]), metadata)
+
+    def add_node(self, identifier, node_type, longitude, latitude, metadata):
+        idx = len(self.graph.nodes)
+
+        self.graph.nodes.append(
+            {
+                "index": idx,
+                "identifier": identifier,
+                "node_type": node_type,
+                "longitude": float(longitude),
+                "latitude": float(latitude),
+                "metadata": metadata,
+            }
+        )
+
+        self.graph.node_index_by_key[(node_type, identifier)] = idx
+        self.graph.nodes_by_type[node_type].append(idx)
 
     def build(self):
         self.vehicle_nodes()
