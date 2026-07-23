@@ -65,6 +65,15 @@ def test_unassigned_and_assignment_flags(cpu_config):
         assert features[index, 6].item() == is_assigned
 
 
+def test_job_priority_feature_scale(cpu_config):
+    data, jobs, _, _ = build_graph(cpu_config)
+
+    features = data["job"].x
+
+    for index, job in enumerate(jobs):
+        assert features[index, 2].item() == pytest.approx(job.priority / 5.0)
+
+
 def test_vehicle_capacity_and_load_features(cpu_config):
     data, _, vehicles, state = build_graph(cpu_config)
 
