@@ -10,6 +10,7 @@ from configuration.training    import TrainingConfig
 from configuration.reward      import RewardConfig
 from configuration.telemetry   import TelemetryConfig
 from configuration.device      import DeviceConfig
+from configuration.monitor     import MonitorConfig
 
 
 @dataclass
@@ -25,6 +26,7 @@ class Config:
     ppo        : PPOConfig         = field(default_factory=PPOConfig)
     telemetry  : TelemetryConfig   = field(default_factory=TelemetryConfig)
     device     : DeviceConfig      = field(default_factory=DeviceConfig)
+    monitor    : MonitorConfig     = field(default_factory=MonitorConfig)
 
 
 config = Config()
@@ -42,6 +44,7 @@ __all__ = [
     "RewardConfig",
     "TelemetryConfig",
     "DeviceConfig",
+    "MonitorConfig",
     "Config",
     "config",
 ]

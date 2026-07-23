@@ -4,7 +4,6 @@ import multiprocessing
 import os
 import pstats
 import random
-from io import StringIO
 
 import numpy as np
 import torch
@@ -47,11 +46,8 @@ def generate_events(batch_size, seed, config, enable_profiling=False):
 
     if enable_profiling:
         profiler.disable()
-        s = StringIO()
-        stats = pstats.Stats(profiler, stream=s)
-        stats.sort_stats('cumulative')
-        stats.print_stats(50)
-        profile_stats = s.getvalue()
+        profile_stats = pstats.Stats(profiler)
+        profile_stats.stream = None
 
     return batch, profile_stats
 
@@ -114,7 +110,7 @@ class DatasetGenerator:
             with tqdm(total=events_to_create, desc="Generating events", ncols=80) as pbar:
                 for batch_items, profile_stats in pool.imap(generate_events_task, tasks):
                     if profile_stats is not None:
-                        self.logger.info(f"Worker profile (first batch):\n{profile_stats}")
+                        self.logger.save_profiler_results(profile_stats, os.path.join(output_dir, "generation_profile.md"))
 
                     for item in batch_items:
                         current_chunk.append(item)

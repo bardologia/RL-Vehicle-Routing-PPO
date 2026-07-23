@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 from tools.inspection import ModelSummary, TensorLogger
 from tools.logger import Logger
+from tools.resource_monitor import ResourceMonitor
 from tools.telemetry import PPOTelemetry
 from tools.tracker import Tracker
 from core.shared import Environment, ActionMasker, vroom
@@ -171,6 +172,8 @@ class Trainer:
         self.telemetry  = PPOTelemetry(self.tracker, config)
         self.checkpoint = Checkpoint(config, logger=self.logger)
 
+        self.resource_monitor = ResourceMonitor(config.monitor, logger=self.logger, tracker=self.tracker)
+
         vroom.logger = self.logger
 
         self.logger.section("[Trainer Initialization]")
@@ -328,24 +331,28 @@ class Trainer:
         total_chunks = len(chunk_paths)
         self.logger.subsection(f"Total chunks to process: {total_chunks} \n")
 
-        for chunk_idx, chunk_path in tqdm(enumerate(chunk_paths), desc="Training chunks", total=total_chunks):
-            chunk_data = torch.load(chunk_path, map_location="cpu", weights_only=False)
+        self.resource_monitor.start()
+        try:
+            for chunk_idx, chunk_path in tqdm(enumerate(chunk_paths), desc="Training chunks", total=total_chunks):
+                chunk_data = torch.load(chunk_path, map_location="cpu", weights_only=False)
 
-            episodes_processed = self.run_chunk(chunk_data)
+                episodes_processed = self.run_chunk(chunk_data)
+                self.tracker.set_step(self.global_step_counter)
 
-            self.telemetry.episodes_processed(episodes_processed, chunk_idx)
+                self.telemetry.episodes_processed(episodes_processed, chunk_idx)
 
-            self.ppo_update()
-            self.checkpoint.save(self.ppo, self)
+                self.ppo_update()
+                self.checkpoint.save(self.ppo, self)
 
-            progress_pct = ((chunk_idx + 1) / total_chunks) * 100
-            self.logger.subsection(f"Overall Progress: {progress_pct:.1f}% ({chunk_idx + 1}/{total_chunks} chunks)")
-            self.telemetry.chunk_progress(chunk_idx, total_chunks)
-            
-            del chunk_data
-            gc.collect()
-            # Removed torch.cuda.empty_cache() - causes re-allocation overhead
-        
+                progress_pct = ((chunk_idx + 1) / total_chunks) * 100
+                self.logger.subsection(f"Overall Progress: {progress_pct:.1f}% ({chunk_idx + 1}/{total_chunks} chunks)")
+                self.telemetry.chunk_progress(chunk_idx, total_chunks)
+
+                del chunk_data
+                gc.collect()
+        finally:
+            self.resource_monitor.stop()
+
         self.logger.section("[Training Complete]")
         self.logger.subsection("Training loop finished")
  

@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from rich.console import Console
@@ -119,6 +120,35 @@ class Logger:
 
     def critical(self, message: str) -> None:
         self.logger.critical(message)
+
+    def save_profiler_results(self, stats, output: str) -> str:
+        ordered   = sorted(stats.stats.items(), key=lambda item: item[1][3], reverse=True)
+        col_names = ["Function", "Calls", "Total Time (s)", "Per Call (s)", "Cumulative Time (s)", "Cumulative Per Call (s)", "Location"]
+
+        rows = []
+        for func, (cc, nc, tt, ct, callers) in ordered:
+            filename, lineno, func_name = func
+
+            per_call_total = tt / nc if nc else 0.0
+            per_call_cum   = ct / nc if nc else 0.0
+
+            rows.append([func_name, str(nc), f"{tt:.6f}", f"{per_call_total:.6f}", f"{ct:.6f}", f"{per_call_cum:.6f}", f"{filename}:{lineno}"])
+
+        widths = [max([len(col_names[index])] + [len(row[index]) for row in rows]) for index in range(len(col_names))]
+
+        def fmt_row(cells):
+            return "| " + " | ".join(f"{cell:<{width}}" for cell, width in zip(cells, widths)) + " |"
+
+        def fmt_sep():
+            return "| " + " | ".join("-" * width for width in widths) + " |"
+
+        lines = [f"# Profiler Results\n", f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n", fmt_row(col_names), fmt_sep()]
+        lines.extend(fmt_row(row) for row in rows)
+
+        Path(output).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.info(f"Full profiler results saved to: {output}")
+
+        return output
 
     def close(self) -> None:
         elapsed = datetime.now() - self.start_time
