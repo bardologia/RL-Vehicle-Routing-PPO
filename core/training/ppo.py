@@ -2,8 +2,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch_geometric.data import Batch, HeteroData
-from model.policy_model import Policy
 from tqdm import tqdm
+
+from model.policy_model import Policy
 
 
 class ActionDistribution:

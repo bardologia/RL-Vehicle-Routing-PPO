@@ -1,15 +1,17 @@
-import torch.optim as optim
 import gc
+import os
+
 import torch
-from tools.logger import Logger
+import torch.optim as optim
+from tqdm import tqdm
+
 from tools.inspection import ModelSummary, TensorLogger
-from tools.tracker import Tracker
+from tools.logger import Logger
 from tools.telemetry import PPOTelemetry
+from tools.tracker import Tracker
 from core.shared import Environment, ActionMasker, vroom
 from .ppo import PPO, ActionDistribution
 from .schedulers import LRScheduler, EntropyScheduler, EpochEarlyStopping
-from tqdm import tqdm
-import os
 
 
 class Checkpoint:
@@ -34,8 +36,8 @@ class Checkpoint:
         self.logger.subsection("Optimizer state restored")
 
         trainer.global_step_counter = training_state["global_step_counter"]
-        trainer.episode_index = training_state["episode_index"]
-        trainer.ppo_update_index = training_state["ppo_update_index"]
+        trainer.episode_index       = training_state["episode_index"]
+        trainer.ppo_update_index    = training_state["ppo_update_index"]
         
         self.logger.subsection(f"Restored Global Step      : {trainer.global_step_counter}")
         self.logger.subsection(f"Restored Episode Index    : {trainer.episode_index}")

@@ -1,12 +1,13 @@
 import random
+
 import numpy as np
 
 from tools.auxiliary import generate_coords_batch
+from tools.logger import NullLogger
 from .graph import Graph
 from .mask import ActionMaskBuilder
 from .services import vroom
 from .state import EntityPool, Job, Route, RoutingState, Vehicle
-from tools.logger import NullLogger
 
 
 class ScenarioSampler:

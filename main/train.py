@@ -1,5 +1,8 @@
 import os
 import sys
+from datetime import datetime
+
+from torch.utils.tensorboard import SummaryWriter
 
 # Ensure project root is on sys.path before importing local packages
 proj_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
@@ -7,11 +10,8 @@ if proj_root not in sys.path:
     sys.path.insert(0, proj_root)
 
 from configuration import config
-
 from core.dataset import Dataset
 from core.training import Trainer
-from datetime import datetime
-from torch.utils.tensorboard import SummaryWriter
 
 # Resolve dataset directory: prefer configured path, fallback to project `data/` if it exists
 dataset_dir_candidate = config.io.dataset_dir

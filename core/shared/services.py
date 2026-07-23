@@ -1,6 +1,7 @@
-import requests
-import polyline as polyline_module
 from typing import List, Optional, Tuple
+
+import polyline as polyline_module
+import requests
 
 from configuration import config
 from tools.auxiliary import retry_api_call

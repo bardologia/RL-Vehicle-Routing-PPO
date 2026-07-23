@@ -1,6 +1,7 @@
-import torch
-from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Tuple
+
+import torch
 
 from core.shared import Environment, Graph, ActionMaskBuilder, RoutingState
 from model.policy_model import Action, Policy
@@ -80,11 +81,11 @@ class ModelInference:
         verbose     : bool = True
     ):
 
-        self.model = model
+        self.model       = model
         self.environment = environment
-        self.max_steps = max_steps
-        self.device = device
-        self.verbose = verbose
+        self.max_steps   = max_steps
+        self.device      = device
+        self.verbose     = verbose
         
         self.model.eval()
         self.model.to(self.device)
@@ -124,7 +125,7 @@ class ModelInference:
         result.initial_state = initial_state.copy()
         
         current_state = initial_state.copy()
-        step = 0
+        step          = 0
         
         initial_step = InferenceStep(
             step_number    = 0,
@@ -163,28 +164,28 @@ class ModelInference:
             reward_info = {**rewards, **costs}
             
             operator_names = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING", 3: "REOPTIMIZE"}
-            operator_name = operator_names.get(action.operator, f"UNKNOWN({action.operator})")
+            operator_name  = operator_names.get(action.operator, f"UNKNOWN({action.operator})")
             
             vehicle_id = self.environment.vehicles[action.vehicle_index].id
-            job_id = self.environment.jobs[action.job_index].id
+            job_id     = self.environment.jobs[action.job_index].id
             
 
             inference_step = InferenceStep(
-                step_number=step,
-                state=new_state.copy(),
-                action=action,
-                action_info={
-                    "operator": action.operator,
-                    "operator_name": operator_name,
-                    "vehicle_index": action.vehicle_index,
-                    "job_index": action.job_index,
-                    "vehicle_id": vehicle_id,
-                    "job_id": job_id,
+                step_number    = step,
+                state          = new_state.copy(),
+                action         = action,
+                action_info    = {
+                    "operator"      : action.operator,
+                    "operator_name" : operator_name,
+                    "vehicle_index" : action.vehicle_index,
+                    "job_index"     : action.job_index,
+                    "vehicle_id"    : vehicle_id,
+                    "job_id"        : job_id,
                 },
-                reward_info=reward_info,
-                cost=new_state.cost,
-                num_routes=new_state.num_routes,
-                num_unassigned=new_state.num_unassigned
+                reward_info    = reward_info,
+                cost           = new_state.cost,
+                num_routes     = new_state.num_routes,
+                num_unassigned = new_state.num_unassigned
             )
             result.steps.append(inference_step)
             

@@ -1,12 +1,14 @@
-import os
-import re
 import gc
 import glob
-import random
 import multiprocessing
-import torch
+import os
+import random
+import re
+
 import numpy as np
+import torch
 from tqdm import tqdm
+
 from tools.logger import NullLogger
 from .generation import generate_events_task
 
@@ -27,8 +29,8 @@ class Dataset:
             self._count_events()
             self.logger.info(f"Dataset: {len(self.chunk_paths)} chunks, {self._total_events} events")
 
-        self._current_chunk_idx = 0
-        self._current_item_idx = 0
+        self._current_chunk_idx   = 0
+        self._current_item_idx    = 0
         self._total_items_yielded = 0
     
     @property
@@ -46,14 +48,14 @@ class Dataset:
 
     def get_state(self):
         return {
-            "current_chunk_idx": self._current_chunk_idx,
-            "current_item_idx": self._current_item_idx,
-            "total_items_yielded": self._total_items_yielded,
+            "current_chunk_idx"   : self._current_chunk_idx,
+            "current_item_idx"    : self._current_item_idx,
+            "total_items_yielded" : self._total_items_yielded,
         }
     
     def set_state(self, state):
-        self._current_chunk_idx = state["current_chunk_idx"]
-        self._current_item_idx = state["current_item_idx"]
+        self._current_chunk_idx   = state["current_chunk_idx"]
+        self._current_item_idx    = state["current_item_idx"]
         self._total_items_yielded = state["total_items_yielded"]
         self.logger.info(f"Dataset: resuming from chunk {self._current_chunk_idx}, item {self._current_item_idx} (total yielded: {self._total_items_yielded})")
              
