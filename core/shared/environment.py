@@ -243,6 +243,14 @@ class Environment:
         self.current_state = event_state
         return event_state
 
+    def apply_random_event(self):
+        if random.random() >= self.config.env.step_event_probability:
+            return
+
+        event_type, num_items = self.generate_event()
+        if num_items > 0:
+            self.apply_event(self.current_state, event_type, num_items)
+
     def apply_action_to(self, state, action):
         operator      = action.operator
         vehicle_index = action.vehicle_index
