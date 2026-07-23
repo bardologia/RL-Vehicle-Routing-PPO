@@ -100,11 +100,6 @@ class Trainer:
         self.clear_memory()
         self.logger.subsection("Trainer initialized successfully")
 
-    def clear_memory(self):
-        gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-    
     def initialize(self):
         self.logger.section("[PPO Initialization]")
         lr_config      = self.config.lr
@@ -170,6 +165,11 @@ class Trainer:
         self.logger.subsection("PPO initialization complete \n")
         return ppo
     
+    def clear_memory(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+
     def state(self):
         state = {
             "global_step_counter"    : self.global_step_counter,
@@ -182,10 +182,6 @@ class Trainer:
 
         return state
     
-    def ppo_update(self):
-        self.logger.section("[PPO Update]")
-        self.ppo.update()
-        
     def run_episode(self, dataset_item):
         experiences = []
         max_steps = self.config.training.max_steps_per_episode
@@ -281,6 +277,10 @@ class Trainer:
         self.logger.subsection(f"Chunk complete: {episodes_processed} episodes processed")
         return episodes_processed
      
+    def ppo_update(self):
+        self.logger.section("[PPO Update]")
+        self.ppo.update()
+
     def train(self):
         self.ppo.train()
         self.logger.section("[Training Start]")

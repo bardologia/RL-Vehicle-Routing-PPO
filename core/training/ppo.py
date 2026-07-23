@@ -12,13 +12,6 @@ class ActionDistribution:
         self.large_negative_value = config.training.large_negative_value
         self.masker               = masker
 
-    @staticmethod
-    def categorical_kl(old_logits, new_logits):
-        old_log_probs     = torch.log_softmax(old_logits, dim=-1)
-        new_log_probs     = torch.log_softmax(new_logits, dim=-1)
-        old_probabilities = torch.softmax(old_logits, dim=-1)
-        return torch.sum(old_probabilities * (old_log_probs - new_log_probs), dim=-1)
-
     def masked_action_logits(self, vehicle_logits, job_logits, mask_info):
         vehicle_masked = vehicle_logits.clone()
         job_masked     = job_logits.clone()
@@ -60,6 +53,13 @@ class ActionDistribution:
             job_masked[3, :, 1:] = neg
 
         return vehicle_masked, job_masked
+
+    @staticmethod
+    def categorical_kl(old_logits, new_logits):
+        old_log_probs     = torch.log_softmax(old_logits, dim=-1)
+        new_log_probs     = torch.log_softmax(new_logits, dim=-1)
+        old_probabilities = torch.softmax(old_logits, dim=-1)
+        return torch.sum(old_probabilities * (old_log_probs - new_log_probs), dim=-1)
 
     @staticmethod
     def _entropy(logits):
@@ -396,26 +396,6 @@ class PPO(nn.Module):
 
         return entropy_dict, kl_dict
 
-    def backward(self, total_loss, batch_step=0):
-        self.optimizer.zero_grad()
-
-        if self.config.training.use_mixed_precision:
-            self.scaler.scale(total_loss).backward()
-            self.scaler.unscale_(self.optimizer)
-        else:
-            total_loss.backward()
-
-        self.telemetry.gradients(self._modules_dict, batch_step)
-
-        total_norm = nn.utils.clip_grad_norm_(self.parameters(), max_norm=self.config.ppo.gradient_clip_max_norm)
-        self.telemetry.grad_norm(total_norm.item(), batch_step)
-
-        if self.config.training.use_mixed_precision:
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-        else:
-            self.optimizer.step()
-
     def process_batch(self, batch_indices, batch_data):
         batch_graph = Batch.from_data_list([self.memory.graphs[idx] for idx in batch_indices])
         per_sample  = self.policy.forward_batch(batch_graph)
@@ -486,6 +466,26 @@ class PPO(nn.Module):
         mean_kl          = accumulated_kl / batch_size
 
         return mean_loss_tensor, mean_loss_value, mean_kl
+
+    def backward(self, total_loss, batch_step=0):
+        self.optimizer.zero_grad()
+
+        if self.config.training.use_mixed_precision:
+            self.scaler.scale(total_loss).backward()
+            self.scaler.unscale_(self.optimizer)
+        else:
+            total_loss.backward()
+
+        self.telemetry.gradients(self._modules_dict, batch_step)
+
+        total_norm = nn.utils.clip_grad_norm_(self.parameters(), max_norm=self.config.ppo.gradient_clip_max_norm)
+        self.telemetry.grad_norm(total_norm.item(), batch_step)
+
+        if self.config.training.use_mixed_precision:
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            self.optimizer.step()
 
     def update(self):
         self.policy.train()
