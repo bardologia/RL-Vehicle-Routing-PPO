@@ -10,6 +10,7 @@ class IOConfig:
     dataset_dir         : str = "datasets/chunked"
     checkpoint_filename : str = "graph_ppo_policy.pt"
     resume_from_run     : Optional[str] = None
+    init_from_run       : Optional[str] = None
 
     dataset_num_events  : int = 1024000
     dataset_chunk_size  : int = 1024

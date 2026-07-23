@@ -6,6 +6,7 @@ from configuration.environment import EnvironmentConfig
 from configuration.model       import ModelConfig
 from configuration.learning    import LearningRate, Entropy
 from configuration.ppo         import PPOConfig
+from configuration.pretraining import PretrainConfig
 from configuration.training    import TrainingConfig
 from configuration.reward      import RewardConfig
 from configuration.telemetry   import TelemetryConfig
@@ -24,6 +25,7 @@ class Config:
     training   : TrainingConfig    = field(default_factory=TrainingConfig)
     reward     : RewardConfig      = field(default_factory=RewardConfig)
     ppo        : PPOConfig         = field(default_factory=PPOConfig)
+    pretrain   : PretrainConfig    = field(default_factory=PretrainConfig)
     telemetry  : TelemetryConfig   = field(default_factory=TelemetryConfig)
     device     : DeviceConfig      = field(default_factory=DeviceConfig)
     monitor    : MonitorConfig     = field(default_factory=MonitorConfig)
@@ -40,6 +42,7 @@ __all__ = [
     "LearningRate",
     "Entropy",
     "PPOConfig",
+    "PretrainConfig",
     "TrainingConfig",
     "RewardConfig",
     "TelemetryConfig",

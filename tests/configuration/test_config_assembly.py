@@ -8,6 +8,7 @@ from configuration.learning    import Entropy, LearningRate
 from configuration.model       import ModelConfig
 from configuration.monitor     import MonitorConfig
 from configuration.ppo         import PPOConfig
+from configuration.pretraining import PretrainConfig
 from configuration.reward      import RewardConfig
 from configuration.service     import ServiceConfig
 from configuration.telemetry   import TelemetryConfig
@@ -26,6 +27,7 @@ def test_config_assembles_every_section_with_correct_type():
     assert isinstance(config.training, TrainingConfig)
     assert isinstance(config.reward, RewardConfig)
     assert isinstance(config.ppo, PPOConfig)
+    assert isinstance(config.pretrain, PretrainConfig)
     assert isinstance(config.telemetry, TelemetryConfig)
     assert isinstance(config.device, DeviceConfig)
     assert isinstance(config.monitor, MonitorConfig)

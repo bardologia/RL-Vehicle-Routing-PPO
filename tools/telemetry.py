@@ -137,6 +137,29 @@ class PPOTelemetry:
     def entropy_coefficient(self, value, step):
         self.tracker.log_scalar('batch/entropy_coefficient', value, step)
 
+    def pretrain_rollout(self, episode_reward, operator_counts, episode_index):
+        if not self.tracker.active or episode_index % self.gates.episode_every != 0:
+            return
+
+        self.tracker.log_scalar('pretrain/rollout_reward', episode_reward, episode_index)
+
+        total = sum(operator_counts.values())
+        if total == 0:
+            return
+
+        frequency = {f'op{operator}': count / total for operator, count in operator_counts.items()}
+        self.tracker.log_metrics('pretrain/operator_frequency', frequency, episode_index)
+
+    def pretrain_batch(self, loss_values, batch_step):
+        if not self.tracker.active or batch_step % self.gates.step_every != 0:
+            return
+
+        self.tracker.log_metrics('pretrain/loss', loss_values, batch_step)
+
+    def pretrain_epoch(self, mean_loss, accuracy, epoch_step):
+        self.tracker.log_scalar('pretrain/epoch_loss', mean_loss, epoch_step)
+        self.tracker.log_metrics('pretrain/accuracy', accuracy, epoch_step)
+
     def _prob_ratios(self, old_log_probs, new_log_probs):
         return {
             "operator" : torch.exp(new_log_probs["op"] - old_log_probs["op"]),

@@ -21,6 +21,14 @@ class Checkpoint:
         self.filename          = config.io.checkpoint_filename
         self.policy_checkpoint = PolicyCheckpoint()
 
+    def init_policy(self, ppo, directory):
+        self.logger.section("[Policy Initialization]")
+
+        checkpoint = self.policy_checkpoint.read(self.filename, directory, map_location=ppo.device)
+        self.policy_checkpoint.apply(ppo.policy, checkpoint)
+
+        self.logger.subsection(f"Policy weights loaded from {os.path.join(directory, self.filename)} \n")
+
     def load(self, ppo, trainer, dataset, directory=None):
         load_dir = directory or self.config.io.logdir
 
@@ -259,7 +267,13 @@ class Trainer:
         self.logger.subsection(f"KL Threshold     = {self.config.ppo.kl_divergence_threshold} \n")
 
         ppo.current_entropy_coef = entropy_config.entropy_start
-        
+
+        if io_config.init_from_run and self.resume:
+            raise ValueError("io.init_from_run and io.resume_from_run are mutually exclusive")
+
+        if io_config.init_from_run:
+            self.checkpoint.init_policy(ppo, os.path.join(io_config.runs_dir, io_config.init_from_run))
+
         if self.resume:
             self.checkpoint.load(ppo, self, self.dataset)
                
