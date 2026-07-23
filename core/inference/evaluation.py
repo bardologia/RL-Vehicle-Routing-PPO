@@ -57,6 +57,7 @@ class EpisodeEvaluator:
 
         for step_in_episode in range(self.max_steps):
             if step_in_episode > 0:
+                self.environment.advance_execution()
                 self.environment.apply_random_event()
 
             graph, mask_info = self.environment.observe()

@@ -16,8 +16,8 @@ def test_job_vroom_payload_keys_and_types():
     job     = Job(id=1, location=(-46.6, -23.5), amount=2, priority=3)
     payload = job.vroom_payload()
 
-    assert set(payload.keys()) == {"id", "location", "setup", "service", "amount", "priority", "description"}
-    assert payload["amount"] == [2]
+    assert set(payload.keys()) == {"id", "location", "setup", "service", "delivery", "priority", "description"}
+    assert payload["delivery"] == [2]
     assert payload["location"] == [-46.6, -23.5]
 
 
@@ -33,7 +33,7 @@ def test_vehicle_vroom_payload_wraps_capacity_and_amount():
     job     = Job(id=1, location=(-46.6, -23.5), amount=2)
     vehicle = Vehicle(id=2, start=(-46.7, -23.6), capacity=3)
 
-    assert job.vroom_payload()["amount"] == [2]
+    assert job.vroom_payload()["delivery"] == [2]
     assert vehicle.vroom_payload()["capacity"] == [3]
 
 
@@ -271,7 +271,7 @@ def test_payload_schema_tag_and_sorted_unassigned():
     state   = RoutingState(routes=[], unassigned_ids={5, 1, 3})
     payload = state.to_payload()
 
-    assert payload["schema"] == "routing-state-v1"
+    assert payload["schema"] == "routing-state-v2"
     assert payload["unassigned"] == [1, 3, 5]
 
 

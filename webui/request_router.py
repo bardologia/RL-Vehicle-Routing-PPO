@@ -110,7 +110,7 @@ class RequestRouter:
             return
 
         if path == "/api/scenario/solve":
-            result = self.lab.solve(body.get("jobs") or [], body.get("vehicles") or [], body.get("assignment"))
+            result = self.lab.solve(body.get("jobs") or [], body.get("vehicles") or [], body.get("assignment"), body.get("depot"))
             self._send_json(handler, result, 200 if "error" not in result else 400)
             return
 

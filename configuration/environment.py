@@ -7,6 +7,17 @@ class EnvironmentConfig:
     center: Tuple[float, float] = (-46.63, -23.55)
     radius: float = 25.0
 
+    depot_radius                     : float = 3.0
+    depot_service                    : int = 120
+    repossession_fraction            : float = 0.5
+    repossession_success_probability : float = 0.85
+    support_service_min              : int = 600
+    support_service_max              : int = 1800
+    repossession_service_min         : int = 300
+    repossession_service_max         : int = 900
+
+    tick_seconds: int = 900
+
     min_vehicles : int = 2
     min_jobs     : int = 4
 

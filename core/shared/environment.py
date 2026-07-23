@@ -14,20 +14,39 @@ class ScenarioSampler:
     def __init__(self, env_config):
         self.env_config = env_config
 
+    def sample_depot(self):
+        coords = generate_coords_batch(self.env_config.center, self.env_config.depot_radius, 1, 0, 1)
+        return (float(coords[0][0]), float(coords[0][1]))
+
     def sample_jobs(self, pool: EntityPool, count: int):
-        coords     = generate_coords_batch(self.env_config.center, self.env_config.radius, count, self.env_config.outlier_probability, self.env_config.outlier_multiplier)
+        env        = self.env_config
+        coords     = generate_coords_batch(env.center, env.radius, count, env.outlier_probability, env.outlier_multiplier)
         priorities = np.random.choice([1, 2, 3, 4, 5], size=count)
+        kinds      = np.random.random(count) < env.repossession_fraction
         first_id   = pool.next_id()
 
-        return [
-            Job(
-                id          = first_id + i,
-                location    = (float(coords[i][0]), float(coords[i][1])),
-                priority    = int(priorities[i]),
-                description = f"Job {first_id + i}",
+        jobs = []
+        for i in range(count):
+            repossession = bool(kinds[i])
+
+            if repossession:
+                service = np.random.randint(env.repossession_service_min, env.repossession_service_max + 1)
+            else:
+                service = np.random.randint(env.support_service_min, env.support_service_max + 1)
+
+            jobs.append(
+                Job(
+                    id          = first_id + i,
+                    location    = (float(coords[i][0]), float(coords[i][1])),
+                    kind        = "repossession" if repossession else "support",
+                    service     = int(service),
+                    amount      = 1 if repossession else 0,
+                    priority    = int(priorities[i]),
+                    description = f"Job {first_id + i}",
+                )
             )
-            for i in range(count)
-        ]
+
+        return jobs
 
     def sample_vehicles(self, pool: EntityPool, count: int):
         coords     = generate_coords_batch(self.env_config.center, self.env_config.radius, count, 0, self.env_config.outlier_multiplier)
@@ -55,14 +74,11 @@ class ActionHandler:
         route           = state.route_of_vehicle(vehicle_id)
         current_job_ids = route.job_ids if route is not None else []
 
-        vehicle = env.vehicles.by_id(vehicle_id)
-        if len(current_job_ids) >= vehicle.capacity:
-            raise ValueError(f"Job insertion beyond capacity for vehicle_id={vehicle_id}: load={len(current_job_ids)} capacity={vehicle.capacity}")
-
         candidate_ids  = current_job_ids + [job_id]
         candidate_jobs = [env.jobs.by_id(jid) for jid in candidate_ids if env.jobs.contains(jid)]
+        vehicle        = env.vehicles.by_id(vehicle_id)
 
-        new_route = self._solve_vehicle_route(candidate_jobs, vehicle)
+        new_route = self._solve_vehicle_route(env, candidate_jobs, vehicle)
         if new_route is None:
             self.logger.warning(f"Job insertion failed for vehicle_id={vehicle_id} job_id={job_id}")
             return state
@@ -76,18 +92,17 @@ class ActionHandler:
         if route is None or job_id not in route.job_ids:
             return state
 
-        remaining_ids = [jid for jid in route.job_ids if jid != job_id]
-        new_state     = state.copy()
+        remaining_ids  = [jid for jid in route.job_ids if jid != job_id]
+        remaining_jobs = [env.jobs.by_id(jid) for jid in remaining_ids if env.jobs.contains(jid)]
+        vehicle        = env.vehicles.by_id(vehicle_id)
+        new_state      = state.copy()
 
-        if not remaining_ids:
+        if not remaining_jobs and vehicle.onboard == 0:
             orphaned = new_state.remove_vehicles({vehicle_id})
             new_state.add_unassigned(orphaned)
             return new_state
 
-        remaining_jobs = [env.jobs.by_id(jid) for jid in remaining_ids if env.jobs.contains(jid)]
-        vehicle        = env.vehicles.by_id(vehicle_id)
-
-        new_route = self._solve_vehicle_route(remaining_jobs, vehicle)
+        new_route = self._solve_vehicle_route(env, remaining_jobs, vehicle)
         if new_route is None:
             self.logger.warning(f"Job removal failed for vehicle_id={vehicle_id} job_id={job_id}")
             return state
@@ -96,9 +111,13 @@ class ActionHandler:
         new_state.add_unassigned({job_id})
         return new_state
 
-    def _solve_vehicle_route(self, jobs, vehicle: Vehicle):
-        solution = vroom.solve(jobs, [vehicle])
+    def _solve_vehicle_route(self, env, jobs, vehicle: Vehicle):
+        solution = vroom.solve(jobs, [vehicle], depot=env.depot, clock=env.clock)
         if solution is None or not solution.routes:
+            return None
+
+        required = {job.id for job in jobs}
+        if required & solution.unassigned_ids:
             return None
 
         return solution.routes[0]
@@ -146,6 +165,78 @@ class EventHandler:
         return new_state
 
 
+class ExecutionAdvancer:
+    def __init__(self, logger):
+        self.logger = logger
+
+    def _complete_stop(self, env, vehicle, stop, planned_delivered, summary):
+        if stop.kind == "delivery":
+            dropped = min(planned_delivered, vehicle.onboard)
+            summary["dropped"] += dropped
+            vehicle.onboard    -= dropped
+            return
+
+        if stop.kind == "pickup":
+            if random.random() < env.config.env.repossession_success_probability:
+                vehicle.onboard += 1
+                summary["served"].append(stop.job_id)
+            else:
+                summary["failed"].append(stop.job_id)
+        else:
+            summary["served"].append(stop.job_id)
+
+        if env.jobs.contains(stop.job_id):
+            env.jobs.remove({stop.job_id})
+
+    def advance(self, env, state: RoutingState, tick_seconds: int):
+        horizon = env.clock + tick_seconds
+        summary = {"served": [], "failed": [], "dropped": 0}
+
+        remaining_by_vehicle = {}
+        for route in state.routes:
+            if not env.vehicles.contains(route.vehicle_id):
+                continue
+
+            vehicle   = env.vehicles.by_id(route.vehicle_id)
+            completed = [stop for stop in route.stops if stop.completion <= horizon]
+
+            planned_prev = vehicle.onboard
+            for stop in completed:
+                self._complete_stop(env, vehicle, stop, max(planned_prev - stop.load, 0), summary)
+                planned_prev = stop.load
+
+            if completed:
+                vehicle.start = completed[-1].location
+
+            remaining_by_vehicle[vehicle.id] = [job_id for job_id in route.job_ids if env.jobs.contains(job_id)]
+
+        env.clock = horizon
+
+        new_state = RoutingState(routes=[], unassigned_ids=set(state.unassigned_ids))
+        for vehicle in env.vehicles:
+            remaining_ids = remaining_by_vehicle.get(vehicle.id, [])
+            if not remaining_ids and vehicle.onboard == 0:
+                continue
+
+            if env.clock >= vehicle.time_window[1]:
+                new_state.add_unassigned(set(remaining_ids))
+                continue
+
+            remaining_jobs = [env.jobs.by_id(job_id) for job_id in remaining_ids]
+            solution       = vroom.solve(remaining_jobs, [vehicle], depot=env.depot, clock=env.clock)
+
+            if solution is None:
+                self.logger.warning(f"Execution re-solve failed for vehicle {vehicle.id}")
+                new_state.add_unassigned(set(remaining_ids))
+                continue
+
+            if solution.routes:
+                new_state.routes.append(solution.routes[0])
+            new_state.add_unassigned(solution.unassigned_ids)
+
+        return new_state, summary
+
+
 class Environment:
     def __init__(self, config, logger=None):
         self.config   = config
@@ -153,14 +244,18 @@ class Environment:
         self.jobs     = EntityPool()
         self.vehicles = EntityPool()
 
+        self.depot = None
+        self.clock = None
+
         self.current_state: RoutingState = None
         self.initial_state: RoutingState = None
 
-        self.graph          = Graph(config)
-        self.mask_builder   = ActionMaskBuilder()
-        self.sampler        = ScenarioSampler(config.env)
-        self.event_handler  = EventHandler(self.sampler)
-        self.action_handler = ActionHandler(self.logger)
+        self.graph              = Graph(config)
+        self.mask_builder       = ActionMaskBuilder()
+        self.sampler            = ScenarioSampler(config.env)
+        self.event_handler      = EventHandler(self.sampler)
+        self.action_handler     = ActionHandler(self.logger)
+        self.execution_advancer = ExecutionAdvancer(self.logger)
 
         self.reset()
 
@@ -173,8 +268,10 @@ class Environment:
 
             self.jobs     = EntityPool(self.sampler.sample_jobs(EntityPool(), n_jobs))
             self.vehicles = EntityPool(self.sampler.sample_vehicles(EntityPool(), n_vehicles))
+            self.depot    = self.sampler.sample_depot()
+            self.clock    = min(vehicle.time_window[0] for vehicle in self.vehicles)
 
-            solution = vroom.solve(list(self.jobs), list(self.vehicles))
+            solution = vroom.solve(list(self.jobs), list(self.vehicles), depot=self.depot, clock=self.clock)
             if solution is not None:
                 self.current_state = solution
                 self.initial_state = solution.copy()
@@ -185,10 +282,12 @@ class Environment:
     def load_from_dataset(self, item):
         self.jobs          = EntityPool([Job.from_dict(job) for job in item["jobs"]])
         self.vehicles      = EntityPool([Vehicle.from_dict(vehicle) for vehicle in item["vehicles"]])
+        self.depot         = (float(item["depot"][0]), float(item["depot"][1]))
+        self.clock         = int(item["clock"])
         self.current_state = RoutingState.from_payload(item["state"])
 
     def graph_for(self, state):
-        return self.graph.build(self.jobs, self.vehicles, state)
+        return self.graph.build(self.jobs, self.vehicles, state, self.depot, self.clock)
 
     def mask_info_for(self, state):
         return self.mask_builder.build(self.jobs, self.vehicles, state)
@@ -243,14 +342,22 @@ class Environment:
         if num_items > 0:
             self.apply_event(self.current_state, event_type, num_items)
 
-    def apply_action_to(self, state, action):
-        operator      = action.operator
-        vehicle_index = action.vehicle_index
-        job_index     = action.job_index
+    def advance_execution(self):
+        tick = self.config.env.tick_seconds
+        if tick <= 0:
+            return {"served": [], "failed": [], "dropped": 0}
 
-        old_state  = state.copy()
-        vehicle_id = self.vehicles[vehicle_index].id
-        job_id     = self.jobs[job_index].id
+        new_state, summary = self.execution_advancer.advance(self, self.current_state, tick)
+        self.current_state = new_state
+        return summary
+
+    def apply_action_to(self, state, action):
+        operator  = action.operator
+        old_state = state.copy()
+
+        if operator in (0, 1):
+            vehicle_id = self.vehicles[action.vehicle_index].id
+            job_id     = self.jobs[action.job_index].id
 
         if operator == 0:
             new_state = self.action_handler.apply_job_insertion(self, old_state, vehicle_id, job_id)

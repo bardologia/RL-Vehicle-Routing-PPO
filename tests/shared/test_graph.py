@@ -13,15 +13,15 @@ def build_graph(cpu_config, num_jobs=4, num_vehicles=2, stops=2, unassigned=2):
         unassigned_ids = {job.id for job in jobs[stops:stops + unassigned]},
     )
 
-    data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
+    data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
     return data, jobs, vehicles, state
 
 
 def test_node_feature_shapes(cpu_config):
     data, jobs, vehicles, _ = build_graph(cpu_config)
 
-    assert data["job"].x.shape == (len(jobs), 7)
-    assert data["vehicle"].x.shape == (len(vehicles), 7)
+    assert data["job"].x.shape == (len(jobs), 9)
+    assert data["vehicle"].x.shape == (len(vehicles), 9)
 
 
 def test_all_model_relations_exist(cpu_config):
@@ -81,8 +81,9 @@ def test_vehicle_capacity_and_load_features(cpu_config):
     loaded   = state.routes[0]
 
     assert features[0, 5].item() == pytest.approx(vehicles[0].capacity / 10.0)
-    assert features[0, 6].item() == pytest.approx(len(loaded.stops) / vehicles[0].capacity)
-    assert features[1, 6].item() == 0.0
+    assert features[0, 6].item() == pytest.approx(vehicles[0].onboard / vehicles[0].capacity)
+    assert features[0, 7].item() == pytest.approx(len(loaded.job_ids) / vehicles[0].capacity)
+    assert features[1, 7].item() == 0.0
 
 
 def test_graph_is_fully_on_cpu(cpu_config):
@@ -100,7 +101,7 @@ def test_zero_route_state_produces_edge_complete_graph(cpu_config):
     vehicles = make_vehicles(2)
     state    = RoutingState(routes=[], unassigned_ids={job.id for job in jobs})
 
-    data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
+    data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
 
     for relation in RelationCompleter.required_relations:
         assert relation in data.edge_types
@@ -114,10 +115,10 @@ def test_single_job_single_vehicle_graph(cpu_config):
     vehicles = make_vehicles(1)
     state    = RoutingState(routes=[], unassigned_ids={jobs[0].id})
 
-    data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
+    data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
 
-    assert data["job"].x.shape == (1, 7)
-    assert data["vehicle"].x.shape == (1, 7)
+    assert data["job"].x.shape == (1, 9)
+    assert data["vehicle"].x.shape == (1, 9)
     assert data[("job", "job_vehicle_proximity", "vehicle")].edge_index.shape[1] == 1
 
 
@@ -157,8 +158,8 @@ def test_relation_completer_fills_absent_relations_with_empty_tensors(cpu_config
     from torch_geometric.data import HeteroData
 
     data      = HeteroData()
-    data["job"].x     = torch.zeros((2, 7))
-    data["vehicle"].x = torch.zeros((1, 7))
+    data["job"].x     = torch.zeros((2, 9))
+    data["vehicle"].x = torch.zeros((1, 9))
 
     completed = RelationCompleter(cpu_config).build(data)
 

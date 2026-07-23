@@ -143,12 +143,11 @@ class EpisodeRunner:
         self.environment.load_from_dataset(dataset_item)
         for step_in_episode in range(self.max_steps):
 
-            if step_in_episode == 0:
-                graph     = dataset_item["graph"]
-                mask_info = dataset_item["mask_info"]
-            else:
+            if step_in_episode > 0:
+                self.environment.advance_execution()
                 self.environment.apply_random_event()
-                graph, mask_info = self.environment.observe()
+
+            graph, mask_info = self.environment.observe()
 
             graph, ppo_output = self.select_action(graph, mask_info)
 

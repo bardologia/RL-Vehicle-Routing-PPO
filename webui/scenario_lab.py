@@ -72,10 +72,12 @@ class ScenarioLab:
         sampler  = ScenarioSampler(config.env)
         jobs     = sampler.sample_jobs(EntityPool(), num_jobs)
         vehicles = sampler.sample_vehicles(EntityPool(), num_vehicles)
+        depot    = sampler.sample_depot()
 
         return {
             "jobs"     : [job.to_dict() for job in jobs],
             "vehicles" : [vehicle.to_dict() for vehicle in vehicles],
+            "depot"    : list(depot),
         }
 
     def _decode_path(self, route):
@@ -111,7 +113,7 @@ class ScenarioLab:
             "num_unassigned" : state.num_unassigned,
         }
 
-    def _assigned_state(self, jobs_pool, vehicles_pool, assignment):
+    def _assigned_state(self, jobs_pool, vehicles_pool, assignment, depot, clock):
         from core.shared.services import vroom
         from core.shared.state import RoutingState
 
@@ -135,13 +137,12 @@ class ScenarioLab:
             if duplicated:
                 return None, f"assignment repeats jobs {sorted(duplicated)}"
 
-            vehicle = vehicles_pool.by_id(vehicle_id)
-            if len(job_ids) > vehicle.capacity:
-                return None, f"assignment puts {len(job_ids)} jobs on vehicle {vehicle_id} with capacity {vehicle.capacity}"
-
-            solution = vroom.solve([jobs_pool.by_id(job_id) for job_id in job_ids], [vehicle])
+            vehicle  = vehicles_pool.by_id(vehicle_id)
+            solution = vroom.solve([jobs_pool.by_id(job_id) for job_id in job_ids], [vehicle], depot=depot, clock=clock)
             if solution is None or not solution.routes:
                 return None, f"VROOM returned no route for vehicle {vehicle_id}"
+            if solution.unassigned_ids:
+                return None, f"vehicle {vehicle_id} cannot fit jobs {sorted(solution.unassigned_ids)} before shift end"
 
             routes.append(solution.routes[0])
             assigned_ids.update(job_ids)
@@ -149,13 +150,16 @@ class ScenarioLab:
         unassigned = {job.id for job in jobs_pool} - assigned_ids
         return RoutingState(routes=routes, unassigned_ids=unassigned), None
 
-    def _initial_state(self, jobs_pool, vehicles_pool, assignment):
+    def _initial_state(self, jobs_pool, vehicles_pool, assignment, depot, clock):
         from core.shared.services import vroom
 
-        if assignment:
-            return self._assigned_state(jobs_pool, vehicles_pool, assignment)
+        if depot is None:
+            return None, "scenario needs a depot"
 
-        state = vroom.solve(list(jobs_pool), list(vehicles_pool))
+        if assignment:
+            return self._assigned_state(jobs_pool, vehicles_pool, assignment, depot, clock)
+
+        state = vroom.solve(list(jobs_pool), list(vehicles_pool), depot=depot, clock=clock)
         if state is None:
             return None, "VROOM returned no solution for this scenario"
 
@@ -164,7 +168,7 @@ class ScenarioLab:
     def list_templates(self):
         return self.templates.catalog()
 
-    def solve(self, jobs, vehicles, assignment=None):
+    def solve(self, jobs, vehicles, assignment=None, depot=None):
         with self.lock:
             self._ensure_env()
 
@@ -173,7 +177,10 @@ class ScenarioLab:
             jobs_pool     = EntityPool([Job.from_dict(job) for job in jobs])
             vehicles_pool = EntityPool([Vehicle.from_dict(vehicle) for vehicle in vehicles])
 
-            state, error = self._initial_state(jobs_pool, vehicles_pool, assignment)
+            depot = tuple(depot) if depot else None
+            clock = min((vehicle.time_window[0] for vehicle in vehicles_pool), default=28800)
+
+            state, error = self._initial_state(jobs_pool, vehicles_pool, assignment, depot, clock)
             if error:
                 return {"error": error}
 
@@ -242,10 +249,12 @@ class ScenarioLab:
 
         return entry
 
-    def _render_step(self, index, env, action, rewards, costs, events, cumulative_reward):
+    def _render_step(self, index, env, action, rewards, costs, events, executed, cumulative_reward):
         step = {
             "index"             : index,
+            "clock"             : env.clock,
             "events"            : events,
+            "executed"          : executed,
             "action"            : action,
             "rewards"           : rewards,
             "costs"             : costs,
@@ -260,6 +269,7 @@ class ScenarioLab:
     def run(self, payload):
         jobs              = payload.get("jobs") or []
         vehicles          = payload.get("vehicles") or []
+        depot             = payload.get("depot")
         assignment        = payload.get("assignment")
         agent_name        = payload.get("agent", "model")
         run_name          = payload.get("run_name")
@@ -270,6 +280,8 @@ class ScenarioLab:
 
         if not jobs or not vehicles:
             return {"error": "scenario needs at least one job and one vehicle"}
+        if not depot:
+            return {"error": "scenario needs a depot"}
         if agent_name not in self.AGENTS:
             return {"error": f"unknown agent '{agent_name}'"}
         if not 1 <= max_steps <= 50:
@@ -282,6 +294,7 @@ class ScenarioLab:
 
             import numpy as np
             import torch
+            from configuration import config as live_config
             from core.shared.state import EntityPool, Job, Vehicle
 
             random.seed(seed)
@@ -290,8 +303,10 @@ class ScenarioLab:
 
             env.jobs     = EntityPool([Job.from_dict(job) for job in jobs])
             env.vehicles = EntityPool([Vehicle.from_dict(vehicle) for vehicle in vehicles])
+            env.depot    = (float(depot[0]), float(depot[1]))
+            env.clock    = min((vehicle.time_window[0] for vehicle in env.vehicles), default=28800)
 
-            solution, error = self._initial_state(env.jobs, env.vehicles, assignment)
+            solution, error = self._initial_state(env.jobs, env.vehicles, assignment, env.depot, env.clock)
             if error:
                 return {"error": error}
 
@@ -300,12 +315,13 @@ class ScenarioLab:
 
             agent = self._build_agent(agent_name, run_name, greedy)
 
-            steps             = [self._render_step(0, env, None, None, None, [], 0.0)]
+            steps             = [self._render_step(0, env, None, None, None, [], None, 0.0)]
             cumulative_reward = 0.0
             stopped_reason    = "max_steps_reached"
 
             for index in range(1, max_steps + 1):
-                events = self._apply_events(env, event_probability) if index > 1 else []
+                executed = env.advance_execution() if index > 1 else None
+                events   = self._apply_events(env, event_probability) if index > 1 else []
 
                 graph, mask_info = env.observe()
                 action           = agent.act(env, graph, mask_info, max_steps - index + 1)
@@ -317,9 +333,9 @@ class ScenarioLab:
                 cumulative_reward += sum(rewards.values())
 
                 rendered = self._render_action(env, action)
-                steps.append(self._render_step(index, env, rendered, rewards, costs, events, cumulative_reward))
+                steps.append(self._render_step(index, env, rendered, rewards, costs, events, executed, cumulative_reward))
 
-                if action.operator == 2 and event_probability <= 0:
+                if action.operator == 2 and event_probability <= 0 and live_config.env.tick_seconds <= 0:
                     stopped_reason = "agent_do_nothing"
                     break
 
