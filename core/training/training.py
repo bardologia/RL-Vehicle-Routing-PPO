@@ -9,7 +9,7 @@ from tools.inspection import ModelSummary, TensorLogger
 from tools.resource_monitor import ResourceMonitor
 from tools.telemetry import PPOTelemetry
 from core.shared import Environment, ActionMasker, vroom
-from model.policy_model import PolicyCheckpoint
+from model.policy_model import Policy, PolicyCheckpoint
 from .ppo import PPO, ActionDistribution
 from .schedulers import LRScheduler, EntropyScheduler, EpochEarlyStopping
 
@@ -55,6 +55,13 @@ class Checkpoint:
         ppo.lr_scheduler.set_step(training_state["lr_scheduler_step"])
         ppo.entropy_scheduler.set_step(training_state["entropy_scheduler_step"])
         ppo.current_entropy_coef = ppo.entropy_scheduler.get_coef()
+
+        anchor_state = training_state.get("anchor")
+        if anchor_state is not None:
+            trainer.attach_anchor(ppo, anchor_state["reference_state_dict"])
+            ppo.anchor_scheduler.set_step(anchor_state["anchor_scheduler_step"])
+            ppo.current_anchor_coef = ppo.anchor_scheduler.get_coef()
+            self.logger.subsection(f"Anchor restored at scheduler step {anchor_state['anchor_scheduler_step']}")
 
         self.logger.subsection(f"LR Scheduler Step           : {training_state['lr_scheduler_step']}")
         self.logger.subsection(f"Entropy Scheduler Step      : {training_state['entropy_scheduler_step']}")
@@ -273,13 +280,30 @@ class Trainer:
 
         if io_config.init_from_run:
             self.checkpoint.init_policy(ppo, os.path.join(io_config.runs_dir, io_config.init_from_run))
+            if self.config.ppo.anchor_kl_start > 0:
+                self.attach_anchor(ppo, ppo.policy.state_dict())
 
         if self.resume:
             self.checkpoint.load(ppo, self, self.dataset)
                
         self.logger.subsection("PPO initialization complete \n")
         return ppo
-    
+
+    def attach_anchor(self, ppo, reference_state_dict):
+        ppo_config = self.config.ppo
+
+        reference = Policy(self.config).to(ppo.device)
+        reference.load_state_dict(reference_state_dict)
+        reference.eval()
+        for parameter in reference.parameters():
+            parameter.requires_grad_(False)
+
+        ppo.reference_policy    = reference
+        ppo.anchor_scheduler    = EntropyScheduler(start_coef=ppo_config.anchor_kl_start, end_coef=ppo_config.anchor_kl_end, anneal_steps=ppo_config.anchor_anneal_steps, warmup_steps=0)
+        ppo.current_anchor_coef = ppo_config.anchor_kl_start
+
+        self.logger.subsection(f"Anchor KL enabled: {ppo_config.anchor_kl_start} -> {ppo_config.anchor_kl_end} over {ppo_config.anchor_anneal_steps} steps")
+
     def clear_memory(self):
         gc.collect()
         torch.cuda.empty_cache()
@@ -294,6 +318,12 @@ class Trainer:
             "lr_scheduler_step"      : self.ppo.lr_scheduler.current_step,
             "entropy_scheduler_step" : self.ppo.entropy_scheduler.current_step,
         }
+
+        if self.ppo.reference_policy is not None:
+            state["anchor"] = {
+                "reference_state_dict"  : self.ppo.reference_policy.state_dict(),
+                "anchor_scheduler_step" : self.ppo.anchor_scheduler.current_step,
+            }
 
         return state
     

@@ -11,3 +11,7 @@ class PPOConfig:
     value_loss_coef         : float = 0.5
     gradient_clip_max_norm  : float = 3.0
     kl_divergence_threshold : float = 0.015
+
+    anchor_kl_start     : float = 0.5
+    anchor_kl_end       : float = 0.0
+    anchor_anneal_steps : int = 20000
