@@ -1,6 +1,6 @@
 import torch
 
-from core.shared import Graph, RelationCompleter, EntityPool, RoutingState
+from core.shared import EntityPool, Graph, RelationCompleter, RoutingState
 from tests.conftest import make_jobs, make_route, make_vehicles
 
 
@@ -88,6 +88,18 @@ def test_zero_route_state_produces_edge_complete_graph(cpu_config):
     assert data[("job", "job_vehicle_proximity", "vehicle")].edge_index.shape[1] == len(jobs) * len(vehicles)
 
 
+def test_single_job_single_vehicle_graph(cpu_config):
+    jobs     = make_jobs(1)
+    vehicles = make_vehicles(1)
+    state    = RoutingState(routes=[], unassigned_ids={jobs[0].id})
+
+    data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
+
+    assert data["job"].x.shape == (1, 7)
+    assert data["vehicle"].x.shape == (1, 5)
+    assert data[("job", "job_vehicle_proximity", "vehicle")].edge_index.shape[1] == 1
+
+
 def test_edge_attributes_are_finite_and_flagged(cpu_config):
     data, _, _, _ = build_graph(cpu_config)
 
@@ -98,3 +110,37 @@ def test_edge_attributes_are_finite_and_flagged(cpu_config):
         assert torch.isfinite(attrs).all()
         assert ((attrs[:, 2] == 0.0) | (attrs[:, 2] == 1.0)).all()
         assert ((attrs[:, 3] == 0.0) | (attrs[:, 3] == 1.0)).all()
+
+
+def test_assigned_proximity_edge_flags_owner_vehicle(cpu_config):
+    data, _, _, _ = build_graph(cpu_config, num_jobs=3, num_vehicles=2, stops=2, unassigned=1)
+
+    proximity   = data[("job", "job_vehicle_proximity", "vehicle")]
+    assigned    = proximity.edge_attr[:, 3]
+
+    assert assigned.sum().item() == 2.0
+
+
+def test_mappings_expose_nodes_and_edge_type_ids(cpu_config):
+    graph_builder = Graph(cpu_config)
+    data          = build_graph(cpu_config)[0]
+
+    mappings = data.mappings
+
+    assert set(mappings.keys()) == {"index_to_node", "edge_type_ids"}
+    assert mappings["edge_type_ids"] == graph_builder.edge_names
+    assert all("node_type" in node for node in mappings["index_to_node"])
+
+
+def test_relation_completer_fills_absent_relations_with_empty_tensors(cpu_config):
+    from torch_geometric.data import HeteroData
+
+    data      = HeteroData()
+    data["job"].x     = torch.zeros((2, 7))
+    data["vehicle"].x = torch.zeros((1, 5))
+
+    completed = RelationCompleter(cpu_config).build(data)
+
+    for relation in RelationCompleter.required_relations:
+        assert completed[relation].edge_index.shape == (2, 0)
+        assert completed[relation].edge_attr.shape == (0, 4)

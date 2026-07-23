@@ -32,6 +32,25 @@ def test_categorical_kl_is_positive_for_different_logits():
     assert kl.item() > 0.0
 
 
+def test_entropy_is_maximal_for_uniform_logits():
+    uniform = ActionDistribution._entropy(torch.zeros(4))
+    peaked  = ActionDistribution._entropy(torch.tensor([10.0, 0.0, 0.0, 0.0]))
+
+    assert uniform.item() > peaked.item()
+
+
+def test_masked_action_logits_none_info_returns_clones(cpu_config):
+    _, distribution = build_distribution(cpu_config)
+
+    vehicle_logits = torch.randn(4, 6)
+    job_logits     = torch.randn(4, 6, 20)
+
+    vehicle_masked, job_masked = distribution.masked_action_logits(vehicle_logits, job_logits, None)
+
+    assert torch.equal(vehicle_masked, vehicle_logits)
+    assert torch.equal(job_masked, job_logits)
+
+
 def test_masked_action_logits_matches_per_row_masking(cpu_config, seeded):
     masker, distribution = build_distribution(cpu_config)
     O, V, J              = 4, 6, 20
@@ -63,6 +82,18 @@ def test_compute_returns_zero_kl_for_unchanged_policy(cpu_config, seeded):
     assert entropy["total_entropy"].item() > 0.0
 
 
+def test_compute_mean_kl_is_total_over_three(cpu_config, seeded):
+    _, distribution = build_distribution(cpu_config)
+
+    operator_logits = torch.randn(4)
+    vehicle_logits  = torch.randn(4, 6)
+    job_logits      = torch.randn(4, 6, 20)
+
+    _, kl = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits + torch.randn(4), vehicle_logits + torch.randn(4, 6), job_logits + torch.randn(4, 6, 20), MASK_INFO)
+
+    assert kl["mean_kl"] == kl["total_kl"] / 3
+
+
 def test_compute_kl_grows_with_policy_change(cpu_config, seeded):
     masker, distribution = build_distribution(cpu_config)
 
@@ -84,7 +115,7 @@ def test_compute_entropy_ignores_masked_entries(cpu_config):
     vehicle_logits  = torch.zeros(4, 6)
     job_logits      = torch.zeros(4, 6, 20)
 
-    entropy, _ = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits, vehicle_logits, job_logits, None)
+    entropy, _        = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits, vehicle_logits, job_logits, None)
     entropy_masked, _ = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits, vehicle_logits, job_logits, MASK_INFO)
 
     assert entropy_masked["total_entropy"].item() < entropy["total_entropy"].item()
