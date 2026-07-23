@@ -326,7 +326,7 @@ class ScenarioLab:
                 graph, mask_info = env.observe()
                 action           = agent.act(env, graph, mask_info, max_steps - index + 1)
 
-                old_state, new_state = env.apply_action(action)
+                old_state, new_state = env.apply_action_to(env.current_state, action)
                 rewards, costs       = env.step(old_state, new_state, action.operator)
 
                 env.current_state  = new_state

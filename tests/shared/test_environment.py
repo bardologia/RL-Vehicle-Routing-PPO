@@ -164,7 +164,7 @@ def test_insertion_action_assigns_unassigned_job(environment, fake_vroom):
     new_job_id = jobs[1].id
     action     = Action(operator=0, vehicle_index=0, job_index=environment.jobs.index_of(new_job_id))
 
-    old_state, new_state = environment.apply_action(action)
+    old_state, new_state = environment.apply_action_to(environment.current_state, action)
 
     assert new_job_id in new_state.assigned_job_ids
     assert new_job_id not in new_state.unassigned_ids
@@ -178,7 +178,7 @@ def test_insertion_beyond_capacity_adds_depot_drop(environment, fake_vroom):
 
     action = Action(operator=0, vehicle_index=0, job_index=environment.jobs.index_of(jobs[2].id))
 
-    _, new_state = environment.apply_action(action)
+    _, new_state = environment.apply_action_to(environment.current_state, action)
     route        = new_state.route_of_vehicle(vehicles[0].id)
 
     assert jobs[2].id in new_state.assigned_job_ids
@@ -195,7 +195,7 @@ def test_removal_action_moves_job_to_unassigned(environment):
         job_index     = environment.jobs.index_of(job_id),
     )
 
-    _, new_state = environment.apply_action(action)
+    _, new_state = environment.apply_action_to(environment.current_state, action)
 
     assert job_id in new_state.unassigned_ids
     assert new_state.route_of_job(job_id) is None
@@ -213,7 +213,7 @@ def test_removal_action_no_op_when_job_not_in_route(environment):
         job_index     = environment.jobs.index_of(outside_id),
     )
 
-    old_state, new_state = environment.apply_action(action)
+    old_state, new_state = environment.apply_action_to(environment.current_state, action)
 
     assert new_state is old_state
     assert outside_id in new_state.unassigned_ids
@@ -222,7 +222,7 @@ def test_removal_action_no_op_when_job_not_in_route(environment):
 def test_do_nothing_action_returns_same_state(environment):
     action = Action(operator=2, vehicle_index=0, job_index=0)
 
-    old_state, new_state = environment.apply_action(action)
+    old_state, new_state = environment.apply_action_to(environment.current_state, action)
 
     assert new_state is old_state
 
@@ -230,7 +230,7 @@ def test_do_nothing_action_returns_same_state(environment):
 def test_apply_action_rejects_unknown_operator(environment):
     for operator in (3, 9):
         with pytest.raises(ValueError):
-            environment.apply_action(Action(operator=operator, vehicle_index=0, job_index=0))
+            environment.apply_action_to(environment.current_state, Action(operator=operator, vehicle_index=0, job_index=0))
 
 
 def test_evaluate_cost_matches_reward_config(environment):
