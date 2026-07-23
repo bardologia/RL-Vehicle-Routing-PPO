@@ -202,7 +202,7 @@ class Graph:
                 [
                     (node["longitude"] - lon_mean) / lon_std,
                     (node["latitude"] - lat_mean) / lat_std,
-                    float(metadata["priority"]) / 100.0,
+                    float(metadata["priority"]) / 5.0,
                     float(metadata["service"]) / 3600.0,
                     float(metadata["setup"]) / 3600.0,
                     float(metadata["is_unassigned"]),
