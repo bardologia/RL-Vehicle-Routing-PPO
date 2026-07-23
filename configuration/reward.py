@@ -11,5 +11,4 @@ class RewardConfig:
     add_job_cost    : float = 0.1
     remove_job_cost : float = 0.1
     no_action_cost  : float = 0.0
-    reoptimize_cost : float = 0.5
     disruption_cost : float = 0.3

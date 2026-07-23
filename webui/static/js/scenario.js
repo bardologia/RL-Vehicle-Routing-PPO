@@ -458,7 +458,7 @@ class ScenarioView {
         <div class="editor-grid">
           <label class="field"><span class="field__label"><span>Agent</span></span>
             <select id="scn-agent">
-              ${["model", "teacher", "insertion_only", "always_reoptimize", "do_nothing"].map((a) => `<option value="${a}" ${a === o.agent ? "selected" : ""}>${a}</option>`).join("")}
+              ${["model", "teacher", "insertion_only", "do_nothing"].map((a) => `<option value="${a}" ${a === o.agent ? "selected" : ""}>${a}</option>`).join("")}
             </select></label>
           <label class="field" id="scn-ckpt-wrap" style="${o.agent === "model" ? "" : "display:none"}"><span class="field__label"><span>Checkpoint</span></span>
             <select id="scn-ckpt">${ckptOptions || `<option value="">no checkpoints</option>`}</select></label>
@@ -596,7 +596,7 @@ class ScenarioView {
     }
 
     const a = step.action;
-    const cls = { INSERT: "", REMOVE: "is-remove", DO_NOTHING: "is-noop", REOPTIMIZE: "is-reopt" }[a.operator_name] || "";
+    const cls = { INSERT: "", REMOVE: "is-remove", DO_NOTHING: "is-noop" }[a.operator_name] || "";
     let text = a.operator_name;
     if (a.operator_name === "INSERT") text = `INSERT job ${a.job_id} → vehicle ${a.vehicle_id}`;
     if (a.operator_name === "REMOVE") text = `REMOVE job ${a.job_id} from vehicle ${a.vehicle_id}`;

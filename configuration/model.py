@@ -7,7 +7,7 @@ class ModelConfig:
     vehicle_input_dim : int = 7
     edge_attr_dim     : int = 4
 
-    num_operators          : int = 4
+    num_operators          : int = 3
     operator_embedding_dim : int = 32
 
     gnn_num_layers : int = 2

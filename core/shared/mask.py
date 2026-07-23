@@ -73,7 +73,7 @@ class ActionMasker:
             invalid_vehicle_mask[vehicles_with_jobs_indices] = False
             masked_vehicle_logits[invalid_vehicle_mask] = self.large_negative_value
 
-        elif selected_operator_index in [2, 3]:
+        elif selected_operator_index == 2:
             if masked_vehicle_logits.numel() > 1:
                 masked_vehicle_logits[1:] = self.large_negative_value
 
@@ -102,7 +102,7 @@ class ActionMasker:
                 invalid_job_mask[valid_jobs_for_vehicle] = False
                 masked_job_logits[invalid_job_mask] = self.large_negative_value
 
-        elif selected_operator_index in [2, 3]:
+        elif selected_operator_index == 2:
             if masked_job_logits.numel() > 1:
                 masked_job_logits[1:] = self.large_negative_value
 

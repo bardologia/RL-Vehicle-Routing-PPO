@@ -11,10 +11,10 @@ from tools.logger import NullLogger
 
 
 def test_fixed_operator_agent_emits_constant_action():
-    agent  = FixedOperatorAgent(3)
+    agent  = FixedOperatorAgent(2)
     action = agent.act(None, None, None, 1)
 
-    assert action.operator == 3
+    assert action.operator == 2
     assert action.vehicle_index == 0
     assert action.job_index == 0
 
@@ -59,14 +59,13 @@ def test_evaluation_pipeline_reports_all_baselines(cpu_config, seeded, fake_vroo
     pipeline = EvaluationPipeline(cpu_config, repo_root=str(tmp_path), logger=NullLogger())
     results  = pipeline.run()
 
-    assert set(results.keys()) == {"model", "teacher", "insertion_only", "always_reoptimize", "do_nothing"}
+    assert set(results.keys()) == {"model", "teacher", "insertion_only", "do_nothing"}
 
     for metrics in results.values():
         assert metrics["episodes"] == 2
-        assert set(metrics["operator_frequency"].keys()) == {"op0", "op1", "op2", "op3"}
+        assert set(metrics["operator_frequency"].keys()) == {"op0", "op1", "op2"}
 
-    assert results["insertion_only"]["operator_frequency"]["op3"] == 0.0
-    assert results["always_reoptimize"]["operator_frequency"]["op3"] == 1.0
+    assert results["insertion_only"]["operator_frequency"]["op1"] == 0.0
     assert results["do_nothing"]["operator_frequency"]["op2"] == 1.0
 
     report_path = os.path.join(str(tmp_path / "runs" / "eval_run"), "evaluation.json")

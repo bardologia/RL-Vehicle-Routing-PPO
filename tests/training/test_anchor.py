@@ -52,8 +52,8 @@ def build_anchored_trainer(cpu_config, tmp_path, tracker):
 def test_kl_terms_matches_compute_totals(cpu_config, seeded):
     distribution = ActionDistribution(cpu_config, ActionMasker(cpu_config))
 
-    old = (torch.randn(4), torch.randn(4, 6), torch.randn(4, 6, 20))
-    new = (torch.randn(4, requires_grad=True), torch.randn(4, 6, requires_grad=True), torch.randn(4, 6, 20, requires_grad=True))
+    old = (torch.randn(3), torch.randn(3, 6), torch.randn(3, 6, 20))
+    new = (torch.randn(3, requires_grad=True), torch.randn(3, 6, requires_grad=True), torch.randn(3, 6, 20, requires_grad=True))
 
     tensors  = distribution.kl_terms(*old, *new, MASK_INFO)
     _, kl    = distribution.compute(*old, *new, MASK_INFO)

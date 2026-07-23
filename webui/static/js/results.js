@@ -128,7 +128,7 @@ class ResultsView {
   _evalTable(report) {
     const agents = Object.keys(report);
     if (!agents.length) return "";
-    const opNames = { op0: "insert", op1: "remove", op2: "no-op", op3: "reopt" };
+    const opNames = { op0: "insert", op1: "remove", op2: "no-op" };
 
     const bestReward = Math.max(...agents.map((a) => report[a].mean_reward));
 

@@ -141,21 +141,17 @@ class ScenarioTemplates:
         return {
             "key"         : "tangled_routes",
             "title"       : "Tangled routes",
-            "description" : "Vehicle 0 starts in Santana but serves Santo Amaro; vehicle 1 does the opposite. Both cross the whole city. Fixing this one job at a time takes too many steps; one global re-solve untangles it at the price of disrupting every job.",
-            "expected"    : "REOPTIMIZE: the wholesale swap beats surgical remove-insert pairs.",
+            "description" : "Vehicle 0 starts in Santana but serves a Santo Amaro job; vehicle 1 does the opposite. Both cross the whole city for one delivery. There is no global re-solve operator, so untangling means migrating the jobs one at a time.",
+            "expected"    : "Two REMOVE and INSERT pairs swap the jobs onto the vehicles in their own neighbourhoods.",
             "jobs"        : [
                 self._job(0, -46.705, -23.650, 3),
-                self._job(1, -46.712, -23.643, 3),
-                self._job(2, -46.700, -23.657, 3),
-                self._job(3, -46.632, -23.487, 3),
-                self._job(4, -46.626, -23.493, 3),
-                self._job(5, -46.638, -23.482, 3),
+                self._job(1, -46.632, -23.487, 3),
             ],
             "vehicles" : [
                 self._vehicle(0, -46.630, -23.490, 4),
                 self._vehicle(1, -46.706, -23.648, 4),
             ],
-            "assignment" : {0: [0, 1, 2], 1: [3, 4, 5]},
+            "assignment" : {0: [0], 1: [1]},
         }
 
     def all_settled(self):

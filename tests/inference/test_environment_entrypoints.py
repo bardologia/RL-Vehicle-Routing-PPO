@@ -58,12 +58,12 @@ def test_evaluate_cost_does_not_mutate_state(environment):
 
 def test_step_reads_two_states_without_mutating_them(environment):
     old_state = environment.current_state
-    new_state = environment.apply_action_to(old_state, Action(operator=3, vehicle_index=0, job_index=0))[1]
+    new_state = environment.apply_action_to(old_state, Action(operator=1, vehicle_index=0, job_index=0))[1]
 
     old_payload = old_state.to_payload()
     new_payload = new_state.to_payload()
 
-    environment.step(old_state, new_state, operator_index=3)
+    environment.step(old_state, new_state, operator_index=1)
 
     assert old_state.to_payload() == old_payload
     assert new_state.to_payload() == new_payload

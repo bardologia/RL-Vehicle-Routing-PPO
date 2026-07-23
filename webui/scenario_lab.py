@@ -1,4 +1,3 @@
-import math
 import random
 import threading
 
@@ -8,8 +7,8 @@ from scenario_templates import ScenarioTemplates
 
 
 class ScenarioLab:
-    OPERATOR_NAMES = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING", 3: "REOPTIMIZE"}
-    AGENTS         = ("model", "teacher", "insertion_only", "always_reoptimize", "do_nothing")
+    OPERATOR_NAMES = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING"}
+    AGENTS         = ("model", "teacher", "insertion_only", "do_nothing")
 
     def __init__(self, paths, logger):
         self.paths     = paths
@@ -190,9 +189,7 @@ class ScenarioLab:
         if name == "teacher":
             return TeacherAgent(RegretInsertionTeacher(config))
         if name == "insertion_only":
-            return TeacherAgent(RegretInsertionTeacher(config, reoptimize_margin=math.inf, allow_removal=False))
-        if name == "always_reoptimize":
-            return FixedOperatorAgent(3)
+            return TeacherAgent(RegretInsertionTeacher(config, allow_removal=False))
         if name == "do_nothing":
             return FixedOperatorAgent(2)
 

@@ -213,12 +213,12 @@ def test_mask_job_restricts_insert_to_unassigned(cpu_config):
     assert masked[0] == cpu_config.training.large_negative_value
 
 
-def test_mask_job_reoptimize_collapses_to_first_index(cpu_config):
+def test_mask_job_no_op_collapses_to_first_index(cpu_config):
     masker     = ActionMasker(cpu_config)
     job_logits = torch.zeros(4)
     info       = {"unassigned_job_indices": [2], "vehicles_with_jobs_indices": [0], "vehicle_to_job_indices": {0: [1]}, "vehicles_with_capacity_indices": [0]}
 
-    masked = masker.mask_job(job_logits, info, selected_operator_index=3, selected_vehicle_index=0)
+    masked = masker.mask_job(job_logits, info, selected_operator_index=2, selected_vehicle_index=0)
 
     assert masked[0] == 0.0
     assert masked[1] == cpu_config.training.large_negative_value

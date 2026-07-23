@@ -85,7 +85,7 @@ def test_episode_runner_operator_stats_track_rewards_per_operator(cpu_config, se
     recorded_rewards = sum(len(values) for values in op_stats["rewards"].values())
 
     assert recorded_rewards == len(experiences)
-    assert set(op_stats["count"].keys()) == {0, 1, 2, 3}
+    assert set(op_stats["count"].keys()) == {0, 1, 2}
 
 
 def test_episode_runner_applies_events_between_steps_when_forced(cpu_config, seeded, fake_vroom, tmp_path):

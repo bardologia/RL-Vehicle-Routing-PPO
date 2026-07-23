@@ -42,7 +42,6 @@ class ActionDistribution:
 
         if num_vehicles > 1:
             vehicle_masked[2, 1:] = neg
-            vehicle_masked[3, 1:] = neg
 
         if len(unassigned_jobs) > 0:
             blocked = torch.ones(num_jobs, dtype=torch.bool, device=device)
@@ -57,7 +56,6 @@ class ActionDistribution:
 
         if num_jobs > 1:
             job_masked[2, :, 1:] = neg
-            job_masked[3, :, 1:] = neg
 
         return vehicle_masked, job_masked
 
