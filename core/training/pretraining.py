@@ -18,8 +18,9 @@ from .session import RunDirectory
 
 
 class RegretInsertionTeacher:
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, config, reoptimize_margin=None):
+        self.config            = config
+        self.reoptimize_margin = reoptimize_margin
 
     def insertion_options(self, environment, state):
         assigned_ids = state.assigned_job_ids
@@ -78,7 +79,8 @@ class RegretInsertionTeacher:
             chosen_reward = no_op
             action        = Action(operator=2, vehicle_index=0, job_index=0)
 
-        if reoptimize is not None and reoptimize > chosen_reward + self.config.pretrain.reoptimize_margin:
+        margin = self.reoptimize_margin if self.reoptimize_margin is not None else self.config.pretrain.reoptimize_margin
+        if reoptimize is not None and reoptimize > chosen_reward + margin:
             action = Action(operator=3, vehicle_index=0, job_index=0)
 
         return action
