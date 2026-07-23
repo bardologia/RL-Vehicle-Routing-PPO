@@ -162,6 +162,46 @@ def test_teacher_removes_job_when_removal_pays(environment, fake_vroom):
     assert action.job_index in {environment.jobs.index_of(jobs[0].id), environment.jobs.index_of(jobs[1].id)}
 
 
+def test_teacher_relocates_job_when_pair_beats_staying(environment, fake_vroom):
+    import math
+
+    jobs     = make_jobs(2)
+    vehicles = make_vehicles(2)
+    state    = RoutingState(
+        routes         = [make_route(vehicles[0], jobs[:1], cost=1000), make_route(vehicles[1], jobs[1:], cost=100)],
+        unassigned_ids = set(),
+    )
+
+    load_scenario(environment, jobs, vehicles, state)
+
+    teacher = RegretInsertionTeacher(environment.config, reoptimize_margin=math.inf)
+    action  = teacher.select_action(environment, environment.current_state)
+
+    assert action.operator == 1
+    assert action.vehicle_index == environment.vehicles.index_of(vehicles[0].id)
+    assert action.job_index == environment.jobs.index_of(jobs[0].id)
+
+
+def test_best_removal_value_includes_reinsertion_continuation(environment, fake_vroom):
+    jobs     = make_jobs(2)
+    vehicles = make_vehicles(2)
+    state    = RoutingState(
+        routes         = [make_route(vehicles[0], jobs[:1], cost=1000), make_route(vehicles[1], jobs[1:], cost=100)],
+        unassigned_ids = set(),
+    )
+
+    load_scenario(environment, jobs, vehicles, state)
+
+    teacher = RegretInsertionTeacher(environment.config)
+    best    = teacher.best_removal(environment, environment.current_state, horizon=3, baseline=0.0)
+
+    one_step = {option["job_id"]: option["reward"] for option in teacher.removal_options(environment, environment.current_state)}
+
+    assert best["job_id"] == jobs[0].id
+    assert one_step[best["job_id"]] < 0.0
+    assert best["value"] > 0.0
+
+
 def test_teacher_removal_disabled_falls_back_to_no_op(environment, fake_vroom):
     import math
 
