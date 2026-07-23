@@ -1,12 +1,18 @@
 import cProfile
+import gc
+import multiprocessing
+import os
 import pstats
 import random
 from io import StringIO
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
+from tools.logger import NullLogger
 from core.shared import Environment
+from .dataset import ChunkStore
 
 
 def generate_events(batch_size, seed, config, enable_profiling=False):
@@ -52,3 +58,83 @@ def generate_events(batch_size, seed, config, enable_profiling=False):
 
 def generate_events_task(task):
     return generate_events(*task)
+
+
+class DatasetGenerator:
+    def __init__(self, dataset_dir, config, logger=None):
+        self.dataset_dir = dataset_dir
+        self.config      = config
+        self.logger      = logger or NullLogger()
+        self.store       = ChunkStore(dataset_dir)
+
+    def append(
+        self,
+        num_events,
+        output_dir,
+        seed=None,
+        chunk_size=10_000,
+        batch_size=100,
+        num_workers=None,
+        enable_worker_profiling=False,
+    ):
+
+        if seed is not None:
+            random.seed(seed)
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        existing_events, num_existing_chunks = self.store.count_events()
+        self.logger.info(f"Found {num_existing_chunks} chunks with {existing_events} total events")
+
+        if existing_events >= num_events:
+            self.logger.info(f"There are already {existing_events} events. Nothing to do")
+            return output_dir
+
+        events_to_create = num_events - existing_events
+        num_batches      = int(np.ceil(events_to_create / batch_size))
+        num_workers      = num_workers or max(1, (os.cpu_count() or 2) - 2)
+
+        self.logger.info(f"Creating {events_to_create} new events")
+        self.logger.info(f"Generating {num_batches} batches with batch_size={batch_size} on {num_workers} workers")
+
+        tasks = []
+        for i in range(num_batches):
+            batch_seed        = seed + i if seed is not None else random.randint(0, 2**31)
+            actual_batch_size = min(batch_size, events_to_create - i * batch_size)
+            profile_this      = enable_worker_profiling and i == 0
+            tasks.append((actual_batch_size, batch_seed, self.config, profile_this))
+
+        current_chunk       = []
+        current_chunk_index = num_existing_chunks
+
+        context = multiprocessing.get_context("fork")
+        with context.Pool(processes=num_workers) as pool:
+            with tqdm(total=events_to_create, desc="Generating events", ncols=80) as pbar:
+                for batch_items, profile_stats in pool.imap(generate_events_task, tasks):
+                    if profile_stats is not None:
+                        self.logger.info(f"Worker profile (first batch):\n{profile_stats}")
+
+                    for item in batch_items:
+                        current_chunk.append(item)
+                        pbar.update(1)
+
+                        if len(current_chunk) >= chunk_size:
+                            chunk_path = self.store.chunk_path(current_chunk_index)
+                            self.logger.info(f"Saving chunk {current_chunk_index} with {len(current_chunk)} events to {chunk_path}")
+
+                            self.store.save(current_chunk, current_chunk_index)
+                            current_chunk = []
+                            current_chunk_index += 1
+                            gc.collect()
+
+        if current_chunk:
+            chunk_path = self.store.chunk_path(current_chunk_index)
+            self.logger.info(f"Saving final chunk {current_chunk_index} with {len(current_chunk)} events to {chunk_path}")
+            self.store.save(current_chunk, current_chunk_index)
+
+        total_events, total_chunks = self.store.count_events()
+        self.logger.info(f"Dataset complete: {total_chunks} chunks, {total_events} events in {output_dir}")
+
+        return output_dir

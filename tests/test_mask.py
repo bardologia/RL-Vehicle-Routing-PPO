@@ -4,13 +4,6 @@ from core.shared import ActionMaskBuilder, ActionMasker, EntityPool, RoutingStat
 from tests.conftest import make_jobs, make_route, make_vehicles
 
 
-class EnvironmentStub:
-    def __init__(self, jobs, vehicles, state):
-        self.jobs          = EntityPool(jobs)
-        self.vehicles      = EntityPool(vehicles)
-        self.current_state = state
-
-
 def build_context():
     jobs     = make_jobs(5)
     vehicles = make_vehicles(3)
@@ -18,30 +11,30 @@ def build_context():
         routes         = [make_route(vehicles[0], jobs[:2])],
         unassigned_ids = {jobs[2].id, jobs[3].id},
     )
-    return jobs, vehicles, EnvironmentStub(jobs, vehicles, state)
+    return EntityPool(jobs), EntityPool(vehicles), state
 
 
 def test_mask_context_reports_eligible_unassigned_indices():
-    jobs, vehicles, env = build_context()
+    jobs, vehicles, state = build_context()
 
-    info = ActionMaskBuilder().build(env)
+    info = ActionMaskBuilder().build(jobs, vehicles, state)
 
     assert info["unassigned_job_indices"] == [2, 3]
 
 
 def test_mask_context_excludes_unassigned_ids_missing_from_pool():
-    jobs, vehicles, env = build_context()
-    env.current_state.unassigned_ids.add(999)
+    jobs, vehicles, state = build_context()
+    state.unassigned_ids.add(999)
 
-    info = ActionMaskBuilder().build(env)
+    info = ActionMaskBuilder().build(jobs, vehicles, state)
 
     assert info["unassigned_job_indices"] == [2, 3]
 
 
 def test_mask_context_maps_vehicles_to_their_route_jobs():
-    jobs, vehicles, env = build_context()
+    jobs, vehicles, state = build_context()
 
-    info = ActionMaskBuilder().build(env)
+    info = ActionMaskBuilder().build(jobs, vehicles, state)
 
     assert info["vehicle_to_job_indices"][0] == [0, 1]
     assert info["vehicle_to_job_indices"][1] == []

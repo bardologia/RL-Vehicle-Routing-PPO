@@ -10,45 +10,43 @@ from tools.logger import Logger
 from tools.telemetry import PPOTelemetry
 from tools.tracker import Tracker
 from core.shared import Environment, ActionMasker, vroom
+from model.policy_model import PolicyCheckpoint
 from .ppo import PPO, ActionDistribution
 from .schedulers import LRScheduler, EntropyScheduler, EpochEarlyStopping
 
 
 class Checkpoint:
     def __init__(self, config, logger=None):
-        self.config   = config
-        self.logger   = logger
-        self.filename = "graph_ppo_policy.pt"
-    
+        self.config            = config
+        self.logger            = logger
+        self.filename          = "graph_ppo_policy.pt"
+        self.policy_checkpoint = PolicyCheckpoint()
+
     def load(self, ppo, trainer, dataset, directory=None):
         load_dir = directory or self.config.io.logdir
-        
+
         self.logger.section("[Loading Checkpoint]")
-        
-        training_state = ppo.policy.load(
-            filename=self.filename,
-            directory=load_dir
-        )
-        
-        checkpoint_path = os.path.join(load_dir, self.filename)
-        checkpoint = torch.load(checkpoint_path, map_location=ppo.device, weights_only=False)
+
+        checkpoint     = self.policy_checkpoint.load(ppo.policy, self.filename, load_dir, map_location=ppo.device)
+        training_state = checkpoint["training_state"]
+
         ppo.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.logger.subsection("Optimizer state restored")
 
         trainer.global_step_counter = training_state["global_step_counter"]
         trainer.episode_index       = training_state["episode_index"]
         trainer.ppo_update_index    = training_state["ppo_update_index"]
-        
+
         self.logger.subsection(f"Restored Global Step      : {trainer.global_step_counter}")
         self.logger.subsection(f"Restored Episode Index    : {trainer.episode_index}")
         self.logger.subsection(f"Restored PPO Update Index : {trainer.ppo_update_index}")
 
         dataset.set_state(training_state["dataset_state"])
-        
+
         ppo.lr_scheduler.set_step(training_state["lr_scheduler_step"])
         ppo.entropy_scheduler.set_step(training_state["entropy_scheduler_step"])
         ppo.current_entropy_coef = ppo.entropy_scheduler.get_coef()
-        
+
         self.logger.subsection(f"LR Scheduler Step           : {training_state['lr_scheduler_step']}")
         self.logger.subsection(f"Entropy Scheduler Step      : {training_state['entropy_scheduler_step']}")
         self.logger.subsection(f"Current Entropy Coefficient : {ppo.current_entropy_coef:.6f} \n")
@@ -58,7 +56,8 @@ class Checkpoint:
     def save(self, ppo, trainer, directory=None):
         save_dir = directory or self.config.io.logdir
 
-        ppo.policy.checkpoint(
+        self.policy_checkpoint.save(
+            policy         = ppo.policy,
             filename       = self.filename,
             directory      = save_dir,
             training_state = trainer.state(),
@@ -66,6 +65,97 @@ class Checkpoint:
         )
 
         self.logger.subsection(f"Checkpoint saved to {os.path.join(save_dir, self.filename)}")
+
+
+class EpisodeRunner:
+    def __init__(self, environment, policy, telemetry, tensor_logger, logger, config):
+        self.environment   = environment
+        self.policy        = policy
+        self.telemetry     = telemetry
+        self.tensor_logger = tensor_logger
+        self.logger        = logger
+        self.config        = config
+
+        self.device    = config.training.device
+        self.max_steps = config.training.max_steps_per_episode
+        self.attached  = True
+
+    def select_action(self, graph, mask_info):
+        graph = graph.to(self.device)
+
+        with torch.no_grad():
+            ppo_output = self.policy.select_action(graph, mask_info)
+
+        if self.attached:
+            self.tensor_logger.save_markdown(path=os.path.join(self.config.io.logdir, "tensor_shape.md"), title="Tensor Shapes")
+            self.tensor_logger.detach()
+            self.attached = False
+            self.logger.section("[Tensor Logger]")
+            self.logger.subsection("Tensor Shape Saved - Detaching Tensor Logger \n")
+
+        return graph, ppo_output
+
+    def build_experience(self, graph, mask_info, reward, ppo_output):
+        return {
+            "graph"               : graph,
+            "mask_info"           : mask_info,
+            "reward"              : float(reward),
+            "action"              : ppo_output["action"],
+            "log_prob_operator"   : ppo_output["log_prob_operator"].detach().cpu(),
+            "log_prob_vehicle"    : ppo_output["log_prob_vehicle"].detach().cpu(),
+            "log_prob_job"        : ppo_output["log_prob_job"].detach().cpu(),
+            "state_value"         : ppo_output["state_value"].detach().cpu(),
+            "old_operator_logits" : ppo_output["old_operator_logits"].detach().cpu(),
+            "old_vehicle_logits"  : ppo_output["old_vehicle_logits"].detach().cpu(),
+            "old_job_logits"      : ppo_output["old_job_logits"].detach().cpu(),
+            "bootstrap_value"     : 0.0,
+            "done"                : False,
+        }
+
+    def bootstrap(self, experiences):
+        experiences[-1]["done"] = True
+
+        tail_graph, _ = self.environment.observe()
+        with torch.no_grad():
+            _, _, _, tail_value = self.policy(tail_graph.to(self.device))
+        experiences[-1]["bootstrap_value"] = float(tail_value.item())
+
+    def run(self, dataset_item, global_step_counter):
+        experiences    = []
+        operator_stats = {'count': {i: 0 for i in range(4)}, 'rewards': {i: [] for i in range(4)}}
+
+        self.environment.load_from_dataset(dataset_item)
+        for step_in_episode in range(self.max_steps):
+
+            if step_in_episode == 0:
+                graph     = dataset_item["graph"]
+                mask_info = dataset_item["mask_info"]
+            else:
+                graph, mask_info = self.environment.observe()
+
+            graph, ppo_output = self.select_action(graph, mask_info)
+
+            action         = ppo_output["action"]
+            value          = ppo_output["state_value"].item()
+            operator_index = action.operator
+
+            old_state, next_state = self.environment.apply_action(action)
+
+            rewards, costs = self.environment.step(old_state, next_state, operator_index)
+            reward = sum(rewards.values())
+
+            operator_stats['count'][operator_index] += 1
+            operator_stats['rewards'][operator_index].append(reward)
+
+            self.telemetry.step(rewards, costs, value, global_step_counter)
+
+            experiences.append(self.build_experience(graph, mask_info, reward, ppo_output))
+            self.environment.current_state = next_state
+
+        if experiences:
+            self.bootstrap(experiences)
+
+        return experiences, operator_stats
 
 
 class Trainer:
@@ -87,18 +177,23 @@ class Trainer:
         self.logger.subsection(f"Device: {self.device}")
         self.logger.subsection(f"Load Checkpoint: {load_checkpoint} \n")
 
-        self.ppo           = self.initialize()
-        self.environment   = Environment(config, logger=self.logger)
-        self.summary       = ModelSummary(self.ppo)
-        self.tensor_logger = TensorLogger(self.ppo).attach()
-        self.attached      = True
+        self.ppo         = self.initialize()
+        self.environment = Environment(config, logger=self.logger)
+        self.summary     = ModelSummary(self.ppo)
 
-        self.global_step_counter           = 0
-        self.episode_index                 = 0
-        self.ppo_update_index              = 0
-        
-        self.operator_stats = {'count': {i: 0 for i in range(4)}, 'rewards': {i: [] for i in range(4)}}
-        
+        self.episode_runner = EpisodeRunner(
+            environment   = self.environment,
+            policy        = self.ppo.policy,
+            telemetry     = self.telemetry,
+            tensor_logger = TensorLogger(self.ppo).attach(),
+            logger        = self.logger,
+            config        = self.config,
+        )
+
+        self.global_step_counter = 0
+        self.episode_index       = 0
+        self.ppo_update_index    = 0
+
         self.clear_memory()
         self.logger.subsection("Trainer initialized successfully")
 
@@ -184,97 +279,26 @@ class Trainer:
 
         return state
     
-    def run_episode(self, dataset_item):
-        experiences = []
-        max_steps = self.config.training.max_steps_per_episode
-        
-        self.environment.load_from_dataset(dataset_item)
-        for step_in_episode in range(max_steps):
-            
-            if step_in_episode == 0:
-                graph     = dataset_item["graph"]
-                mask_info = dataset_item["mask_info"]
-            else:
-                graph, mask_info = self.environment.observe()
-
-            with torch.no_grad():
-                if self.attached:
-                    graph      = graph.to(self.device)
-                    ppo_output = self.ppo.policy.select_action(graph, mask_info)
-                    self.tensor_logger.save_markdown(path=os.path.join(self.config.io.logdir, "tensor_shape.md"), title=f"Tensor Shapes")
-                    self.tensor_logger.detach()
-                    self.attached = False
-                    self.logger.section("[Tensor Logger]")
-                    self.logger.subsection("Tensor Shape Saved - Detaching Tensor Logger \n")
-                else:
-                    graph      = graph.to(self.device)
-                    ppo_output = self.ppo.policy.select_action(graph, mask_info)
-
-            action         = ppo_output["action"]
-            value          = ppo_output["state_value"].item()
-            operator_index = action.operator
-
-            old_state, next_state = self.environment.apply_action(action)
-
-            rewards, costs = self.environment.step(old_state, next_state, operator_index)
-            reward = sum(rewards.values())
-
-            self.operator_stats['count'][operator_index] += 1
-            self.operator_stats['rewards'][operator_index].append(reward)
-
-            self.telemetry.step(rewards, costs, value, self.global_step_counter)
-
-            experience = {
-                "graph"               : graph,
-                "mask_info"           : mask_info,
-                "reward"              : float(reward),
-                "action"              : ppo_output["action"],
-                "log_prob_operator"   : ppo_output["log_prob_operator"].detach().cpu(),
-                "log_prob_vehicle"    : ppo_output["log_prob_vehicle"].detach().cpu(),
-                "log_prob_job"        : ppo_output["log_prob_job"].detach().cpu(),
-                "state_value"         : ppo_output["state_value"].detach().cpu(),
-                "old_operator_logits" : ppo_output["old_operator_logits"].detach().cpu(),
-                "old_vehicle_logits"  : ppo_output["old_vehicle_logits"].detach().cpu(),
-                "old_job_logits"      : ppo_output["old_job_logits"].detach().cpu(),
-                "bootstrap_value"     : 0.0,
-                "done"                : False,
-            }
-
-            experiences.append(experience)
-            self.environment.current_state = next_state
-
-        if experiences:
-            experiences[-1]["done"] = True
-
-            tail_graph, _ = self.environment.observe()
-            with torch.no_grad():
-                _, _, _, tail_value = self.ppo.policy(tail_graph.to(self.device))
-            experiences[-1]["bootstrap_value"] = float(tail_value.item())
-
-        return experiences
-
     def run_chunk(self, chunk_data):
         self.logger.section("[Chunk Processing]")
         self.logger.subsection(f"Total episodes in chunk : {len(chunk_data)}")
         self.logger.subsection(f"Starting episode index  : {self.episode_index} \n")
-        
+
         episodes_processed = 0
         for dataset_item in tqdm(chunk_data, desc="Processing episodes in chunk", leave=False):
-            experiences = self.run_episode(dataset_item)
-            
+            experiences, operator_stats = self.episode_runner.run(dataset_item, self.global_step_counter)
+
             episode_reward = sum([exp['reward'] for exp in experiences])
             episode_length = len(experiences)
-            
+
             for experience in experiences:
                 self.ppo.memory.add(**experience)
                 self.global_step_counter += 1
 
-            # Note: done flag already set in run_episode for last experience
             self.episode_index += 1
             episodes_processed += 1
-            
-            self.telemetry.episode(episode_reward, episode_length, self.operator_stats, self.episode_index)
-            self.operator_stats = {'count': {i: 0 for i in range(4)}, 'rewards': {i: [] for i in range(4)}}
+
+            self.telemetry.episode(episode_reward, episode_length, operator_stats, self.episode_index)
 
         self.logger.subsection(f"Chunk complete: {episodes_processed} episodes processed")
         return episodes_processed

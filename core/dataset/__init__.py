@@ -1,2 +1,2 @@
-from .dataset import Dataset
-from .generation import generate_events, generate_events_task
+from .dataset import ChunkStore, Dataset
+from .generation import generate_events, generate_events_task, DatasetGenerator

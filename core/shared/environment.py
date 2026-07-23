@@ -195,10 +195,14 @@ class Environment:
         self.vehicles      = EntityPool([Vehicle.from_dict(vehicle) for vehicle in item["vehicles"]])
         self.current_state = RoutingState.from_payload(item["state"])
 
+    def graph_for(self, state):
+        return self.graph.build(self.jobs, self.vehicles, state)
+
+    def mask_info_for(self, state):
+        return self.mask_builder.build(self.jobs, self.vehicles, state)
+
     def observe(self):
-        graph     = self.graph.build(self.jobs, self.vehicles, self.current_state)
-        mask_info = self.mask_builder.build(self)
-        return graph, mask_info
+        return self.graph_for(self.current_state), self.mask_info_for(self.current_state)
 
     def generate_event(self):
         env = self.config.env
@@ -239,12 +243,12 @@ class Environment:
         self.current_state = event_state
         return event_state
 
-    def apply_action(self, action):
+    def apply_action_to(self, state, action):
         operator      = action.operator
         vehicle_index = action.vehicle_index
         job_index     = action.job_index
 
-        old_state  = self.current_state.copy()
+        old_state  = state.copy()
         vehicle_id = self.vehicles[vehicle_index].id
         job_id     = self.jobs[job_index].id
 
@@ -260,6 +264,9 @@ class Environment:
             raise ValueError(f"Unknown operator index: {operator}")
 
         return old_state, new_state
+
+    def apply_action(self, action):
+        return self.apply_action_to(self.current_state, action)
 
     def evaluate_cost(self, state: RoutingState):
         base_cost       = float(state.cost)

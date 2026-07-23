@@ -3,7 +3,7 @@ import torch
 from torch_geometric.data import Batch
 
 from core.shared import Graph, EntityPool, RoutingState
-from model.policy_model import Policy
+from model.policy_model import Policy, PolicyCheckpoint
 from tests.conftest import make_jobs, make_route, make_vehicles
 
 
@@ -119,11 +119,12 @@ def test_act_never_selects_blocked_operators(policy, cpu_config, seeded):
 
 
 def test_checkpoint_round_trip(policy, cpu_config, tmp_path):
-    policy.checkpoint("model.pt", str(tmp_path), training_state={"episode_index": 7})
+    policy_checkpoint = PolicyCheckpoint()
+    policy_checkpoint.save(policy, "model.pt", str(tmp_path), training_state={"episode_index": 7})
 
-    restored       = Policy(cpu_config)
-    training_state = restored.load("model.pt", str(tmp_path))
+    restored   = Policy(cpu_config)
+    checkpoint = policy_checkpoint.load(restored, "model.pt", str(tmp_path), map_location=cpu_config.training.device)
 
-    assert training_state == {"episode_index": 7}
+    assert checkpoint["training_state"] == {"episode_index": 7}
     for original, loaded in zip(policy.state_dict().values(), restored.state_dict().values()):
         assert torch.equal(original, loaded)

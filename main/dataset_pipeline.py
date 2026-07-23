@@ -7,12 +7,12 @@ if proj_root not in sys.path:
 
 from configuration import config
 from tools.logger import Logger
-from core.dataset import Dataset
+from core.dataset import DatasetGenerator
 
-logger  = Logger(name="dataset")
-dataset = Dataset(dataset_dir=os.path.join(proj_root, "datasets/chunked"), config=config, logger=logger)
+logger    = Logger(name="dataset")
+generator = DatasetGenerator(dataset_dir=os.path.join(proj_root, "datasets/chunked"), config=config, logger=logger)
 
-dataset.append(
+generator.append(
     num_events=1024000,
     output_dir=os.path.join(proj_root, "datasets/chunked"),
     batch_size=128,
