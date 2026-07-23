@@ -297,14 +297,13 @@ class Environment:
         self.clock         = int(item["clock"])
         self.current_state = RoutingState.from_payload(item["state"])
 
-    def graph_for(self, state):
-        return self.graph.build(self.jobs, self.vehicles, state, self.depot, self.clock)
+    def observe(self, state=None):
+        if state is None:
+            state = self.current_state
 
-    def mask_info_for(self, state):
-        return self.mask_builder.build(self.jobs, self.vehicles, state)
-
-    def observe(self):
-        return self.graph_for(self.current_state), self.mask_info_for(self.current_state)
+        graph     = self.graph.build(self.jobs, self.vehicles, state, self.depot, self.clock)
+        mask_info = self.mask_builder.build(self.jobs, self.vehicles, state)
+        return graph, mask_info
 
     def generate_event(self):
         env = self.config.env

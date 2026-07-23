@@ -3,18 +3,19 @@ import torch
 from model.policy_model import Action
 
 
-def test_observe_matches_explicit_state_entry_points(environment):
-    graph, mask_info = environment.observe()
+def test_observe_defaults_to_current_state(environment):
+    default_graph, default_mask   = environment.observe()
+    explicit_graph, explicit_mask = environment.observe(environment.current_state)
 
-    assert environment.mask_info_for(environment.current_state) == mask_info
-    assert torch.equal(environment.graph_for(environment.current_state)["job"].x, graph["job"].x)
+    assert default_mask == explicit_mask
+    assert torch.equal(default_graph["job"].x, explicit_graph["job"].x)
 
 
-def test_graph_for_reflects_the_given_state_not_current(environment):
-    baseline_graph = environment.graph_for(environment.current_state)
+def test_observe_reflects_the_given_state_not_current(environment):
+    baseline_graph, _ = environment.observe(environment.current_state)
 
-    grown_state = environment.apply_event(environment.current_state, "new_job", 3)
-    grown_graph = environment.graph_for(grown_state)
+    grown_state    = environment.apply_event(environment.current_state, "new_job", 3)
+    grown_graph, _ = environment.observe(grown_state)
 
     assert grown_graph["job"].x.shape[0] == baseline_graph["job"].x.shape[0] + 3
 
