@@ -86,11 +86,14 @@ class RegretInsertionTeacher:
         return options
 
     def insertion_plan(self, environment, state, horizon, baseline):
-        plan     = {"value": 0.0, "action": None}
+        plan = {"value": 0.0, "action": None}
+        if horizon <= 0:
+            return plan
+
         discount = 1.0
         options  = self.insertion_options(environment, state)
 
-        for _ in range(max(horizon, 0)):
+        for _ in range(horizon):
             best = self.best_insertion(options, baseline)
             if best is None:
                 break
@@ -126,17 +129,23 @@ class RegretInsertionTeacher:
                     continue
 
                 rewards, _ = environment.step(state, new_state, 1)
-                options.append((sum(rewards.values()), route.vehicle_id, job_id))
+                options.append({"reward": sum(rewards.values()), "vehicle_id": route.vehicle_id, "job_id": job_id, "state": new_state})
 
         return options
 
-    def best_removal(self, environment, state, baseline):
-        options = sorted(self.removal_options(environment, state), key=lambda entry: (-entry[0], entry[1], entry[2]))
-        if not options or options[0][0] <= baseline:
-            return None
+    def best_removal(self, environment, state, horizon, baseline):
+        gamma   = self.config.ppo.gamma
+        options = sorted(self.removal_options(environment, state), key=lambda option: (-option["reward"], option["vehicle_id"], option["job_id"]))
 
-        reward, vehicle_id, job_id = options[0]
-        return {"reward": reward, "vehicle_id": vehicle_id, "job_id": job_id}
+        best = None
+        for option in options:
+            continuation = self.insertion_plan(environment, option["state"], horizon - 1, baseline)
+            value        = option["reward"] + gamma * continuation["value"]
+
+            if best is None or value > best["value"]:
+                best = {"value": value, "vehicle_id": option["vehicle_id"], "job_id": option["job_id"]}
+
+        return best
 
     def reoptimize_outcome(self, environment, state):
         new_state = environment.action_handler.apply_reoptimize(environment, state)
@@ -161,9 +170,9 @@ class RegretInsertionTeacher:
             action       = plan["action"]
 
         if self.allow_removal:
-            removal = self.best_removal(environment, state, baseline)
-            if removal is not None and removal["reward"] > chosen_value:
-                chosen_value = removal["reward"]
+            removal = self.best_removal(environment, state, horizon, baseline)
+            if removal is not None and removal["value"] > chosen_value:
+                chosen_value = removal["value"]
                 action       = Action(operator=1, vehicle_index=environment.vehicles.index_of(removal["vehicle_id"]), job_index=environment.jobs.index_of(removal["job_id"]))
 
         margin = self.reoptimize_margin if self.reoptimize_margin is not None else self.config.pretrain.reoptimize_margin
