@@ -57,11 +57,17 @@ def generate_events_task(task):
 
 
 class DatasetGenerator:
-    def __init__(self, dataset_dir, config, logger=None):
-        self.dataset_dir = dataset_dir
+    def __init__(self, config, repo_root, logger=None):
         self.config      = config
+        self.repo_root   = repo_root
         self.logger      = logger or NullLogger()
-        self.store       = ChunkStore(dataset_dir)
+        self.dataset_dir = self._resolve_dir(config.io.dataset_dir)
+        self.store       = ChunkStore(self.dataset_dir)
+
+    def _resolve_dir(self, path):
+        if os.path.isabs(path):
+            return path
+        return os.path.join(str(self.repo_root), path)
 
     def append(
         self,
@@ -134,3 +140,12 @@ class DatasetGenerator:
         self.logger.info(f"Dataset complete: {total_chunks} chunks, {total_events} events in {output_dir}")
 
         return output_dir
+
+    def generate(self):
+        return self.append(
+            num_events = self.config.io.dataset_num_events,
+            output_dir = self.dataset_dir,
+            seed       = self.config.io.dataset_seed,
+            chunk_size = self.config.io.dataset_chunk_size,
+            batch_size = self.config.io.dataset_batch_size,
+        )

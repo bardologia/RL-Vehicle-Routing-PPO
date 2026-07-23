@@ -231,9 +231,14 @@ class PolicyCheckpoint:
 
         torch.save(checkpoint, filepath)
 
-    def load(self, policy, filename, directory, map_location):
-        filepath   = os.path.join(directory, filename)
-        checkpoint = torch.load(filepath, map_location=map_location, weights_only=False)
+    def read(self, filename, directory, map_location):
+        filepath = os.path.join(directory, filename)
+        return torch.load(filepath, map_location=map_location, weights_only=False)
 
+    def apply(self, policy, checkpoint):
         policy.load_state_dict(checkpoint["model_state_dict"])
+
+    def load(self, policy, filename, directory, map_location):
+        checkpoint = self.read(filename, directory, map_location)
+        self.apply(policy, checkpoint)
         return checkpoint
