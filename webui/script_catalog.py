@@ -42,9 +42,9 @@ class ScriptCatalog:
             "title"      : "Pretrain (Behavior Cloning)",
             "group"      : "Training",
             "summary"    : "Clone the regret-insertion teacher into the policy as a warm start for PPO.",
-            "essentials" : ["io.run_name", "pretrain.episodes", "pretrain.bc_epochs"],
+            "essentials" : ["io.run_name", "io.dataset_dir", "pretrain.episodes", "pretrain.bc_epochs"],
             "sections"   : [
-                {"title": "Run",         "fields": ["io.run_name", "io.runs_dir"]},
+                {"title": "Run",         "fields": ["io.run_name", "io.runs_dir", "io.dataset_dir"]},
                 {"title": "Pretraining", "fields": ["pretrain.episodes", "pretrain.bc_epochs", "pretrain.minibatch_size", "pretrain.lr", "pretrain.value_loss_coef", "pretrain.gradient_clip_max_norm", "pretrain.reoptimize_margin", "pretrain.plan_horizon"]},
                 {"title": "Episode",     "fields": ["training.max_steps_per_episode", "env.step_event_probability"]},
                 {"title": "Sampler",     "fields": ["env.mean_jobs", "env.std_jobs", "env.mean_vehicles", "env.std_vehicles", "env.radius"]},
