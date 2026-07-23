@@ -1,6 +1,7 @@
 import json
 import random
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +43,88 @@ class FakeVroom:
         return RoutingState(routes=[route], unassigned_ids=set())
 
 
+class FakeWriter:
+    def __init__(self):
+        self.scalars    = []
+        self.histograms = []
+
+    def add_scalar(self, tag, value, step):
+        self.scalars.append((tag, value, step))
+
+    def add_histogram(self, tag, values, step, bins="auto"):
+        self.histograms.append((tag, step))
+
+    def flush(self):
+        pass
+
+    def close(self):
+        pass
+
+
+class CapturingLogger:
+    def __init__(self):
+        self.warnings = []
+
+    def warning(self, message):
+        self.warnings.append(message)
+
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+
+class RecordingTracker:
+    active = True
+
+    def __init__(self):
+        self.scalars    = []
+        self.metrics    = []
+        self.histograms = []
+        self._step      = 0
+
+    @property
+    def current_step(self):
+        return self._step
+
+    def set_step(self, step):
+        self._step = int(step)
+
+    def log_scalar(self, tag, value, step=None):
+        self.scalars.append((tag, value, step))
+
+    def log_metrics(self, prefix, values, step=None):
+        self.metrics.append((prefix, dict(values), step))
+
+    def log_histogram(self, tag, values, step=None, bins="auto"):
+        self.histograms.append((tag, step))
+
+    @contextmanager
+    def scope(self, name):
+        yield self
+
+    def scalar_tags(self):
+        return [tag for tag, _, _ in self.scalars]
+
+    def metric_prefixes(self):
+        return [prefix for prefix, _, _ in self.metrics]
+
+
+class ScriptedPolicy:
+    def __init__(self, actions):
+        self.actions = list(actions)
+        self.calls   = 0
+
+    def eval(self):
+        return self
+
+    def to(self, device):
+        return self
+
+    def select_action(self, graph, mask_info=None):
+        action      = self.actions[min(self.calls, len(self.actions) - 1)]
+        self.calls += 1
+        return {"action": action}
+
+
 def load_fixture(name):
     return json.load(open(FIXTURES / f"{name}.json"))
 
@@ -60,8 +143,12 @@ def make_vehicles(count, first_id=0):
     ]
 
 
+def make_stops(jobs):
+    return [Stop(job_id=job.id, location=job.location, service=job.service) for job in jobs]
+
+
 def make_route(vehicle, jobs, cost=1000):
-    stops = [Stop(job_id=job.id, location=job.location, service=job.service) for job in jobs]
+    stops = make_stops(jobs)
     return Route(
         vehicle_id = vehicle.id,
         stops      = stops,

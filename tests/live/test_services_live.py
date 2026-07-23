@@ -2,7 +2,7 @@ import socket
 
 import pytest
 
-from core.shared import osrm, vroom, RoutingState
+from core.shared import RoutingState, osrm, vroom
 from tests.conftest import make_jobs, make_vehicles
 
 
