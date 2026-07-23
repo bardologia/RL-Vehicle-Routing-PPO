@@ -65,6 +65,22 @@ def test_teacher_reoptimizes_when_margin_allows_it(environment, fake_vroom):
     assert action.operator == 3
 
 
+def test_teacher_margin_override_beats_config_margin(environment, fake_vroom):
+    import math
+
+    jobs     = make_jobs(2)
+    vehicles = make_vehicles(1)
+    state    = RoutingState(routes=[make_route(vehicles[0], jobs, cost=200)], unassigned_ids=set())
+
+    load_scenario(environment, jobs, vehicles, state)
+    environment.config.pretrain.reoptimize_margin = -5.0
+
+    teacher = RegretInsertionTeacher(environment.config, reoptimize_margin=math.inf)
+    action  = teacher.select_action(environment, environment.current_state)
+
+    assert action.operator == 2
+
+
 def test_teacher_prefers_higher_priority_job_under_scarce_capacity(environment, fake_vroom):
     jobs     = make_jobs(3)
     vehicles = make_vehicles(1)

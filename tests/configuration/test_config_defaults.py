@@ -1,5 +1,6 @@
 from configuration.device      import DeviceConfig
 from configuration.environment import EnvironmentConfig
+from configuration.evaluation  import EvaluationConfig
 from configuration.io          import IOConfig
 from configuration.learning    import Entropy, LearningRate
 from configuration.model       import ModelConfig
@@ -113,6 +114,16 @@ def test_ppo_config_defaults():
     assert config.value_loss_coef == 0.5
     assert config.gradient_clip_max_norm == 3.0
     assert config.kl_divergence_threshold == 0.015
+    assert config.anchor_kl_start == 0.5
+    assert config.anchor_kl_end == 0.0
+    assert config.anchor_anneal_steps == 20000
+
+
+def test_evaluation_config_defaults():
+    config = EvaluationConfig()
+
+    assert config.episodes == 200
+    assert config.seed == 123
 
 
 def test_pretrain_config_defaults():
