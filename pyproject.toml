@@ -18,6 +18,7 @@ dependencies    = [
     "tqdm==4.69.0",
     "tensorboard==2.21.0",
     "rich==15.0.0",
+    "psutil==7.2.2",
 ]
 
 [project.optional-dependencies]
