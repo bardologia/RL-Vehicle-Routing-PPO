@@ -8,7 +8,7 @@ from tqdm import tqdm
 from tools.inspection import ModelSummary, TensorLogger
 from tools.resource_monitor import ResourceMonitor
 from tools.telemetry import PPOTelemetry
-from core.shared import Environment, ActionMasker, vroom
+from core.shared import Environment, ActionMasker, EpisodeDriver, vroom
 from model.policy_model import Policy, PolicyCheckpoint
 from .ppo import PPO, ActionDistribution
 from .schedulers import LRScheduler, EntropyScheduler, EpochEarlyStopping
@@ -88,8 +88,8 @@ class EpisodeRollout:
         self.config      = config
 
         self.device        = config.training.device
-        self.max_steps     = config.training.max_steps_per_episode
         self.scenario_seed = config.env.scenario_seed
+        self.driver        = EpisodeDriver(environment, config)
 
     def forward_action(self, graph, mask_info):
         graph = graph.to(self.device)
@@ -127,31 +127,21 @@ class EpisodeRollout:
         operator_stats = {'count': {i: 0 for i in range(3)}, 'rewards': {i: [] for i in range(3)}}
         step_payloads  = []
 
-        self.environment.sample_episode(self.scenario_seed + episode_index)
-        for step_in_episode in range(self.max_steps):
-
-            if step_in_episode > 0:
-                self.environment.advance_execution()
-                self.environment.apply_random_event()
-
-            graph, mask_info  = self.environment.observe()
-            graph, ppo_output = self.forward_action(graph, mask_info)
+        for step in self.driver.episode(self.scenario_seed + episode_index):
+            graph, ppo_output = self.forward_action(step.graph, step.mask_info)
 
             action         = ppo_output["action"]
             value          = float(ppo_output["state_value"].item())
             operator_index = action.operator
 
-            old_state, next_state = self.environment.apply_action_to(self.environment.current_state, action)
-
-            rewards, costs = self.environment.step(old_state, next_state, operator_index)
+            _, _, rewards, costs = step.commit(action)
             reward = sum(rewards.values())
 
             operator_stats['count'][operator_index] += 1
             operator_stats['rewards'][operator_index].append(reward)
             step_payloads.append((rewards, costs, value))
 
-            experiences.append(self.build_experience(graph, mask_info, reward, ppo_output))
-            self.environment.current_state = next_state
+            experiences.append(self.build_experience(graph, step.mask_info, reward, ppo_output))
 
         if experiences:
             self.bootstrap(experiences)

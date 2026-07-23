@@ -11,7 +11,7 @@ from tqdm import tqdm
 from tools.logger import Logger, NullLogger
 from tools.parallel import Batcher, ForkPool
 from tools.telemetry import PPOTelemetry
-from core.shared import ActionMasker, Environment, vroom
+from core.shared import ActionMasker, Environment, EpisodeDriver, vroom
 from model.policy_model import Action, Policy, PolicyCheckpoint
 from .ppo import PPOMemory
 from .session import RunDirectory
@@ -170,9 +170,9 @@ class TeacherRolloutCollector:
         self.config      = config
         self.logger      = logger or NullLogger()
 
-        self.max_steps     = config.training.max_steps_per_episode
         self.gamma         = config.ppo.gamma
         self.scenario_seed = config.env.scenario_seed
+        self.driver        = EpisodeDriver(environment, config)
 
     def attach_returns(self, records):
         running = 0.0
@@ -183,28 +183,18 @@ class TeacherRolloutCollector:
         return records
 
     def rollout(self, episode_index):
-        self.environment.sample_episode(self.scenario_seed + episode_index)
-
         records = []
-        for step_in_episode in range(self.max_steps):
-            if step_in_episode > 0:
-                self.environment.advance_execution()
-                self.environment.apply_random_event()
+        for step in self.driver.episode(self.scenario_seed + episode_index):
+            action = self.teacher.select_action(self.environment, self.environment.current_state, step.remaining)
 
-            graph, mask_info = self.environment.observe()
-            action           = self.teacher.select_action(self.environment, self.environment.current_state, self.max_steps - step_in_episode)
-
-            old_state, new_state = self.environment.apply_action_to(self.environment.current_state, action)
-            rewards, _           = self.environment.step(old_state, new_state, action.operator)
+            _, _, rewards, _ = step.commit(action)
 
             records.append({
-                "graph"     : PPOMemory._clone_detached(graph),
-                "mask_info" : mask_info,
+                "graph"     : PPOMemory._clone_detached(step.graph),
+                "mask_info" : step.mask_info,
                 "action"    : action,
                 "reward"    : float(sum(rewards.values())),
             })
-
-            self.environment.current_state = new_state
 
         return self.attach_returns(records)
 
