@@ -6,10 +6,8 @@ import torch.optim as optim
 from tqdm import tqdm
 
 from tools.inspection import ModelSummary, TensorLogger
-from tools.logger import Logger
 from tools.resource_monitor import ResourceMonitor
 from tools.telemetry import PPOTelemetry
-from tools.tracker import Tracker
 from core.shared import Environment, ActionMasker, vroom
 from model.policy_model import PolicyCheckpoint
 from .ppo import PPO, ActionDistribution
@@ -20,7 +18,7 @@ class Checkpoint:
     def __init__(self, config, logger=None):
         self.config            = config
         self.logger            = logger
-        self.filename          = "graph_ppo_policy.pt"
+        self.filename          = config.io.checkpoint_filename
         self.policy_checkpoint = PolicyCheckpoint()
 
     def load(self, ppo, trainer, dataset, directory=None):
@@ -28,8 +26,10 @@ class Checkpoint:
 
         self.logger.section("[Loading Checkpoint]")
 
-        checkpoint     = self.policy_checkpoint.load(ppo.policy, self.filename, load_dir, map_location=ppo.device)
+        checkpoint     = self.policy_checkpoint.read(self.filename, load_dir, map_location=ppo.device)
         training_state = checkpoint["training_state"]
+
+        self.policy_checkpoint.apply(ppo.policy, checkpoint)
 
         ppo.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.logger.subsection("Optimizer state restored")
@@ -160,15 +160,15 @@ class EpisodeRunner:
 
 
 class Trainer:
-    def __init__(self, dataset=None, load_checkpoint=False, config=None):
-        self.dataset         = dataset
-        self.load_checkpoint = load_checkpoint
-        self.config          = config
+    def __init__(self, dataset, config, logger, tracker):
+        self.dataset = dataset
+        self.config  = config
+        self.logger  = logger
+        self.tracker = tracker
 
-        self.device     = config.training.device
-        
-        self.logger     = Logger(log_dir=config.io.logdir, name="training", level="INFO")
-        self.tracker    = Tracker(writer=config.io.writer)
+        self.device = config.training.device
+        self.resume = config.io.resume_from_run is not None
+
         self.telemetry  = PPOTelemetry(self.tracker, config)
         self.checkpoint = Checkpoint(config, logger=self.logger)
 
@@ -178,7 +178,11 @@ class Trainer:
 
         self.logger.section("[Trainer Initialization]")
         self.logger.subsection(f"Device: {self.device}")
-        self.logger.subsection(f"Load Checkpoint: {load_checkpoint} \n")
+        self.logger.subsection(f"Resume: {self.resume} \n")
+
+        self.global_step_counter = 0
+        self.episode_index       = 0
+        self.ppo_update_index    = 0
 
         self.ppo         = self.initialize()
         self.environment = Environment(config, logger=self.logger)
@@ -192,10 +196,6 @@ class Trainer:
             logger        = self.logger,
             config        = self.config,
         )
-
-        self.global_step_counter = 0
-        self.episode_index       = 0
-        self.ppo_update_index    = 0
 
         self.clear_memory()
         self.logger.subsection("Trainer initialized successfully")
@@ -259,7 +259,7 @@ class Trainer:
 
         ppo.current_entropy_coef = entropy_config.entropy_start
         
-        if self.load_checkpoint:
+        if self.resume:
             self.checkpoint.load(ppo, self, self.dataset)
                
         self.logger.subsection("PPO initialization complete \n")

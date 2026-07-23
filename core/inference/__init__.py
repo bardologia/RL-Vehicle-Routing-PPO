@@ -1,1 +1,1 @@
-from .inference import InferenceStep, InferenceResult, ModelInference
+from .inference import InferenceStep, InferenceResult, ModelInference, InferencePipeline

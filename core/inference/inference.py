@@ -1,10 +1,11 @@
+import os
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 
 import torch
 
 from core.shared import Environment, RoutingState
-from model.policy_model import Action, Policy
+from model.policy_model import Action, Policy, PolicyCheckpoint
 
 
 @dataclass
@@ -166,6 +167,58 @@ class ModelInference:
         
         result.final_state = current_state.copy()
         result.total_steps = step
-        
+
         return result
+
+
+class InferencePipeline:
+    def __init__(self, config, repo_root, logger, max_steps=50):
+        self.config    = config
+        self.repo_root = repo_root
+        self.logger    = logger
+        self.max_steps = max_steps
+
+        self.device        = config.training.device
+        self.run_dir       = None
+        self.environment   = None
+        self.initial_state = None
+        self.model         = None
+        self.result        = None
+
+    def resolve_run(self):
+        run_name = self.config.io.run_name
+        if not run_name:
+            raise ValueError("config.io.run_name must name the run directory to load for inference")
+
+        runs_root = self.config.io.runs_dir
+        if not os.path.isabs(runs_root):
+            runs_root = os.path.join(str(self.repo_root), runs_root)
+
+        self.run_dir = os.path.join(runs_root, run_name)
+        if not os.path.isdir(self.run_dir):
+            raise FileNotFoundError(f"Run directory not found: {self.run_dir}")
+
+    def build_environment(self):
+        self.environment = Environment(self.config)
+        self.environment.reset()
+        self.initial_state = self.environment.current_state.copy()
+
+    def load_model(self):
+        self.model = Policy(self.config)
+        PolicyCheckpoint().load(self.model, self.config.io.checkpoint_filename, self.run_dir, map_location=self.device)
+
+    def infer(self):
+        inference   = ModelInference(self.model, self.environment, max_steps=self.max_steps, device=self.device, verbose=False)
+        self.result = inference.run(self.initial_state)
+
+    def report(self):
+        self.logger.kv_table(self.result.summary(), title="Inference Summary")
+
+    def run(self):
+        self.resolve_run()
+        self.build_environment()
+        self.load_model()
+        self.infer()
+        self.report()
+        return self.result
     
