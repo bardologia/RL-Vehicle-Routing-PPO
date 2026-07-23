@@ -19,6 +19,10 @@ class ScenarioView {
     this.railTab = "build";
     this.checkpoints = [];
     this.runBusy = false;
+    this.templates = [];
+    this.templateKey = "";
+    this.activeTemplate = null;
+    this.assignment = null;
 
     this.runOptions = { agent: "model", run_name: null, max_steps: 8, seed: 0, event_probability: 0.0 };
   }
@@ -30,6 +34,12 @@ class ScenarioView {
     const res = await apiGet("/api/scenario/checkpoints");
     this.checkpoints = res.checkpoints || [];
     if (!this.runOptions.run_name && this.checkpoints.length) this.runOptions.run_name = this.checkpoints[0].run;
+
+    if (!this.templates.length) {
+      const tpl = await apiGet("/api/scenario/templates");
+      this.templates = tpl.templates || [];
+      if (this.templates.length) this.templateKey = this.templates[0].key;
+    }
 
     this._renderToolbar();
     this._renderRail();
@@ -102,8 +112,28 @@ class ScenarioView {
     this.solveState = null;
     this.runResult = null;
     this.stepIndex = 0;
+    this.activeTemplate = null;
+    this.assignment = null;
     this._renderRail();
     this._draw();
+  }
+
+  async _loadTemplate(key) {
+    const template = this.templates.find((t) => t.key === key);
+    if (!template) return;
+
+    this.jobs = structuredClone(template.jobs);
+    this.vehicles = structuredClone(template.vehicles);
+    this.selected = null;
+    this._invalidate();
+    this.activeTemplate = template;
+    this.assignment = template.assignment ? structuredClone(template.assignment) : null;
+
+    const pts = [...this.jobs.map((j) => [j.location[1], j.location[0]]), ...this.vehicles.map((v) => [v.start[1], v.start[0]])];
+    if (pts.length) this.map.fitBounds(L.latLngBounds(pts).pad(0.2));
+
+    await this._solve();
+    this._renderRail();
   }
 
   _renderToolbar() {
@@ -222,7 +252,25 @@ class ScenarioView {
     const panel = document.getElementById("scn-panel");
     const state = this.solveState;
 
+    const templateOptions = this.templates.map((t) => `<option value="${escapeHtml(t.key)}" ${t.key === this.templateKey ? "selected" : ""}>${escapeHtml(t.title)}</option>`).join("");
+    const active = this.activeTemplate;
+
     panel.innerHTML = `
+      <div class="card">
+        <h3 class="card__title">Situation templates</h3>
+        <div class="editor-grid">
+          <label class="field"><span class="field__label"><span>Template</span></span>
+            <select id="scn-template">${templateOptions || `<option value="">none available</option>`}</select></label>
+          <div class="field" style="justify-content:flex-end"><button class="btn" id="scn-load-template">Load</button></div>
+        </div>
+        ${active ? `
+        <div class="tpl-brief">
+          <p class="scn-hint" style="margin:10px 0 0">${escapeHtml(active.description)}</p>
+          <p class="scn-hint" style="margin:6px 0 0"><b>Expected:</b> ${escapeHtml(active.expected)}</p>
+        </div>` : `
+        <p class="scn-hint" style="margin:10px 0 0">Curated situations with a pinned starting plan, each staging one decision: cheap vs expensive insertions, relocations, capacity swaps, outlier abandonment, idle activation, tangled routes. Load one, then compare agents on the Run tab.</p>`}
+      </div>
+
       <div class="card">
         <h3 class="card__title">Random scenario</h3>
         <div class="editor-grid">
@@ -259,6 +307,9 @@ class ScenarioView {
       <p class="scn-hint">Pick <b>+ Job</b> or <b>+ Vehicle</b> and click the map to place entities, or sample a random scenario. <b>Solve</b> asks VROOM for the initial plan; then switch to <b>Run</b> to watch an agent react.</p>`;
 
     document.getElementById("scn-sample").addEventListener("click", () => this._sample());
+    const templateSelect = document.getElementById("scn-template");
+    templateSelect.addEventListener("change", () => { this.templateKey = templateSelect.value; });
+    document.getElementById("scn-load-template").addEventListener("click", () => this._loadTemplate(this.templateKey));
     this._renderEntityLists();
     this._renderEditor();
   }
@@ -386,7 +437,7 @@ class ScenarioView {
     }
     this.runResult = null;
     toast("solving…");
-    const res = await apiPost("/api/scenario/solve", { jobs: this.jobs, vehicles: this.vehicles });
+    const res = await apiPost("/api/scenario/solve", { jobs: this.jobs, vehicles: this.vehicles, assignment: this.assignment });
     if (res.error) { toast(res.error, "error"); return; }
 
     this.solveState = res.state;
@@ -417,6 +468,7 @@ class ScenarioView {
           <div class="field" style="justify-content:flex-end"><button class="btn btn--primary" id="scn-run" ${this.runBusy ? "disabled" : ""}>${this.runBusy ? "Running…" : "Run agent"}</button></div>
         </div>
         <p class="scn-hint" style="margin:10px 0 0">With event probability &gt; 0, random disruptions (new/removed jobs and vehicles) fire between steps, like in training.</p>
+        ${this.activeTemplate ? `<p class="scn-hint" style="margin:6px 0 0"><b>${escapeHtml(this.activeTemplate.title)}</b> — ${escapeHtml(this.activeTemplate.expected)}</p>` : ""}
       </div>
       <div id="scn-run-result"></div>`;
 
@@ -447,6 +499,7 @@ class ScenarioView {
     const res = await apiPost("/api/scenario/run", {
       jobs: this.jobs,
       vehicles: this.vehicles,
+      assignment: this.assignment,
       agent: o.agent,
       run_name: o.run_name,
       max_steps: o.max_steps,

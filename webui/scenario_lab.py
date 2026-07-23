@@ -4,15 +4,18 @@ import threading
 
 import requests
 
+from scenario_templates import ScenarioTemplates
+
 
 class ScenarioLab:
     OPERATOR_NAMES = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING", 3: "REOPTIMIZE"}
     AGENTS         = ("model", "teacher", "insertion_only", "always_reoptimize", "do_nothing")
 
     def __init__(self, paths, logger):
-        self.paths  = paths
-        self.logger = logger
-        self.lock   = threading.Lock()
+        self.paths     = paths
+        self.logger    = logger
+        self.lock      = threading.Lock()
+        self.templates = ScenarioTemplates()
 
         self._env    = None
         self._models = {}
@@ -109,19 +112,71 @@ class ScenarioLab:
             "num_unassigned" : state.num_unassigned,
         }
 
-    def solve(self, jobs, vehicles):
+    def _assigned_state(self, jobs_pool, vehicles_pool, assignment):
+        from core.shared.services import vroom
+        from core.shared.state import RoutingState
+
+        routes       = []
+        assigned_ids = set()
+
+        for vehicle_key in sorted(assignment, key=int):
+            vehicle_id = int(vehicle_key)
+            if not vehicles_pool.contains(vehicle_id):
+                return None, f"assignment references unknown vehicle {vehicle_id}"
+
+            job_ids = [int(job_id) for job_id in assignment[vehicle_key]]
+            if not job_ids:
+                continue
+
+            unknown = [job_id for job_id in job_ids if not jobs_pool.contains(job_id)]
+            if unknown:
+                return None, f"assignment references unknown jobs {unknown}"
+
+            duplicated = assigned_ids.intersection(job_ids)
+            if duplicated:
+                return None, f"assignment repeats jobs {sorted(duplicated)}"
+
+            vehicle = vehicles_pool.by_id(vehicle_id)
+            if len(job_ids) > vehicle.capacity:
+                return None, f"assignment puts {len(job_ids)} jobs on vehicle {vehicle_id} with capacity {vehicle.capacity}"
+
+            solution = vroom.solve([jobs_pool.by_id(job_id) for job_id in job_ids], [vehicle])
+            if solution is None or not solution.routes:
+                return None, f"VROOM returned no route for vehicle {vehicle_id}"
+
+            routes.append(solution.routes[0])
+            assigned_ids.update(job_ids)
+
+        unassigned = {job.id for job in jobs_pool} - assigned_ids
+        return RoutingState(routes=routes, unassigned_ids=unassigned), None
+
+    def _initial_state(self, jobs_pool, vehicles_pool, assignment):
+        from core.shared.services import vroom
+
+        if assignment:
+            return self._assigned_state(jobs_pool, vehicles_pool, assignment)
+
+        state = vroom.solve(list(jobs_pool), list(vehicles_pool))
+        if state is None:
+            return None, "VROOM returned no solution for this scenario"
+
+        return state, None
+
+    def list_templates(self):
+        return self.templates.catalog()
+
+    def solve(self, jobs, vehicles, assignment=None):
         with self.lock:
             self._ensure_env()
 
-            from core.shared.services import vroom
-            from core.shared.state import Job, Vehicle
+            from core.shared.state import EntityPool, Job, Vehicle
 
-            job_objects     = [Job.from_dict(job) for job in jobs]
-            vehicle_objects = [Vehicle.from_dict(vehicle) for vehicle in vehicles]
+            jobs_pool     = EntityPool([Job.from_dict(job) for job in jobs])
+            vehicles_pool = EntityPool([Vehicle.from_dict(vehicle) for vehicle in vehicles])
 
-            state = vroom.solve(job_objects, vehicle_objects)
-            if state is None:
-                return {"error": "VROOM returned no solution for this scenario"}
+            state, error = self._initial_state(jobs_pool, vehicles_pool, assignment)
+            if error:
+                return {"error": error}
 
             return {"state": self._render_state(state)}
 
@@ -208,6 +263,7 @@ class ScenarioLab:
     def run(self, payload):
         jobs              = payload.get("jobs") or []
         vehicles          = payload.get("vehicles") or []
+        assignment        = payload.get("assignment")
         agent_name        = payload.get("agent", "model")
         run_name          = payload.get("run_name")
         max_steps         = int(payload.get("max_steps", 10))
@@ -228,7 +284,6 @@ class ScenarioLab:
 
             import numpy as np
             import torch
-            from core.shared.services import vroom
             from core.shared.state import EntityPool, Job, Vehicle
 
             random.seed(seed)
@@ -238,9 +293,9 @@ class ScenarioLab:
             env.jobs     = EntityPool([Job.from_dict(job) for job in jobs])
             env.vehicles = EntityPool([Vehicle.from_dict(vehicle) for vehicle in vehicles])
 
-            solution = vroom.solve(list(env.jobs), list(env.vehicles))
-            if solution is None:
-                return {"error": "VROOM returned no solution for this scenario"}
+            solution, error = self._initial_state(env.jobs, env.vehicles, assignment)
+            if error:
+                return {"error": error}
 
             env.current_state = solution
             env.initial_state = solution.copy()

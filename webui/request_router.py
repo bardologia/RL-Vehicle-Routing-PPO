@@ -83,6 +83,10 @@ class RequestRouter:
             self._send_json(handler, {"checkpoints": self.lab.checkpoints()})
             return
 
+        if path == "/api/scenario/templates":
+            self._send_json(handler, {"templates": self.lab.list_templates()})
+            return
+
         self._send_json(handler, {"error": "not found"}, 404)
 
     def _route_post(self, handler, path):
@@ -106,7 +110,7 @@ class RequestRouter:
             return
 
         if path == "/api/scenario/solve":
-            result = self.lab.solve(body.get("jobs") or [], body.get("vehicles") or [])
+            result = self.lab.solve(body.get("jobs") or [], body.get("vehicles") or [], body.get("assignment"))
             self._send_json(handler, result, 200 if "error" not in result else 400)
             return
 
