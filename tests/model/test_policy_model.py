@@ -130,6 +130,26 @@ def test_select_action_is_deterministic_under_fixed_seed(policy, cpu_config):
     assert (first.operator, first.vehicle_index, first.job_index) == (second.operator, second.vehicle_index, second.job_index)
 
 
+def test_select_action_greedy_takes_masked_argmax_without_seed(policy, cpu_config):
+    graph     = build_graph(cpu_config, num_jobs=5, num_vehicles=3)
+    mask_info = {
+        "unassigned_job_indices"         : [2, 3],
+        "vehicles_with_jobs_indices"     : [0],
+        "vehicle_to_job_indices"         : {0: [0, 1], 1: [], 2: []},
+        "vehicles_with_capacity_indices" : [1, 2],
+    }
+
+    torch.manual_seed(1)
+    first = policy.select_action(graph, mask_info=mask_info, greedy=True)
+
+    torch.manual_seed(2)
+    second = policy.select_action(graph, mask_info=mask_info, greedy=True)
+
+    first_action, second_action = first["action"], second["action"]
+    assert (first_action.operator, first_action.vehicle_index, first_action.job_index) == (second_action.operator, second_action.vehicle_index, second_action.job_index)
+    assert first_action.operator == int(first["masked_operator_logits"].argmax().item())
+
+
 def test_select_action_output_contract(policy, cpu_config):
     graph  = build_graph(cpu_config, num_jobs=4, num_vehicles=2)
     result = policy.select_action(graph, mask_info=None)

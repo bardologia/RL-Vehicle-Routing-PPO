@@ -180,13 +180,13 @@ class ScenarioLab:
 
             return {"state": self._render_state(state)}
 
-    def _build_agent(self, name, run_name):
+    def _build_agent(self, name, run_name, greedy):
         from configuration import config
         from core.inference.evaluation import FixedOperatorAgent, ModelAgent, TeacherAgent
         from core.training.pretraining import RegretInsertionTeacher
 
         if name == "model":
-            return ModelAgent(self._model_for(run_name))
+            return ModelAgent(self._model_for(run_name), greedy=greedy)
         if name == "teacher":
             return TeacherAgent(RegretInsertionTeacher(config))
         if name == "insertion_only":
@@ -266,6 +266,7 @@ class ScenarioLab:
         assignment        = payload.get("assignment")
         agent_name        = payload.get("agent", "model")
         run_name          = payload.get("run_name")
+        greedy            = bool(payload.get("greedy", True))
         max_steps         = int(payload.get("max_steps", 10))
         seed              = int(payload.get("seed", 0))
         event_probability = float(payload.get("event_probability", 0.0))
@@ -300,7 +301,7 @@ class ScenarioLab:
             env.current_state = solution
             env.initial_state = solution.copy()
 
-            agent = self._build_agent(agent_name, run_name)
+            agent = self._build_agent(agent_name, run_name, greedy)
 
             steps             = [self._render_step(0, env, None, None, None, [], 0.0)]
             cumulative_reward = 0.0
@@ -321,7 +322,7 @@ class ScenarioLab:
                 rendered = self._render_action(env, action)
                 steps.append(self._render_step(index, env, rendered, rewards, costs, events, cumulative_reward))
 
-                if action.operator == 2:
+                if action.operator == 2 and event_probability <= 0:
                     stopped_reason = "agent_do_nothing"
                     break
 

@@ -148,14 +148,14 @@ class Policy(nn.Module):
             "job_logits"      : job_logits,
         }
 
-    def select_action(self, graph, mask_info=None):
+    def select_action(self, graph, mask_info=None, greedy=False):
         self.eval()
         with torch.no_grad():
             actor_embeddings, global_context, operator_logits, state_value = self.forward(graph)
 
             masked_operator_logits = self.masker.mask_operator(operator_logits, mask_info)
             operator_distribution  = torch.distributions.Categorical(logits=masked_operator_logits.float())
-            selected_operator      = operator_distribution.sample()
+            selected_operator      = masked_operator_logits.argmax(dim=-1) if greedy else operator_distribution.sample()
 
             operator_index    = int(selected_operator.item())
             operator_log_prob = operator_distribution.log_prob(selected_operator)
@@ -176,7 +176,7 @@ class Policy(nn.Module):
                 selected_operator_index = operator_index,
             )
             vehicle_distribution = torch.distributions.Categorical(logits=masked_vehicle_logits.float())
-            selected_vehicle     = vehicle_distribution.sample()
+            selected_vehicle     = masked_vehicle_logits.argmax(dim=-1) if greedy else vehicle_distribution.sample()
             vehicle_index        = int(selected_vehicle.item())
             vehicle_log_prob     = vehicle_distribution.log_prob(selected_vehicle)
 
@@ -187,7 +187,7 @@ class Policy(nn.Module):
                 selected_vehicle_index  = vehicle_index,
             )
             job_distribution = torch.distributions.Categorical(logits=masked_job_logits.float())
-            selected_job     = job_distribution.sample()
+            selected_job     = masked_job_logits.argmax(dim=-1) if greedy else job_distribution.sample()
             job_index        = int(selected_job.item())
             job_log_prob     = job_distribution.log_prob(selected_job)
 
