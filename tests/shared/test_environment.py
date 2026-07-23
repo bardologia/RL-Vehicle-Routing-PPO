@@ -2,8 +2,9 @@ import pytest
 
 import core.shared.environment as environment_module
 
-from core.shared import Environment
+from core.shared import Environment, RoutingState
 from model.policy_model import Action
+from tests.conftest import make_jobs, make_route, make_vehicles
 
 
 def test_reset_produces_consistent_state(environment):
@@ -235,23 +236,68 @@ def test_step_rewards_are_negated_cost_deltas(environment):
 
     assert rewards["unassigned_reward"] == pytest.approx(-(costs["new_unassigned_cost"] - costs["old_unassigned_cost"]))
     assert rewards["distance_reward"] == pytest.approx(-(costs["new_distance_cost"] - costs["old_distance_cost"]))
-    assert rewards["action_reward"] == environment.config.reward.add_job_penalty
+    assert rewards["action_reward"] == pytest.approx(-environment.config.reward.add_job_cost)
 
 
-def test_step_action_reward_selects_operator_penalty(environment):
+def test_step_action_reward_subtracts_operator_cost(environment):
     old_state = environment.current_state
     new_state = old_state.copy()
 
-    penalties = {
-        0: environment.config.reward.add_job_penalty,
-        1: environment.config.reward.remove_job_penalty,
-        2: environment.config.reward.invalid_action_penalty,
-        3: environment.config.reward.reoptimize_penalty,
+    operator_costs = {
+        0: environment.config.reward.add_job_cost,
+        1: environment.config.reward.remove_job_cost,
+        2: environment.config.reward.no_action_cost,
+        3: environment.config.reward.reoptimize_cost,
     }
 
-    for operator_index, expected in penalties.items():
-        rewards, _ = environment.step(old_state, new_state, operator_index)
-        assert rewards["action_reward"] == expected
+    for operator_index, expected in operator_costs.items():
+        rewards, costs = environment.step(old_state, new_state, operator_index)
+        assert costs["disruption"] == 0
+        assert rewards["action_reward"] == pytest.approx(-expected)
+
+
+def test_step_disruption_counts_reassigned_and_dropped_jobs(environment):
+    old_state = environment.current_state
+    reward    = environment.config.reward
+
+    moved_route = old_state.routes[0]
+    moved_job   = moved_route.job_ids[0]
+
+    new_state = old_state.copy()
+    new_state.remove_jobs({moved_job})
+    new_state.add_unassigned({moved_job})
+
+    rewards, costs = environment.step(old_state, new_state, operator_index=1)
+
+    assert costs["disruption"] == 1
+    assert costs["action_cost"] == pytest.approx(reward.remove_job_cost + reward.disruption_cost)
+    assert rewards["action_reward"] == pytest.approx(-costs["action_cost"])
+
+
+def test_insert_then_remove_cycle_has_negative_total_reward(environment, fake_vroom):
+    jobs     = make_jobs(2)
+    vehicles = make_vehicles(1)
+    state    = RoutingState(routes=[make_route(vehicles[0], jobs[:1], cost=100)], unassigned_ids={jobs[1].id})
+
+    environment.load_from_dataset({
+        "jobs"     : [job.to_dict() for job in jobs],
+        "vehicles" : [vehicle.to_dict() for vehicle in vehicles],
+        "state"    : state.to_payload(),
+    })
+
+    loaded = environment.current_state
+
+    inserted = environment.action_handler.apply_job_insertion(environment, loaded, vehicles[0].id, jobs[1].id)
+    insert_rewards, _ = environment.step(loaded, inserted, operator_index=0)
+
+    removed = environment.action_handler.apply_job_removal(environment, inserted, vehicles[0].id, jobs[1].id)
+    remove_rewards, _ = environment.step(inserted, removed, operator_index=1)
+
+    reward      = environment.config.reward
+    cycle_total = sum(insert_rewards.values()) + sum(remove_rewards.values())
+
+    assert cycle_total < 0.0
+    assert cycle_total == pytest.approx(-(reward.add_job_cost + reward.remove_job_cost + reward.disruption_cost))
 
 
 def test_load_from_dataset_round_trips(environment):

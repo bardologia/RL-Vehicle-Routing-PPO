@@ -119,11 +119,11 @@ def test_reward_config_defaults():
     assert config.unassigned_penalty_weight == 1.0
     assert config.idle_penalty_weight == 0.5
     assert config.priority_penalty_weight == 0.5
-    assert config.invalid_action_penalty == 0.0
-    assert config.add_job_penalty == 0.5
-    assert config.remove_job_penalty == 1.5
-    assert config.reoptimize_penalty == -1.5
-    assert config.no_action_penalty == 0.0
+    assert config.add_job_cost == 0.1
+    assert config.remove_job_cost == 0.1
+    assert config.no_action_cost == 0.0
+    assert config.reoptimize_cost == 0.5
+    assert config.disruption_cost == 0.3
 
 
 def test_service_config_defaults():
