@@ -9,6 +9,7 @@ from torch_geometric.data import Batch
 from tqdm import tqdm
 
 from tools.logger import Logger, NullLogger
+from tools.parallel import Batcher, ForkPool
 from tools.telemetry import PPOTelemetry
 from core.dataset import Dataset
 from core.shared import ActionMasker, Environment, vroom
@@ -208,6 +209,43 @@ class TeacherRolloutCollector:
         return self.attach_returns(records)
 
 
+_TEACHER_WORKER = {}
+
+
+def _teacher_worker_init(config):
+    _TEACHER_WORKER["collector"] = TeacherRolloutCollector(Environment(config), RegretInsertionTeacher(config), config)
+
+
+def _teacher_worker_task(task):
+    import random
+
+    import numpy as np
+    import torch
+
+    index, batch = task
+    seed         = 1_000_003 + index
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    collector = _TEACHER_WORKER["collector"]
+    episodes  = []
+
+    for item in batch:
+        records         = collector.rollout(item)
+        operator_counts = {operator: 0 for operator in range(3)}
+        for record in records:
+            operator_counts[record["action"].operator] += 1
+
+        episodes.append({
+            "records"         : records,
+            "episode_reward"  : sum(record["reward"] for record in records),
+            "operator_counts" : operator_counts,
+        })
+
+    return episodes
+
+
 class BCTrainer:
     def __init__(self, policy, masker, config, telemetry, logger=None):
         self.policy    = policy
@@ -368,42 +406,43 @@ class PretrainingPipeline:
         self.config.io.dataset_dir = self.dataset_dir
         self.dataset               = Dataset(dataset_dir=self.dataset_dir, config=self.config, shuffle_chunks=False, logger=self.logger)
 
-    def build_components(self):
-        vroom.logger = self.logger
+    def build_collection(self):
+        vroom.logger   = self.logger
+        self.telemetry = PPOTelemetry(self.session.tracker, self.config)
 
-        self.telemetry   = PPOTelemetry(self.session.tracker, self.config)
-        self.environment = Environment(self.config, logger=self.logger)
-        self.teacher     = RegretInsertionTeacher(self.config)
-        self.collector   = TeacherRolloutCollector(self.environment, self.teacher, self.config, logger=self.logger)
-        self.policy      = Policy(self.config).to(self.config.training.device)
-
+    def build_training(self):
+        self.policy  = Policy(self.config).to(self.config.training.device)
         masker       = ActionMasker(self.config)
         self.trainer = BCTrainer(self.policy, masker, self.config, self.telemetry, logger=self.logger)
 
+    def take_items(self, target):
+        items = []
+        for item in self.dataset:
+            items.append(item)
+            if len(items) >= target:
+                break
+        return items
+
     def collect(self):
         target  = self.config.pretrain.episodes
-        records = []
+        workers = self.config.pretrain.collect_workers
 
         self.logger.section("[Teacher Rollouts]")
-        self.logger.subsection(f"Collecting {target} episodes of {self.config.training.max_steps_per_episode} steps")
+        self.logger.subsection(f"Collecting {target} episodes of {self.config.training.max_steps_per_episode} steps on {workers or 'auto'} workers")
 
-        with tqdm(total=target, desc="Teacher rollouts", unit="episode") as progress:
-            for item in self.dataset:
-                episode_records = self.collector.rollout(item)
+        items   = self.take_items(target)
+        batches = Batcher(self.config.pretrain.collect_batch_size).split(items)
+        tasks   = list(enumerate(batches))
 
-                episode_reward  = sum(record["reward"] for record in episode_records)
-                operator_counts = {operator: 0 for operator in range(3)}
-                for record in episode_records:
-                    operator_counts[record["action"].operator] += 1
+        pool    = ForkPool(workers)
+        results = pool.map(_teacher_worker_task, tasks, initializer=_teacher_worker_init, initargs=(self.config,), desc="Teacher rollouts")
 
-                self.telemetry.pretrain_rollout(episode_reward, operator_counts, self.num_episodes)
-
-                records.extend(episode_records)
+        records = []
+        for batch_result in results:
+            for episode in batch_result:
+                self.telemetry.pretrain_rollout(episode["episode_reward"], episode["operator_counts"], self.num_episodes)
+                records.extend(episode["records"])
                 self.num_episodes += 1
-                progress.update(1)
-
-                if self.num_episodes >= target:
-                    break
 
         if not records:
             raise RuntimeError(f"Teacher rollout collection produced no records from dataset {self.dataset_dir}")
@@ -433,9 +472,11 @@ class PretrainingPipeline:
         self.open_session()
         self.build_logger()
         self.load_dataset()
-        self.build_components()
 
+        self.build_collection()
         records = self.collect()
+
+        self.build_training()
         metrics = self.trainer.train(records)
 
         self.save_checkpoint()
