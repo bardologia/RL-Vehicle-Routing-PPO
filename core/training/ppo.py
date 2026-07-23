@@ -488,6 +488,21 @@ class PPO(nn.Module):
         else:
             self.optimizer.step()
 
+    def minibatch_step(self, batch_indices, batch_data):
+        mean_batch_loss_tensor, mean_batch_loss_value, mean_batch_kl = self.process_batch(batch_indices, batch_data)
+
+        self.global_batch_step += 1
+
+        self.backward(mean_batch_loss_tensor, self.global_batch_step)
+        self.lr_scheduler.step()
+        self.current_entropy_coef = self.entropy_scheduler.step()
+
+        self.telemetry.batch(mean_batch_loss_value, mean_batch_kl, self.global_batch_step)
+        self.telemetry.learning_rates(self.optimizer, self.global_batch_step)
+        self.telemetry.entropy_coefficient(self.current_entropy_coef, self.global_batch_step)
+
+        return mean_batch_loss_value, mean_batch_kl
+
     def update(self):
         self.policy.train()
         total_samples  = len(self.memory.rewards)
@@ -505,23 +520,14 @@ class PPO(nn.Module):
             epoch_batches  = 0
 
             for start_index in tqdm(range(0, total_samples, self.minibatch_size), desc="Minibatch", leave=False):
-                end_index = start_index + self.minibatch_size
+                end_index     = start_index + self.minibatch_size
                 batch_indices = indices[start_index:end_index]
 
-                mean_batch_loss_tensor, mean_batch_loss_value, mean_batch_kl = self.process_batch(batch_indices, batch_data)
+                mean_batch_loss_value, mean_batch_kl = self.minibatch_step(batch_indices, batch_data)
 
-                epoch_kl_sum            += mean_batch_kl
-                epoch_loss_sum          += mean_batch_loss_value
-                epoch_batches           += 1
-                self.global_batch_step  += 1
-
-                self.backward(mean_batch_loss_tensor, self.global_batch_step)
-                self.lr_scheduler.step()
-                self.current_entropy_coef = self.entropy_scheduler.step()
-
-                self.telemetry.batch(mean_batch_loss_value, mean_batch_kl, self.global_batch_step)
-                self.telemetry.learning_rates(self.optimizer, self.global_batch_step)
-                self.telemetry.entropy_coefficient(self.current_entropy_coef, self.global_batch_step)
+                epoch_kl_sum   += mean_batch_kl
+                epoch_loss_sum += mean_batch_loss_value
+                epoch_batches  += 1
 
             self.global_epoch_step += 1
             mean_epoch_kl           = epoch_kl_sum / epoch_batches

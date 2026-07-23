@@ -215,23 +215,25 @@ class Policy(nn.Module):
         self.train()
         return results
 
-    def load(self, filename, directory):
-        filepath = os.path.join(directory, filename)
-        checkpoint = torch.load(filepath, map_location=self.config.training.device, weights_only=False)
 
-        self.load_state_dict(checkpoint["model_state_dict"])
-        return checkpoint["training_state"]
-
-    def checkpoint(self, filename, directory, training_state=None, optimizer=None):
+class PolicyCheckpoint:
+    def save(self, policy, filename, directory, training_state=None, optimizer=None):
         os.makedirs(directory, exist_ok=True)
         filepath = os.path.join(directory, filename)
 
         checkpoint = {
-            "model_state_dict": self.state_dict(),
-            "training_state": training_state,
+            "model_state_dict" : policy.state_dict(),
+            "training_state"   : training_state,
         }
 
         if optimizer is not None:
             checkpoint["optimizer_state_dict"] = optimizer.state_dict()
 
         torch.save(checkpoint, filepath)
+
+    def load(self, policy, filename, directory, map_location):
+        filepath   = os.path.join(directory, filename)
+        checkpoint = torch.load(filepath, map_location=map_location, weights_only=False)
+
+        policy.load_state_dict(checkpoint["model_state_dict"])
+        return checkpoint

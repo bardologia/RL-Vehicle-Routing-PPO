@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 
 import torch
 
-from core.shared import Environment, Graph, ActionMaskBuilder, RoutingState
+from core.shared import Environment, RoutingState
 from model.policy_model import Action, Policy
 
 
@@ -89,37 +89,7 @@ class ModelInference:
         
         self.model.eval()
         self.model.to(self.device)
-        
-        self.graph_builder = Graph(self.environment.config)
-        self.mask_builder  = ActionMaskBuilder()
-    
-    def _create_graph(self, state: RoutingState):
 
-        graph = self.graph_builder.build(
-            self.environment.jobs,
-            self.environment.vehicles,
-            state
-        )
-        return graph
-    
-    def _get_mask_info(self, state: RoutingState) -> Dict:
-      
-        original_state = self.environment.current_state
-        self.environment.current_state = state
-        mask_info = self.mask_builder.build(self.environment)
-        self.environment.current_state = original_state
-        
-        return mask_info
-    
-    def _apply_action(self, state: RoutingState, action: Action) -> Tuple[RoutingState, RoutingState]:
- 
-        original_state = self.environment.current_state
-        self.environment.current_state = state
-        old_state, new_state = self.environment.apply_action(action)
-        self.environment.current_state = original_state
-        
-        return old_state, new_state
-    
     def run(self, initial_state: RoutingState):
         result               = InferenceResult()
         result.initial_state = initial_state.copy()
@@ -141,10 +111,10 @@ class ModelInference:
         while step < self.max_steps:
             step += 1
             
-            graph = self._create_graph(current_state)
+            graph = self.environment.graph_for(current_state)
             graph = graph.to(self.device)
-            mask_info = self._get_mask_info(current_state)
-            
+            mask_info = self.environment.mask_info_for(current_state)
+
             with torch.no_grad():
                 action_result = self.model.select_action(graph, mask_info=mask_info)
             
@@ -154,7 +124,7 @@ class ModelInference:
                 result.stopped_reason = "model_do_nothing"
                 break
             
-            old_state, new_state = self._apply_action(current_state, action)
+            old_state, new_state = self.environment.apply_action_to(current_state, action)
             
             reward_info = None
            

@@ -2,11 +2,7 @@ import torch
 
 
 class ActionMaskBuilder:
-    def build(self, environment):
-        state    = environment.current_state
-        jobs     = environment.jobs
-        vehicles = environment.vehicles
-
+    def build(self, jobs, vehicles, state):
         assigned_ids = state.assigned_job_ids
         eligible_ids = {job_id for job_id in state.unassigned_ids if jobs.contains(job_id) and job_id not in assigned_ids}
 

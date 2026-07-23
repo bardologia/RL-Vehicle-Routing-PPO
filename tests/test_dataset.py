@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.dataset import Dataset, generate_events
+from core.dataset import ChunkStore, Dataset, generate_events
 from core.shared import Environment, RoutingState
 
 
@@ -9,6 +9,33 @@ from core.shared import Environment, RoutingState
 def batch(cpu_config, seeded, fake_vroom):
     items, profile = generate_events(batch_size=3, seed=11, config=cpu_config)
     return items
+
+
+def test_chunk_store_saves_lists_counts_and_loads(tmp_path, batch):
+    store = ChunkStore(str(tmp_path))
+
+    store.save(batch, 0)
+    store.save(batch, 1)
+
+    chunks = store.existing_chunks()
+
+    assert [chunk.split("/")[-1] for chunk in chunks] == ["chunk_00000.pt", "chunk_00001.pt"]
+
+    total, num_chunks = store.count_events()
+
+    assert num_chunks == 2
+    assert total == 2 * len(batch)
+
+    loaded = store.load(chunks[0])
+
+    assert len(loaded) == len(batch)
+    assert loaded[0]["state"] == batch[0]["state"]
+
+
+def test_chunk_store_ignores_missing_directory(tmp_path):
+    store = ChunkStore(str(tmp_path / "absent"))
+
+    assert store.existing_chunks() == []
 
 
 def test_generate_events_item_schema(batch):

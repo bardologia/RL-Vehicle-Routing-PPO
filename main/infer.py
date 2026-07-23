@@ -9,7 +9,7 @@ from configuration import Config
 from tools.logger import Logger
 from core.shared import Environment
 from core.inference import ModelInference
-from model.policy_model import Policy
+from model.policy_model import Policy, PolicyCheckpoint
 
 def main(config):
     env = Environment(config)
@@ -17,7 +17,7 @@ def main(config):
     initial_state = env.current_state.copy()
 
     model = Policy(config)
-    model.load("model.pt", "./checkpoints")
+    PolicyCheckpoint().load(model, "model.pt", "./checkpoints", map_location=config.training.device)
     inference = ModelInference(model, env, max_steps=50)
     result = inference.run(initial_state)
     return result
