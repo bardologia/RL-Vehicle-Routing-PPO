@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Routing PPO Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/static/css/styles.css?v=1">
+</head>
+<body>
+
+<aside class="nav">
+  <div class="brand">
+    <div class="brand__mark">RP</div>
+    <div>
+      <div class="brand__name">ROUTING&middot;PPO</div>
+      <div class="brand__sub">control console</div>
+    </div>
+  </div>
+
+  <nav class="nav__links">
+    <a data-route="home" href="#/home"><span class="nav__num">01</span>Home</a>
+    <a data-route="launch" href="#/launch"><span class="nav__num">02</span>Launch</a>
+    <a data-route="console" href="#/console"><span class="nav__num">03</span>Console</a>
+    <a data-route="results" href="#/results"><span class="nav__num">04</span>Results</a>
+    <a data-route="scenario" href="#/scenario"><span class="nav__num">05</span>Scenario Lab</a>
+  </nav>
+
+  <div class="nav__foot">
+    <span class="svc" id="svc-osrm"><i class="svc__dot"></i>OSRM</span>
+    <span class="svc" id="svc-vroom"><i class="svc__dot"></i>VROOM</span>
+  </div>
+</aside>
+
+<main class="main">
+
+  <section class="page" data-page="home">
+    <header class="page__head">
+      <h1>Dispatch overview</h1>
+      <p class="page__sub">Live vehicle-routing PPO workbench &mdash; S&atilde;o Paulo road network via OSRM, plans via VROOM.</p>
+    </header>
+    <div id="home-body"></div>
+  </section>
+
+  <section class="page" data-page="launch">
+    <header class="page__head">
+      <h1>Launch</h1>
+      <p class="page__sub">Configure and start the pipeline scripts. Changed fields become <code>--section.field</code> overrides.</p>
+    </header>
+    <div class="launch">
+      <aside class="launch__rail" id="launch-rail"></aside>
+      <div class="launch__main" id="launch-main"></div>
+    </div>
+  </section>
+
+  <section class="page" data-page="console">
+    <header class="page__head">
+      <h1>Console</h1>
+      <p class="page__sub">Running and finished jobs with live logs.</p>
+    </header>
+    <div id="console-body" class="console"></div>
+  </section>
+
+  <section class="page" data-page="results">
+    <header class="page__head">
+      <h1>Results</h1>
+      <p class="page__sub">Runs, evaluation reports, training curves, and analysis figures.</p>
+    </header>
+    <div class="results">
+      <aside class="results__rail" id="results-rail"></aside>
+      <div class="results__main" id="results-main"></div>
+    </div>
+  </section>
+
+  <section class="page" data-page="scenario">
+    <header class="page__head">
+      <h1>Scenario Lab</h1>
+      <p class="page__sub">Build a dispatch scenario on the map, solve it, and watch an agent react step by step.</p>
+    </header>
+    <div class="scenario">
+      <div class="scenario__map-wrap">
+        <div class="scenario__toolbar" id="scn-toolbar"></div>
+        <div id="scn-map"></div>
+      </div>
+      <aside class="scenario__rail" id="scn-rail"></aside>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast" class="toast"></div>
+<div id="lightbox" class="lightbox"><img alt=""><div class="lightbox__cap"></div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/js/router.js?v=1"></script>
+<script src="/static/js/charts.js?v=1"></script>
+<script src="/static/js/home.js?v=1"></script>
+<script src="/static/js/launch.js?v=1"></script>
+<script src="/static/js/console.js?v=1"></script>
+<script src="/static/js/results.js?v=1"></script>
+<script src="/static/js/scenario.js?v=1"></script>
+<script src="/static/js/app.js?v=1"></script>
+</body>
+</html>
