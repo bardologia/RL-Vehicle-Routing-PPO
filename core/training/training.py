@@ -1,5 +1,6 @@
 import gc
 import os
+import random
 
 import torch
 import torch.optim as optim
@@ -81,6 +82,14 @@ class EpisodeRunner:
         self.max_steps = config.training.max_steps_per_episode
         self.attached  = True
 
+    def apply_random_event(self):
+        if random.random() >= self.config.env.step_event_probability:
+            return
+
+        event_type, num_items = self.environment.generate_event()
+        if num_items > 0:
+            self.environment.apply_event(self.environment.current_state, event_type, num_items)
+
     def select_action(self, graph, mask_info):
         graph = graph.to(self.device)
 
@@ -132,6 +141,7 @@ class EpisodeRunner:
                 graph     = dataset_item["graph"]
                 mask_info = dataset_item["mask_info"]
             else:
+                self.apply_random_event()
                 graph, mask_info = self.environment.observe()
 
             graph, ppo_output = self.select_action(graph, mask_info)
