@@ -97,6 +97,86 @@ def test_teacher_prefers_higher_priority_job_under_scarce_capacity(environment, 
     assert action.job_index == environment.jobs.index_of(jobs[2].id)
 
 
+def test_best_insertion_ignores_unprofitable_high_regret_jobs(cpu_config):
+    teacher = RegretInsertionTeacher(cpu_config)
+    options = {7: [(-3.0, 0)], 8: [(2.0, 0), (1.0, 1)]}
+
+    best = teacher.best_insertion(options, baseline=0.0)
+
+    assert best["job_id"] == 8
+    assert best["vehicle_id"] == 0
+    assert best["reward"] == 2.0
+
+
+def test_best_insertion_returns_none_when_nothing_profitable(cpu_config):
+    teacher = RegretInsertionTeacher(cpu_config)
+    options = {7: [(-3.0, 0)], 8: [(-0.5, 0), (-1.0, 1)]}
+
+    assert teacher.best_insertion(options, baseline=0.0) is None
+
+
+def test_insertion_plan_value_grows_with_horizon(environment, fake_vroom):
+    jobs     = make_jobs(2)
+    vehicles = make_vehicles(1)
+    state    = RoutingState(routes=[], unassigned_ids={jobs[0].id, jobs[1].id})
+
+    load_scenario(environment, jobs, vehicles, state)
+
+    teacher    = RegretInsertionTeacher(environment.config)
+    short_plan = teacher.insertion_plan(environment, environment.current_state, horizon=1, baseline=0.0)
+    long_plan  = teacher.insertion_plan(environment, environment.current_state, horizon=3, baseline=0.0)
+
+    assert short_plan["action"] is not None
+    assert long_plan["value"] > short_plan["value"]
+    assert long_plan["action"].operator == short_plan["action"].operator == 0
+    assert long_plan["action"].job_index == short_plan["action"].job_index
+
+
+def test_teacher_prefers_sequential_insertions_over_reoptimize(environment, fake_vroom):
+    jobs     = make_jobs(2)
+    vehicles = make_vehicles(2)
+    state    = RoutingState(routes=[], unassigned_ids={jobs[0].id, jobs[1].id})
+
+    load_scenario(environment, jobs, vehicles, state)
+
+    teacher = RegretInsertionTeacher(environment.config)
+    action  = teacher.select_action(environment, environment.current_state)
+
+    assert action.operator == 0
+
+
+def test_teacher_removes_job_when_removal_pays(environment, fake_vroom):
+    import math
+
+    jobs     = make_jobs(2)
+    vehicles = make_vehicles(1)
+    state    = RoutingState(routes=[make_route(vehicles[0], jobs, cost=5000)], unassigned_ids=set())
+
+    load_scenario(environment, jobs, vehicles, state)
+
+    teacher = RegretInsertionTeacher(environment.config, reoptimize_margin=math.inf)
+    action  = teacher.select_action(environment, environment.current_state)
+
+    assert action.operator == 1
+    assert action.vehicle_index == 0
+    assert action.job_index in {environment.jobs.index_of(jobs[0].id), environment.jobs.index_of(jobs[1].id)}
+
+
+def test_teacher_removal_disabled_falls_back_to_no_op(environment, fake_vroom):
+    import math
+
+    jobs     = make_jobs(2)
+    vehicles = make_vehicles(1)
+    state    = RoutingState(routes=[make_route(vehicles[0], jobs, cost=5000)], unassigned_ids=set())
+
+    load_scenario(environment, jobs, vehicles, state)
+
+    teacher = RegretInsertionTeacher(environment.config, reoptimize_margin=math.inf, allow_removal=False)
+    action  = teacher.select_action(environment, environment.current_state)
+
+    assert action.operator == 2
+
+
 def test_collector_records_have_discounted_returns(cpu_config, seeded, fake_vroom):
     cpu_config.training.max_steps_per_episode = 2
     cpu_config.env.step_event_probability     = 0.0

@@ -136,6 +136,7 @@ def test_pretrain_config_defaults():
     assert config.value_loss_coef == 0.5
     assert config.gradient_clip_max_norm == 3.0
     assert config.reoptimize_margin == 0.0
+    assert config.plan_horizon == 3
 
 
 def test_reward_config_defaults():
