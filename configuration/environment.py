@@ -30,6 +30,8 @@ class EnvironmentConfig:
     vehicle_remove_min: int = 1
     vehicle_remove_max: int = 1
 
+    step_event_probability: float = 0.3
+
     @property
     def outlier_probability(self):
         return 1.0 / self.outlier_frequency if self.outlier_frequency > 0 else 0.0

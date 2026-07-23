@@ -31,6 +31,7 @@ def test_environment_config_defaults():
     assert config.job_insert_min == 2
     assert config.job_insert_max == 3
     assert config.vehicle_remove_min == 1
+    assert config.step_event_probability == 0.3
 
 
 def test_io_config_defaults():

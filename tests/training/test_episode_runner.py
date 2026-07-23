@@ -88,6 +88,40 @@ def test_episode_runner_operator_stats_track_rewards_per_operator(cpu_config, se
     assert set(op_stats["count"].keys()) == {0, 1, 2, 3}
 
 
+def test_episode_runner_applies_events_between_steps_when_forced(cpu_config, seeded, fake_vroom, tmp_path):
+    cpu_config.io.logdir                      = str(tmp_path)
+    cpu_config.training.max_steps_per_episode = 3
+    cpu_config.env.step_event_probability     = 1.0
+
+    items, _  = generate_events(batch_size=1, seed=7, config=cpu_config)
+    runner, _ = build_runner(cpu_config)
+
+    runner.environment.generate_event = lambda: ("new_job", 1)
+
+    runner.environment.load_from_dataset(items[0])
+    jobs_before = len(runner.environment.jobs)
+
+    runner.run(items[0], global_step_counter=0)
+
+    assert len(runner.environment.jobs) == jobs_before + (cpu_config.training.max_steps_per_episode - 1)
+
+
+def test_episode_runner_applies_no_events_at_zero_probability(cpu_config, seeded, fake_vroom, tmp_path):
+    cpu_config.io.logdir                      = str(tmp_path)
+    cpu_config.training.max_steps_per_episode = 3
+    cpu_config.env.step_event_probability     = 0.0
+
+    items, _  = generate_events(batch_size=1, seed=7, config=cpu_config)
+    runner, _ = build_runner(cpu_config)
+
+    event_calls = []
+    runner.environment.generate_event = lambda: event_calls.append(1) or ("new_job", 1)
+
+    runner.run(items[0], global_step_counter=0)
+
+    assert event_calls == []
+
+
 def test_episode_runner_detaches_tensor_logger_after_first_step(cpu_config, seeded, fake_vroom, tmp_path):
     cpu_config.io.logdir                      = str(tmp_path)
     cpu_config.training.max_steps_per_episode = 2
