@@ -288,6 +288,12 @@ class Environment:
 
         return distance_cost, unassigned_cost, idle_cost, priority_cost
 
+    def evaluate_disruption(self, old_state: RoutingState, new_state: RoutingState):
+        old_vehicle_by_job = {stop.job_id: route.vehicle_id for route in old_state.routes for stop in route.stops}
+        new_vehicle_by_job = {stop.job_id: route.vehicle_id for route in new_state.routes for stop in route.stops}
+
+        return sum(1 for job_id, vehicle_id in old_vehicle_by_job.items() if new_vehicle_by_job.get(job_id) != vehicle_id)
+
     def step(self, old_state, new_state, operator_index):
         old_distance_cost, old_unassigned_cost, old_idle_cost, old_priority_cost = self.evaluate_cost(old_state)
         new_distance_cost, new_unassigned_cost, new_idle_cost, new_priority_cost = self.evaluate_cost(new_state)
@@ -298,13 +304,16 @@ class Environment:
         priority_reward   = -(new_priority_cost   - old_priority_cost)
 
         reward_config = self.config.reward
-        action_penalties = {
-            0: reward_config.add_job_penalty,
-            1: reward_config.remove_job_penalty,
-            2: reward_config.invalid_action_penalty,
-            3: reward_config.reoptimize_penalty
+        operator_costs = {
+            0: reward_config.add_job_cost,
+            1: reward_config.remove_job_cost,
+            2: reward_config.no_action_cost,
+            3: reward_config.reoptimize_cost
         }
-        action_reward = action_penalties[operator_index]
+
+        disruption    = self.evaluate_disruption(old_state, new_state)
+        action_cost   = operator_costs[operator_index] + reward_config.disruption_cost * disruption
+        action_reward = -action_cost
 
         costs = {
             "old_distance_cost"   : old_distance_cost,
@@ -314,7 +323,9 @@ class Environment:
             "new_distance_cost"   : new_distance_cost,
             "new_unassigned_cost" : new_unassigned_cost,
             "new_idle_cost"       : new_idle_cost,
-            "new_priority_cost"   : new_priority_cost
+            "new_priority_cost"   : new_priority_cost,
+            "disruption"          : disruption,
+            "action_cost"         : action_cost
         }
 
         rewards = {
