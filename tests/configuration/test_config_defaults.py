@@ -5,6 +5,7 @@ from configuration.learning    import Entropy, LearningRate
 from configuration.model       import ModelConfig
 from configuration.monitor     import MonitorConfig
 from configuration.ppo         import PPOConfig
+from configuration.pretraining import PretrainConfig
 from configuration.reward      import RewardConfig
 from configuration.service     import ServiceConfig
 from configuration.telemetry   import TelemetryConfig
@@ -43,6 +44,7 @@ def test_io_config_defaults():
     assert config.dataset_dir == "datasets/chunked"
     assert config.checkpoint_filename == "graph_ppo_policy.pt"
     assert config.resume_from_run is None
+    assert config.init_from_run is None
     assert config.dataset_num_events == 1024000
     assert config.dataset_chunk_size == 1024
     assert config.dataset_batch_size == 128
@@ -111,6 +113,18 @@ def test_ppo_config_defaults():
     assert config.value_loss_coef == 0.5
     assert config.gradient_clip_max_norm == 3.0
     assert config.kl_divergence_threshold == 0.015
+
+
+def test_pretrain_config_defaults():
+    config = PretrainConfig()
+
+    assert config.episodes == 2000
+    assert config.bc_epochs == 4
+    assert config.minibatch_size == 128
+    assert config.lr == 3e-4
+    assert config.value_loss_coef == 0.5
+    assert config.gradient_clip_max_norm == 3.0
+    assert config.reoptimize_margin == 0.0
 
 
 def test_reward_config_defaults():

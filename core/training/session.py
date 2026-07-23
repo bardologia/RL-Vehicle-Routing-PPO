@@ -60,6 +60,8 @@ class TrainingPipeline:
         self.runs_root   = self._absolute(self.config.io.runs_dir)
         self.dataset_dir = self._absolute(self.config.io.dataset_dir)
 
+        self.config.io.runs_dir = self.runs_root
+
     def _absolute(self, path):
         if os.path.isabs(path):
             return path
