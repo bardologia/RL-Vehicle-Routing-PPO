@@ -255,7 +255,7 @@ class ScenarioLab:
                 events = self._apply_events(env, event_probability) if index > 1 else []
 
                 graph, mask_info = env.observe()
-                action           = agent.act(env, graph, mask_info)
+                action           = agent.act(env, graph, mask_info, max_steps - index + 1)
 
                 old_state, new_state = env.apply_action(action)
                 rewards, costs       = env.step(old_state, new_state, action.operator)
