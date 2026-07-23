@@ -47,6 +47,42 @@ def test_vroom_solve_posts_full_payload_shape(cpu_config, monkeypatch):
     assert set(payload["vehicles"][0].keys()) == {"id", "start", "capacity", "time_window", "speed_factor", "return_to_depot", "description"}
 
 
+def test_vroom_solve_caches_identical_requests(cpu_config, monkeypatch):
+    calls = {"count": 0}
+
+    def fake_post(url, json=None, timeout=None):
+        calls["count"] += 1
+        return FakeResponse(200, payload=load_fixture("vroom_solution_small"))
+
+    monkeypatch.setattr(services_module.requests, "post", fake_post)
+
+    client = VroomClient(cpu_config.service)
+    first  = client.solve(make_jobs(3), make_vehicles(2))
+    second = client.solve(make_jobs(3), make_vehicles(2))
+
+    assert calls["count"] == 1
+    assert first is not second
+    assert first.to_payload() == second.to_payload()
+
+    first.add_unassigned({999})
+    assert 999 not in second.unassigned_ids
+    assert 999 not in client.solve(make_jobs(3), make_vehicles(2)).unassigned_ids
+
+
+def test_vroom_solve_does_not_cache_failures(cpu_config, monkeypatch):
+    responses = [FakeResponse(500, text="boom"), FakeResponse(200, payload=load_fixture("vroom_solution_small"))]
+
+    def fake_post(url, json=None, timeout=None):
+        return responses.pop(0)
+
+    monkeypatch.setattr(services_module.requests, "post", fake_post)
+
+    client = VroomClient(cpu_config.service, logger=CapturingLogger())
+
+    assert client.solve(make_jobs(1), make_vehicles(1)) is None
+    assert isinstance(client.solve(make_jobs(1), make_vehicles(1)), RoutingState)
+
+
 def test_vroom_solve_returns_none_on_non_200(cpu_config, monkeypatch):
     def fake_post(url, json=None, timeout=None):
         return FakeResponse(500, text="boom")
