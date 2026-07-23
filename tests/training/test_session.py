@@ -2,7 +2,6 @@ import os
 
 import pytest
 
-from core.dataset import Dataset
 from core.training import RunDirectory, Trainer
 from tools.logger import NullLogger
 from tools.tracker import NullTracker
@@ -52,8 +51,7 @@ def test_trainer_state_snapshot_carries_all_counters(cpu_config, seeded, fake_vr
     run_dir.mkdir()
     cpu_config.io.logdir = str(run_dir)
 
-    dataset = Dataset(dataset_dir=str(tmp_path / "data"), config=cpu_config)
-    trainer = Trainer(dataset=dataset, config=cpu_config, logger=NullLogger(), tracker=NullTracker())
+    trainer = Trainer(config=cpu_config, logger=NullLogger(), tracker=NullTracker())
 
     trainer.global_step_counter = 12
     trainer.episode_index       = 3
@@ -64,7 +62,6 @@ def test_trainer_state_snapshot_carries_all_counters(cpu_config, seeded, fake_vr
     assert state["global_step_counter"] == 12
     assert state["episode_index"] == 3
     assert state["ppo_update_index"] == 1
-    assert "dataset_state" in state
     assert "lr_scheduler_step" in state
     assert "entropy_scheduler_step" in state
 
@@ -74,9 +71,7 @@ def test_trainer_resume_restores_counters_from_checkpoint(cpu_config, seeded, fa
     run_dir.mkdir()
     cpu_config.io.logdir = str(run_dir)
 
-    dataset = Dataset(dataset_dir=str(tmp_path / "data"), config=cpu_config)
-
-    first = Trainer(dataset=dataset, config=cpu_config, logger=NullLogger(), tracker=NullTracker())
+    first = Trainer(config=cpu_config, logger=NullLogger(), tracker=NullTracker())
     first.global_step_counter = 123
     first.episode_index       = 45
     first.ppo_update_index    = 7
@@ -85,7 +80,7 @@ def test_trainer_resume_restores_counters_from_checkpoint(cpu_config, seeded, fa
     first.checkpoint.save(first.ppo, first)
 
     cpu_config.io.resume_from_run = "run_x"
-    second = Trainer(dataset=dataset, config=cpu_config, logger=NullLogger(), tracker=NullTracker())
+    second = Trainer(config=cpu_config, logger=NullLogger(), tracker=NullTracker())
 
     assert second.resume is True
     assert second.global_step_counter == 123

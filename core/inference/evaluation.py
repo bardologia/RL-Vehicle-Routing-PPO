@@ -1,13 +1,11 @@
 import json
 import os
-import random
 
 import numpy as np
 import torch
 from tqdm import tqdm
 
 from tools.logger import Logger
-from core.dataset import Dataset
 from core.shared import Environment, vroom
 from core.training.pretraining import RegretInsertionTeacher
 from model.policy_model import Action, Policy, PolicyCheckpoint
@@ -45,12 +43,8 @@ class EpisodeEvaluator:
         self.config      = config
         self.max_steps   = config.training.max_steps_per_episode
 
-    def run(self, agent, dataset_item, episode_seed):
-        random.seed(episode_seed)
-        np.random.seed(episode_seed)
-        torch.manual_seed(episode_seed)
-
-        self.environment.load_from_dataset(dataset_item)
+    def run(self, agent, episode_seed):
+        self.environment.sample_episode(episode_seed)
 
         total_reward    = 0.0
         operator_counts = {operator: 0 for operator in range(3)}
@@ -87,8 +81,6 @@ class EvaluationPipeline:
         self.logger    = logger or Logger(name="evaluation")
 
         self.run_dir     = None
-        self.dataset_dir = None
-        self.items       = None
         self.environment = None
         self.model       = None
         self.agents      = None
@@ -106,26 +98,6 @@ class EvaluationPipeline:
         self.run_dir = os.path.join(runs_root, run_name)
         if not os.path.isdir(self.run_dir):
             raise FileNotFoundError(f"Run directory not found: {self.run_dir}")
-
-    def load_items(self):
-        self.dataset_dir = self.config.io.dataset_dir
-        if not os.path.isabs(self.dataset_dir):
-            self.dataset_dir = os.path.join(str(self.repo_root), self.dataset_dir)
-
-        if not os.path.isdir(self.dataset_dir):
-            raise FileNotFoundError(f"Dataset directory not found: {self.dataset_dir}")
-
-        requested = self.config.evaluation.episodes
-        dataset   = Dataset(dataset_dir=self.dataset_dir, config=self.config, shuffle_chunks=False, logger=self.logger)
-
-        self.items = []
-        for item in dataset:
-            self.items.append(item)
-            if len(self.items) >= requested:
-                break
-
-        if len(self.items) < requested:
-            raise ValueError(f"Evaluation requested {requested} episodes but dataset {self.dataset_dir} holds only {len(self.items)} items")
 
     def build_environment(self):
         vroom.logger     = self.logger
@@ -163,14 +135,15 @@ class EvaluationPipeline:
         }
 
     def evaluate(self):
-        evaluator = EpisodeEvaluator(self.environment, self.config)
-        seed      = self.config.evaluation.seed
+        evaluator      = EpisodeEvaluator(self.environment, self.config)
+        seed           = self.config.evaluation.seed
+        episodes_count = self.config.evaluation.episodes
 
         self.results = {}
         for name, agent in self.agents.items():
             episodes = []
-            for index, item in enumerate(tqdm(self.items, desc=f"Evaluating {name}", unit="episode")):
-                episodes.append(evaluator.run(agent, item, seed + index))
+            for index in tqdm(range(episodes_count), desc=f"Evaluating {name}", unit="episode"):
+                episodes.append(evaluator.run(agent, seed + index))
 
             self.results[name] = self.aggregate(episodes)
 
@@ -190,7 +163,6 @@ class EvaluationPipeline:
 
     def run(self):
         self.resolve_run()
-        self.load_items()
         self.build_environment()
         self.load_model()
         self.build_agents()

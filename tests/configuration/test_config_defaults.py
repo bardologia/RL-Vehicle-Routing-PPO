@@ -29,6 +29,7 @@ def test_environment_config_defaults():
     assert config.mean_jobs == 16
     assert config.mean_vehicles == 4
     assert config.reset_max_attempts == 32
+    assert config.scenario_seed == 42
     assert config.outlier_frequency == 8
     assert config.job_insert_min == 2
     assert config.job_insert_max == 3
@@ -42,14 +43,9 @@ def test_io_config_defaults():
     assert config.runs_dir == "runs"
     assert config.run_name is None
     assert config.logdir is None
-    assert config.dataset_dir == "datasets/chunked"
     assert config.checkpoint_filename == "graph_ppo_policy.pt"
     assert config.resume_from_run is None
     assert config.init_from_run is None
-    assert config.dataset_num_events == 1024000
-    assert config.dataset_chunk_size == 1024
-    assert config.dataset_batch_size == 128
-    assert config.dataset_seed == 42
 
 
 def test_learning_rate_defaults():
@@ -174,6 +170,8 @@ def test_training_config_defaults():
 
     assert config.device == "cuda"
     assert config.max_steps_per_episode == 5
+    assert config.num_updates == 16
+    assert config.episodes_per_update == 1024
     assert config.minibatch_size == 128
     assert config.num_epochs == 5
     assert config.print_frequency == 5

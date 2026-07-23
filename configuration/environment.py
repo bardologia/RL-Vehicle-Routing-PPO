@@ -27,6 +27,7 @@ class EnvironmentConfig:
     std_vehicles  : int = 1
 
     reset_max_attempts : int = 32
+    scenario_seed      : int = 42
 
     outlier_frequency  : int = 8
     outlier_multiplier : int = 2

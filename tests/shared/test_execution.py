@@ -3,7 +3,7 @@ from tests.conftest import make_jobs, make_vehicles
 
 
 def load_execution_scenario(environment, jobs, vehicles, state):
-    environment.load_from_dataset({
+    environment.load_scenario({
         "jobs"     : [job.to_dict() for job in jobs],
         "vehicles" : [vehicle.to_dict() for vehicle in vehicles],
         "depot"    : [-46.63, -23.55],

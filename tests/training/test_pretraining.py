@@ -3,7 +3,6 @@ import os
 import pytest
 import torch
 
-from core.dataset import ChunkStore, Dataset, generate_events
 from core.shared import ActionMasker, RoutingState
 from core.training import BCTrainer, PPOMemory, PretrainingPipeline, RegretInsertionTeacher, TeacherRolloutCollector, Trainer
 from model.policy_model import Action, Policy, PolicyCheckpoint
@@ -14,7 +13,7 @@ from tests.conftest import make_jobs, make_route, make_vehicles
 
 
 def load_scenario(environment, jobs, vehicles, state):
-    environment.load_from_dataset({
+    environment.load_scenario({
         "jobs"     : [job.to_dict() for job in jobs],
         "vehicles" : [vehicle.to_dict() for vehicle in vehicles],
         "depot"    : [-46.63, -23.55],
@@ -203,14 +202,12 @@ def test_collector_records_have_discounted_returns(cpu_config, seeded, fake_vroo
     cpu_config.training.max_steps_per_episode = 2
     cpu_config.env.step_event_probability     = 0.0
 
-    items, _ = generate_events(batch_size=1, seed=7, config=cpu_config)
-
     from core.shared import Environment
     environment = Environment(cpu_config)
     teacher     = RegretInsertionTeacher(cpu_config)
     collector   = TeacherRolloutCollector(environment, teacher, cpu_config)
 
-    records = collector.rollout(items[0])
+    records = collector.rollout(0)
     gamma   = cpu_config.ppo.gamma
 
     assert len(records) == 2
@@ -253,15 +250,8 @@ def test_bc_trainer_reaches_full_accuracy_on_fixed_teacher_action(environment, f
 
 
 def test_pretraining_pipeline_saves_policy_checkpoint(cpu_config, seeded, fake_vroom, tmp_path):
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-
-    items, _ = generate_events(batch_size=3, seed=11, config=cpu_config)
-    ChunkStore(str(data_dir)).save(items, 0)
-
     cpu_config.io.runs_dir                    = str(tmp_path / "runs")
     cpu_config.io.run_name                    = "pretrain_run"
-    cpu_config.io.dataset_dir                 = str(data_dir)
     cpu_config.pretrain.episodes              = 2
     cpu_config.pretrain.bc_epochs             = 1
     cpu_config.pretrain.minibatch_size        = 8
@@ -293,8 +283,7 @@ def test_trainer_init_from_run_loads_pretrained_weights(cpu_config, seeded, fake
     cpu_config.io.init_from_run = "pre"
     cpu_config.io.logdir        = str(tmp_path / "logs")
 
-    dataset = Dataset(dataset_dir=str(tmp_path / "empty"), config=cpu_config)
-    trainer = Trainer(dataset=dataset, config=cpu_config, logger=NullLogger(), tracker=NullTracker())
+    trainer = Trainer(config=cpu_config, logger=NullLogger(), tracker=NullTracker())
 
     for original, loaded in zip(source.state_dict().values(), trainer.ppo.policy.state_dict().values()):
         assert torch.equal(original, loaded)
@@ -305,7 +294,5 @@ def test_trainer_rejects_init_and_resume_together(cpu_config, seeded, fake_vroom
     cpu_config.io.init_from_run   = "pre"
     cpu_config.io.resume_from_run = "old"
 
-    dataset = Dataset(dataset_dir=str(tmp_path / "empty"), config=cpu_config)
-
     with pytest.raises(ValueError):
-        Trainer(dataset=dataset, config=cpu_config, logger=NullLogger(), tracker=NullTracker())
+        Trainer(config=cpu_config, logger=NullLogger(), tracker=NullTracker())

@@ -1,4 +1,4 @@
-from dataclasses import fields, is_dataclass
+from dataclasses import fields
 from typing      import Union, get_args, get_origin
 
 from configuration import Config
@@ -9,14 +9,12 @@ class ScriptCatalog:
         "training.device"            : {"label": "Device", "choices": ["cuda", "cpu"]},
         "io.run_name"                : {"label": "Run name", "help": "Run directory under runs/. Empty picks a timestamped name."},
         "io.runs_dir"                : {"label": "Runs directory"},
-        "io.dataset_dir"             : {"label": "Dataset directory"},
         "io.checkpoint_filename"     : {"label": "Checkpoint file"},
         "io.resume_from_run"         : {"label": "Resume from run", "help": "Continue this run with its optimizer state. Mutually exclusive with init."},
         "io.init_from_run"           : {"label": "Init from run", "help": "Warm-start weights from this run (e.g. a BC pretrain). Mutually exclusive with resume."},
-        "io.dataset_num_events"      : {"label": "Total events"},
-        "io.dataset_chunk_size"      : {"label": "Chunk size"},
-        "io.dataset_batch_size"      : {"label": "Worker batch size"},
-        "io.dataset_seed"            : {"label": "Seed"},
+        "training.num_updates"       : {"label": "Updates", "help": "Number of PPO updates; each collects episodes_per_update fresh episodes."},
+        "training.episodes_per_update" : {"label": "Episodes per update"},
+        "env.scenario_seed"          : {"label": "Scenario seed", "help": "Base seed for inline scenario sampling; episode i uses scenario_seed + i."},
         "env.center"                 : {"label": "Center (lon, lat)"},
         "env.step_event_probability" : {"label": "Event probability", "help": "Chance of a disruption event firing on each episode step."},
         "service.vroom_url"          : {"label": "VROOM URL"},
@@ -31,28 +29,16 @@ class ScriptCatalog:
     }
 
     SCRIPTS = {
-        "generate_dataset": {
-            "title"      : "Generate Dataset",
-            "group"      : "Data",
-            "summary"    : "Sample scenarios, apply one disruption event each, and write chunked training data.",
-            "essentials" : ["io.dataset_dir", "io.dataset_num_events", "io.dataset_seed"],
-            "sections"   : [
-                {"title": "Output",   "fields": ["io.dataset_dir", "io.dataset_num_events", "io.dataset_chunk_size", "io.dataset_batch_size", "io.dataset_seed"]},
-                {"title": "Sampler",  "fields": ["env.mean_jobs", "env.std_jobs", "env.min_jobs", "env.mean_vehicles", "env.std_vehicles", "env.min_vehicles", "env.radius", "env.center", "env.depot_radius", "env.repossession_fraction", "env.support_service_min", "env.support_service_max", "env.repossession_service_min", "env.repossession_service_max", "env.outlier_frequency", "env.outlier_multiplier", "env.reset_max_attempts"]},
-                {"title": "Events",   "fields": ["env.job_insert_min", "env.job_insert_max", "env.job_remove_min", "env.job_remove_max", "env.vehicle_insert_min", "env.vehicle_insert_max", "env.vehicle_remove_min", "env.vehicle_remove_max"]},
-                {"title": "Services", "fields": ["service.vroom_url", "service.osrm_url"]},
-            ],
-        },
         "pretrain": {
             "title"      : "Pretrain (Behavior Cloning)",
             "group"      : "Training",
             "summary"    : "Clone the regret-insertion teacher into the policy as a warm start for PPO.",
-            "essentials" : ["io.run_name", "io.dataset_dir", "pretrain.episodes", "pretrain.bc_epochs"],
+            "essentials" : ["io.run_name", "pretrain.episodes", "pretrain.bc_epochs"],
             "sections"   : [
-                {"title": "Run",         "fields": ["io.run_name", "io.runs_dir", "io.dataset_dir"]},
+                {"title": "Run",         "fields": ["io.run_name", "io.runs_dir"]},
                 {"title": "Pretraining", "fields": ["pretrain.episodes", "pretrain.bc_epochs", "pretrain.minibatch_size", "pretrain.lr", "pretrain.value_loss_coef", "pretrain.gradient_clip_max_norm", "pretrain.plan_horizon"]},
                 {"title": "Episode",     "fields": ["training.max_steps_per_episode", "env.step_event_probability", "env.tick_seconds", "env.repossession_success_probability", "env.depot_service"]},
-                {"title": "Sampler",     "fields": ["env.mean_jobs", "env.std_jobs", "env.mean_vehicles", "env.std_vehicles", "env.radius"]},
+                {"title": "Sampler",     "fields": ["env.mean_jobs", "env.std_jobs", "env.mean_vehicles", "env.std_vehicles", "env.radius", "env.scenario_seed"]},
                 {"title": "Reward",      "fields": ["reward.distance_weight", "reward.unassigned_penalty_weight", "reward.idle_penalty_weight", "reward.priority_penalty_weight", "reward.add_job_cost", "reward.remove_job_cost", "reward.no_action_cost", "reward.disruption_cost"]},
                 {"title": "Compute",     "fields": ["training.device"]},
                 {"title": "Services",    "fields": ["service.vroom_url", "service.osrm_url"]},
@@ -61,11 +47,11 @@ class ScriptCatalog:
         "train": {
             "title"      : "Train (PPO)",
             "group"      : "Training",
-            "summary"    : "PPO over the chunked dataset with per-head learning rates and anchored fine-tuning.",
-            "essentials" : ["io.run_name", "io.dataset_dir", "io.init_from_run"],
+            "summary"    : "PPO over inline-sampled episodes with per-head learning rates and anchored fine-tuning.",
+            "essentials" : ["io.run_name", "training.num_updates", "io.init_from_run"],
             "sections"   : [
-                {"title": "Run",            "fields": ["io.run_name", "io.runs_dir", "io.dataset_dir", "io.resume_from_run", "io.init_from_run", "io.checkpoint_filename"]},
-                {"title": "Training",       "fields": ["training.device", "training.max_steps_per_episode", "training.minibatch_size", "training.num_epochs", "training.use_mixed_precision", "training.print_frequency", "training.log_episode_frequency", "training.verbose"]},
+                {"title": "Run",            "fields": ["io.run_name", "io.runs_dir", "io.resume_from_run", "io.init_from_run", "io.checkpoint_filename"]},
+                {"title": "Training",       "fields": ["training.device", "training.num_updates", "training.episodes_per_update", "env.scenario_seed", "training.max_steps_per_episode", "training.minibatch_size", "training.num_epochs", "training.use_mixed_precision", "training.print_frequency", "training.log_episode_frequency", "training.verbose"]},
                 {"title": "Learning rates", "fields": ["lr.lr_operator_actor", "lr.lr_vehicle_actor", "lr.lr_job_actor", "lr.lr_critic", "lr.lr_embedding", "lr.lr_warmup_steps", "lr.lr_min", "lr.lr_decay_steps"]},
                 {"title": "Entropy",        "fields": ["entropy.entropy_coef", "entropy.entropy_start", "entropy.entropy_end", "entropy.entropy_anneal_steps"]},
                 {"title": "PPO",            "fields": ["ppo.gamma", "ppo.gae_lambda", "ppo.clip_ratio", "ppo.value_clip_ratio", "ppo.value_loss_coef", "ppo.gradient_clip_max_norm", "ppo.kl_divergence_threshold", "ppo.anchor_kl_start", "ppo.anchor_kl_end", "ppo.anchor_anneal_steps"]},
@@ -80,9 +66,9 @@ class ScriptCatalog:
             "title"      : "Evaluate",
             "group"      : "Evaluation",
             "summary"    : "Compare the checkpoint against teacher, insertion-only, and do-nothing baselines.",
-            "essentials" : ["io.run_name", "io.dataset_dir", "evaluation.episodes"],
+            "essentials" : ["io.run_name", "evaluation.episodes"],
             "sections"   : [
-                {"title": "Run",        "fields": ["io.run_name", "io.runs_dir", "io.dataset_dir", "io.checkpoint_filename"]},
+                {"title": "Run",        "fields": ["io.run_name", "io.runs_dir", "io.checkpoint_filename"]},
                 {"title": "Evaluation", "fields": ["evaluation.episodes", "evaluation.seed", "training.max_steps_per_episode", "env.step_event_probability", "env.tick_seconds", "env.repossession_success_probability"]},
                 {"title": "Reward",     "fields": ["reward.distance_weight", "reward.unassigned_penalty_weight", "reward.idle_penalty_weight", "reward.priority_penalty_weight", "reward.add_job_cost", "reward.remove_job_cost", "reward.no_action_cost", "reward.disruption_cost"]},
                 {"title": "Compute",    "fields": ["training.device"]},

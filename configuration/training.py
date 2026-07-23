@@ -5,6 +5,8 @@ from dataclasses import dataclass
 class TrainingConfig:
     device                : str = "cuda"
     max_steps_per_episode : int = 5
+    num_updates           : int = 16
+    episodes_per_update   : int = 1024
     minibatch_size        : int = 128
     num_epochs            : int = 5
     print_frequency       : int = 5
@@ -12,5 +14,3 @@ class TrainingConfig:
     use_mixed_precision   : bool = False
     large_negative_value  : float = -1e8
     verbose               : bool = False
-    rollout_workers       : int = 0
-    rollout_batch_size    : int = 8

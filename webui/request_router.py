@@ -75,10 +75,6 @@ class RequestRouter:
             self._send_json(handler, self.runs.run_detail(name))
             return
 
-        if path == "/api/datasets":
-            self._send_json(handler, {"datasets": self.runs.list_datasets()})
-            return
-
         if path == "/api/scenario/checkpoints":
             self._send_json(handler, {"checkpoints": self.lab.checkpoints()})
             return
