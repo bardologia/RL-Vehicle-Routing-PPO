@@ -6,7 +6,7 @@ import torch
 from tqdm import tqdm
 
 from tools.logger import Logger
-from core.shared import Environment, vroom
+from core.shared import Environment, EpisodeDriver, vroom
 from core.training.pretraining import RegretInsertionTeacher
 from model.policy_model import Action, Policy, PolicyCheckpoint
 
@@ -41,29 +41,19 @@ class EpisodeEvaluator:
     def __init__(self, environment, config):
         self.environment = environment
         self.config      = config
-        self.max_steps   = config.training.max_steps_per_episode
+        self.driver      = EpisodeDriver(environment, config)
 
     def run(self, agent, episode_seed):
-        self.environment.sample_episode(episode_seed)
-
         total_reward    = 0.0
         operator_counts = {operator: 0 for operator in range(3)}
 
-        for step_in_episode in range(self.max_steps):
-            if step_in_episode > 0:
-                self.environment.advance_execution()
-                self.environment.apply_random_event()
+        for step in self.driver.episode(episode_seed):
+            action = agent.act(self.environment, step.graph, step.mask_info, step.remaining)
 
-            graph, mask_info = self.environment.observe()
-            action           = agent.act(self.environment, graph, mask_info, self.max_steps - step_in_episode)
-
-            old_state, new_state = self.environment.apply_action_to(self.environment.current_state, action)
-            rewards, _           = self.environment.step(old_state, new_state, action.operator)
+            _, _, rewards, _ = step.commit(action)
 
             total_reward += float(sum(rewards.values()))
             operator_counts[action.operator] += 1
-
-            self.environment.current_state = new_state
 
         final_state = self.environment.current_state
         return {
