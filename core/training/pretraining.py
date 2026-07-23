@@ -155,10 +155,13 @@ class RegretInsertionTeacher:
         rewards, _ = environment.step(state, new_state, 3)
         return sum(rewards.values()), new_state
 
-    def select_action(self, environment, state):
+    def select_action(self, environment, state, remaining_steps=None):
         baseline = self.no_op_reward(environment, state)
         horizon  = self.config.pretrain.plan_horizon
         gamma    = self.config.ppo.gamma
+
+        if remaining_steps is not None:
+            horizon = min(horizon, remaining_steps)
 
         plan = self.insertion_plan(environment, state, horizon, baseline)
 
@@ -217,7 +220,7 @@ class TeacherRolloutCollector:
                 self.environment.apply_random_event()
 
             graph, mask_info = self.environment.observe()
-            action           = self.teacher.select_action(self.environment, self.environment.current_state)
+            action           = self.teacher.select_action(self.environment, self.environment.current_state, self.max_steps - step_in_episode)
 
             old_state, new_state = self.environment.apply_action(action)
             rewards, _           = self.environment.step(old_state, new_state, action.operator)

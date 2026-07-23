@@ -12,7 +12,7 @@ from tools.logger import NullLogger
 
 def test_fixed_operator_agent_emits_constant_action():
     agent  = FixedOperatorAgent(3)
-    action = agent.act(None, None, None)
+    action = agent.act(None, None, None, 1)
 
     assert action.operator == 3
     assert action.vehicle_index == 0

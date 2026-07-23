@@ -182,6 +182,24 @@ def test_teacher_relocates_job_when_pair_beats_staying(environment, fake_vroom):
     assert action.job_index == environment.jobs.index_of(jobs[0].id)
 
 
+def test_teacher_does_not_relocate_on_final_step(environment, fake_vroom):
+    import math
+
+    jobs     = make_jobs(2)
+    vehicles = make_vehicles(2)
+    state    = RoutingState(
+        routes         = [make_route(vehicles[0], jobs[:1], cost=1000), make_route(vehicles[1], jobs[1:], cost=100)],
+        unassigned_ids = set(),
+    )
+
+    load_scenario(environment, jobs, vehicles, state)
+
+    teacher = RegretInsertionTeacher(environment.config, reoptimize_margin=math.inf)
+    action  = teacher.select_action(environment, environment.current_state, remaining_steps=1)
+
+    assert action.operator == 2
+
+
 def test_best_removal_value_includes_reinsertion_continuation(environment, fake_vroom):
     jobs     = make_jobs(2)
     vehicles = make_vehicles(2)

@@ -18,7 +18,7 @@ class ModelAgent:
     def __init__(self, policy):
         self.policy = policy
 
-    def act(self, environment, graph, mask_info):
+    def act(self, environment, graph, mask_info, remaining_steps):
         with torch.no_grad():
             return self.policy.select_action(graph, mask_info=mask_info)["action"]
 
@@ -27,15 +27,15 @@ class TeacherAgent:
     def __init__(self, teacher):
         self.teacher = teacher
 
-    def act(self, environment, graph, mask_info):
-        return self.teacher.select_action(environment, environment.current_state)
+    def act(self, environment, graph, mask_info, remaining_steps):
+        return self.teacher.select_action(environment, environment.current_state, remaining_steps)
 
 
 class FixedOperatorAgent:
     def __init__(self, operator):
         self.operator = operator
 
-    def act(self, environment, graph, mask_info):
+    def act(self, environment, graph, mask_info, remaining_steps):
         return Action(operator=self.operator, vehicle_index=0, job_index=0)
 
 
@@ -60,7 +60,7 @@ class EpisodeEvaluator:
                 self.environment.apply_random_event()
 
             graph, mask_info = self.environment.observe()
-            action           = agent.act(self.environment, graph, mask_info)
+            action           = agent.act(self.environment, graph, mask_info, self.max_steps - step_in_episode)
 
             old_state, new_state = self.environment.apply_action(action)
             rewards, _           = self.environment.step(old_state, new_state, action.operator)
