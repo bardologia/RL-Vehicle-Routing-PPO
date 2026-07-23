@@ -37,15 +37,6 @@ def test_vehicle_vroom_payload_wraps_capacity_and_amount():
     assert vehicle.vroom_payload()["capacity"] == [3]
 
 
-def test_vehicle_with_capacity_returns_modified_copy():
-    vehicle = Vehicle(id=1, start=(-46.7, -23.6), capacity=2)
-    bumped  = vehicle.with_capacity(5)
-
-    assert bumped.capacity == 5
-    assert vehicle.capacity == 2
-    assert bumped.id == vehicle.id
-
-
 def test_stop_dict_round_trip():
     stop = Stop(job_id=4, location=(-46.6, -23.5), arrival=100, duration=50, service=300, load=2)
 

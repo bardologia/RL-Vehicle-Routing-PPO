@@ -1,6 +1,6 @@
 import copy
 import random
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Dict, Iterator, List, Optional, Set, Tuple
 
 
@@ -58,9 +58,6 @@ class Vehicle:
     time_window     : Tuple[int, int] = (8 * 3600, 20 * 3600)
     return_to_depot : bool = False
     description     : str = ""
-
-    def with_capacity(self, capacity: int) -> "Vehicle":
-        return replace(self, capacity=int(capacity))
 
     def vroom_payload(self) -> Dict:
         return {

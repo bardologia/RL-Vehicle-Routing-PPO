@@ -5,9 +5,10 @@ from core.training import ActionDistribution
 
 
 MASK_INFO = {
-    "unassigned_job_indices"     : [2, 5, 11],
-    "vehicles_with_jobs_indices" : [0, 2, 4],
-    "vehicle_to_job_indices"     : {0: [1, 3], 1: [], 2: [7, 8, 9], 3: [], 4: [0], 5: []},
+    "unassigned_job_indices"         : [2, 5, 11],
+    "vehicles_with_jobs_indices"     : [0, 2, 4],
+    "vehicle_to_job_indices"         : {0: [1, 3], 1: [], 2: [7, 8, 9], 3: [], 4: [0], 5: []},
+    "vehicles_with_capacity_indices" : [1, 3, 5],
 }
 
 

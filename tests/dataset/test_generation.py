@@ -19,14 +19,14 @@ def test_generate_events_item_schema(batch):
         assert item["state"]["schema"] == "routing-state-v1"
         assert len(item["jobs"]) > 0
         assert len(item["vehicles"]) > 0
-        assert set(item["mask_info"].keys()) == {"unassigned_job_indices", "vehicles_with_jobs_indices", "vehicle_to_job_indices"}
+        assert set(item["mask_info"].keys()) == {"unassigned_job_indices", "vehicles_with_jobs_indices", "vehicle_to_job_indices", "vehicles_with_capacity_indices"}
 
 
 def test_generate_events_graphs_are_cpu_and_complete(batch):
     for item in batch:
         graph = item["graph"]
         assert graph["job"].x.shape[1] == 7
-        assert graph["vehicle"].x.shape[1] == 5
+        assert graph["vehicle"].x.shape[1] == 7
         assert graph["job"].x.device.type == "cpu"
 
 

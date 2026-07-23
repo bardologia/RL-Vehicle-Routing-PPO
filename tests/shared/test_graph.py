@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from core.shared import EntityPool, Graph, RelationCompleter, RoutingState
@@ -20,7 +21,7 @@ def test_node_feature_shapes(cpu_config):
     data, jobs, vehicles, _ = build_graph(cpu_config)
 
     assert data["job"].x.shape == (len(jobs), 7)
-    assert data["vehicle"].x.shape == (len(vehicles), 5)
+    assert data["vehicle"].x.shape == (len(vehicles), 7)
 
 
 def test_all_model_relations_exist(cpu_config):
@@ -64,6 +65,17 @@ def test_unassigned_and_assignment_flags(cpu_config):
         assert features[index, 6].item() == is_assigned
 
 
+def test_vehicle_capacity_and_load_features(cpu_config):
+    data, _, vehicles, state = build_graph(cpu_config)
+
+    features = data["vehicle"].x
+    loaded   = state.routes[0]
+
+    assert features[0, 5].item() == pytest.approx(vehicles[0].capacity / 10.0)
+    assert features[0, 6].item() == pytest.approx(len(loaded.stops) / vehicles[0].capacity)
+    assert features[1, 6].item() == 0.0
+
+
 def test_graph_is_fully_on_cpu(cpu_config):
     data, _, _, _ = build_graph(cpu_config)
 
@@ -96,7 +108,7 @@ def test_single_job_single_vehicle_graph(cpu_config):
     data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state)
 
     assert data["job"].x.shape == (1, 7)
-    assert data["vehicle"].x.shape == (1, 5)
+    assert data["vehicle"].x.shape == (1, 7)
     assert data[("job", "job_vehicle_proximity", "vehicle")].edge_index.shape[1] == 1
 
 
@@ -137,7 +149,7 @@ def test_relation_completer_fills_absent_relations_with_empty_tensors(cpu_config
 
     data      = HeteroData()
     data["job"].x     = torch.zeros((2, 7))
-    data["vehicle"].x = torch.zeros((1, 5))
+    data["vehicle"].x = torch.zeros((1, 7))
 
     completed = RelationCompleter(cpu_config).build(data)
 

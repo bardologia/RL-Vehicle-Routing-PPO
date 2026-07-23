@@ -30,17 +30,29 @@ class FakeVroom:
         if not jobs or not vehicles:
             return RoutingState(routes=[], unassigned_ids={job.id for job in jobs})
 
-        stops = [Stop(job_id=job.id, location=job.location, service=job.service, load=1) for job in jobs]
-        route = Route(
-            vehicle_id = vehicles[0].id,
-            stops      = stops,
-            start      = vehicles[0].start,
-            end        = stops[-1].location,
-            cost       = 100 * len(stops),
-            duration   = 60 * len(stops),
-            service    = sum(stop.service for stop in stops),
-        )
-        return RoutingState(routes=[route], unassigned_ids=set())
+        routes    = []
+        remaining = list(jobs)
+
+        for vehicle in vehicles:
+            taken     = remaining[:vehicle.capacity]
+            remaining = remaining[vehicle.capacity:]
+            if not taken:
+                break
+
+            stops = [Stop(job_id=job.id, location=job.location, service=job.service, load=1) for job in taken]
+            routes.append(
+                Route(
+                    vehicle_id = vehicle.id,
+                    stops      = stops,
+                    start      = vehicle.start,
+                    end        = stops[-1].location,
+                    cost       = 100 * len(stops),
+                    duration   = 60 * len(stops),
+                    service    = sum(stop.service for stop in stops),
+                )
+            )
+
+        return RoutingState(routes=routes, unassigned_ids={job.id for job in remaining})
 
 
 class FakeWriter:

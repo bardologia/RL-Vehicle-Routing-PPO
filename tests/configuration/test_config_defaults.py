@@ -74,7 +74,7 @@ def test_model_config_defaults():
     config = ModelConfig()
 
     assert config.job_input_dim == 7
-    assert config.vehicle_input_dim == 5
+    assert config.vehicle_input_dim == 7
     assert config.edge_attr_dim == 4
     assert config.num_operators == 4
     assert config.operator_embedding_dim == 32

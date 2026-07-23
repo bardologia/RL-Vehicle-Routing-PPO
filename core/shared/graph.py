@@ -12,12 +12,16 @@ class NodeBuilder:
         self.graph = graph
 
     def vehicle_nodes(self):
+        load_by_vehicle_id = {route.vehicle_id: len(route.stops) for route in self.graph.state.routes}
+
         for vehicle in self.graph.vehicles:
             metadata = {
                 "vehicle_id"      : vehicle.id,
                 "time_window"     : [int(vehicle.time_window[0]), int(vehicle.time_window[1])],
                 "speed_factor"    : float(vehicle.speed_factor),
                 "return_to_depot" : bool(vehicle.return_to_depot),
+                "capacity"        : int(vehicle.capacity),
+                "load"            : int(load_by_vehicle_id.get(vehicle.id, 0)),
             }
 
             self.add_node(f"veh:{vehicle.id}", "vehicle", float(vehicle.start[0]), float(vehicle.start[1]), metadata)
@@ -222,6 +226,8 @@ class Graph:
                     float(metadata["speed_factor"]),
                     float((time_window[1] - time_window[0]) / 3600.0),
                     float(metadata["return_to_depot"]),
+                    float(metadata["capacity"]) / 10.0,
+                    float(metadata["load"]) / max(float(metadata["capacity"]), 1.0),
                 ]
             )
             global_to_local[vehicle_global_idx] = ("vehicle", vehicle_local_idx)
@@ -257,7 +263,7 @@ class Graph:
         vehicle_features = self._vehicle_features(lon_mean, lon_std, lat_mean, lat_std, global_to_local)
 
         data["job"].x     = torch.tensor(job_features, dtype=torch.float32) if job_features else torch.empty((0, 7), dtype=torch.float32)
-        data["vehicle"].x = torch.tensor(vehicle_features, dtype=torch.float32) if vehicle_features else torch.empty((0, 5), dtype=torch.float32)
+        data["vehicle"].x = torch.tensor(vehicle_features, dtype=torch.float32) if vehicle_features else torch.empty((0, 7), dtype=torch.float32)
 
         for (src_type, relation_name, dst_type), buffer in self._edge_buffers(global_to_local).items():
             data[(src_type, relation_name, dst_type)].edge_index = torch.tensor([buffer["src"], buffer["dst"]], dtype=torch.long)
