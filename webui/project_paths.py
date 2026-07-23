@@ -9,7 +9,6 @@ class ProjectPaths:
         self.static_dir   = self.webui_dir / "static"
         self.main_dir     = self.repo_root / "main"
         self.runs_dir     = self.repo_root / "runs"
-        self.datasets_dir = self.repo_root / "datasets"
         self.interpreter  = sys.executable
 
     def script_path(self, key):

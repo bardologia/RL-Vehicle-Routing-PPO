@@ -147,7 +147,7 @@ def load_insertion_scenario(environment, num_jobs=3, loaded_stops=1, kind="suppo
         unassigned_ids = {job.id for job in jobs[loaded_stops:]},
     )
 
-    environment.load_from_dataset({
+    environment.load_scenario({
         "jobs"     : [job.to_dict() for job in jobs],
         "vehicles" : [vehicle.to_dict() for vehicle in vehicles],
         "depot"    : [-46.63, -23.55],
@@ -301,7 +301,7 @@ def test_insert_then_remove_cycle_has_negative_total_reward(environment, fake_vr
     vehicles = make_vehicles(1)
     state    = RoutingState(routes=[make_route(vehicles[0], jobs[:1], cost=100)], unassigned_ids={jobs[1].id})
 
-    environment.load_from_dataset({
+    environment.load_scenario({
         "jobs"     : [job.to_dict() for job in jobs],
         "vehicles" : [vehicle.to_dict() for vehicle in vehicles],
         "depot"    : [-46.63, -23.55],
@@ -324,7 +324,7 @@ def test_insert_then_remove_cycle_has_negative_total_reward(environment, fake_vr
     assert cycle_total == pytest.approx(-(reward.add_job_cost + reward.remove_job_cost + reward.disruption_cost))
 
 
-def test_load_from_dataset_round_trips(environment):
+def test_load_scenario_round_trips(environment):
     item = {
         "state"    : environment.current_state.to_payload(),
         "depot"    : list(environment.depot),
@@ -334,7 +334,7 @@ def test_load_from_dataset_round_trips(environment):
     }
 
     environment.apply_event(environment.current_state, "new_job", 2)
-    environment.load_from_dataset(item)
+    environment.load_scenario(item)
 
     assert [job.to_dict() for job in environment.jobs] == item["jobs"]
     assert [vehicle.to_dict() for vehicle in environment.vehicles] == item["vehicles"]

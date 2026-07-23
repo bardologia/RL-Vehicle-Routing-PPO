@@ -141,35 +141,10 @@ class RunBrowser:
         self._curves_cache[name] = (signature, payload)
         return payload
 
-    def list_datasets(self):
-        if not self.paths.datasets_dir.is_dir():
-            return []
-
-        datasets = []
-        for dataset_dir in sorted(self.paths.datasets_dir.iterdir()):
-            if not dataset_dir.is_dir():
-                continue
-
-            chunks = list(dataset_dir.glob("chunk_*.pt"))
-            if not chunks:
-                continue
-
-            datasets.append({
-                "name"    : dataset_dir.name,
-                "rel"     : f"datasets/{dataset_dir.name}",
-                "chunks"  : len(chunks),
-                "size_mb" : round(sum(chunk.stat().st_size for chunk in chunks) / 1e6, 1),
-                "mtime"   : max(chunk.stat().st_mtime for chunk in chunks),
-            })
-
-        datasets.sort(key=lambda dataset: dataset["mtime"], reverse=True)
-        return datasets
-
     def media_path(self, raw):
         target = Path(raw).resolve()
 
-        for root in (self.paths.runs_dir, self.paths.datasets_dir):
-            if target.is_relative_to(root.resolve()) and target.is_file():
-                return target
+        if target.is_relative_to(self.paths.runs_dir.resolve()) and target.is_file():
+            return target
 
         return None

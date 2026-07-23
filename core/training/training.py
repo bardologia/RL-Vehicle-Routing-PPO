@@ -6,7 +6,6 @@ import torch.optim as optim
 from tqdm import tqdm
 
 from tools.inspection import ModelSummary, TensorLogger
-from tools.parallel import Batcher, ForkPool
 from tools.resource_monitor import ResourceMonitor
 from tools.telemetry import PPOTelemetry
 from core.shared import Environment, ActionMasker, vroom
@@ -30,7 +29,7 @@ class Checkpoint:
 
         self.logger.subsection(f"Policy weights loaded from {os.path.join(directory, self.filename)} \n")
 
-    def load(self, ppo, trainer, dataset, directory=None):
+    def load(self, ppo, trainer, directory=None):
         load_dir = directory or self.config.io.logdir
 
         self.logger.section("[Loading Checkpoint]")
@@ -50,8 +49,6 @@ class Checkpoint:
         self.logger.subsection(f"Restored Global Step      : {trainer.global_step_counter}")
         self.logger.subsection(f"Restored Episode Index    : {trainer.episode_index}")
         self.logger.subsection(f"Restored PPO Update Index : {trainer.ppo_update_index}")
-
-        dataset.set_state(training_state["dataset_state"])
 
         ppo.lr_scheduler.set_step(training_state["lr_scheduler_step"])
         ppo.entropy_scheduler.set_step(training_state["entropy_scheduler_step"])
@@ -90,8 +87,9 @@ class EpisodeRollout:
         self.policy      = policy
         self.config      = config
 
-        self.device    = config.training.device
-        self.max_steps = config.training.max_steps_per_episode
+        self.device        = config.training.device
+        self.max_steps     = config.training.max_steps_per_episode
+        self.scenario_seed = config.env.scenario_seed
 
     def forward_action(self, graph, mask_info):
         graph = graph.to(self.device)
@@ -124,12 +122,12 @@ class EpisodeRollout:
             _, _, _, tail_value = self.policy(tail_graph.to(self.device))
         experiences[-1]["bootstrap_value"] = float(tail_value.item())
 
-    def rollout(self, dataset_item):
+    def rollout(self, episode_index):
         experiences    = []
         operator_stats = {'count': {i: 0 for i in range(3)}, 'rewards': {i: [] for i in range(3)}}
         step_payloads  = []
 
-        self.environment.load_from_dataset(dataset_item)
+        self.environment.sample_episode(self.scenario_seed + episode_index)
         for step_in_episode in range(self.max_steps):
 
             if step_in_episode > 0:
@@ -161,58 +159,8 @@ class EpisodeRollout:
         return experiences, operator_stats, step_payloads
 
 
-_ROLLOUT_WORKER = {}
-
-
-def _rollout_worker_init(config, state_dict):
-    policy = Policy(config).to("cpu")
-    policy.load_state_dict(state_dict)
-    policy.eval()
-
-    worker_config                = config
-    worker_config.training.device = "cpu"
-
-    _ROLLOUT_WORKER["rollout"] = EpisodeRollout(Environment(worker_config), policy, worker_config)
-
-
-def _rollout_worker_task(task):
-    import random
-
-    import numpy as np
-
-    index, batch = task
-    seed         = 500_009 + index
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-
-    rollout = _ROLLOUT_WORKER["rollout"]
-    return [rollout.rollout(item) for item in batch]
-
-
-class ParallelRolloutCollector:
-    def __init__(self, config):
-        self.config     = config
-        self.workers    = config.training.rollout_workers
-        self.batch_size = config.training.rollout_batch_size
-
-    def collect(self, chunk_data, policy):
-        state_dict = {key: value.detach().cpu() for key, value in policy.state_dict().items()}
-        batches    = Batcher(self.batch_size).split(chunk_data)
-        tasks      = list(enumerate(batches))
-
-        pool    = ForkPool(self.workers)
-        results = pool.map(_rollout_worker_task, tasks, initializer=_rollout_worker_init, initargs=(self.config, state_dict), desc="Rollouts")
-
-        episodes = []
-        for batch_result in results:
-            episodes.extend(batch_result)
-        return episodes
-
-
 class Trainer:
-    def __init__(self, dataset, config, logger, tracker):
-        self.dataset = dataset
+    def __init__(self, config, logger, tracker):
         self.config  = config
         self.logger  = logger
         self.tracker = tracker
@@ -239,8 +187,7 @@ class Trainer:
         self.environment = Environment(config, logger=self.logger)
         self.summary     = ModelSummary(self.ppo)
 
-        self.rollout            = EpisodeRollout(self.environment, self.ppo.policy, self.config)
-        self.parallel_collector = ParallelRolloutCollector(self.config)
+        self.rollout = EpisodeRollout(self.environment, self.ppo.policy, self.config)
 
         self.clear_memory()
         self.logger.subsection("Trainer initialized successfully")
@@ -313,7 +260,7 @@ class Trainer:
                 self.attach_anchor(ppo, ppo.policy.state_dict())
 
         if self.resume:
-            self.checkpoint.load(ppo, self, self.dataset)
+            self.checkpoint.load(ppo, self)
                
         self.logger.subsection("PPO initialization complete \n")
         return ppo
@@ -343,7 +290,6 @@ class Trainer:
             "global_step_counter"    : self.global_step_counter,
             "episode_index"          : self.episode_index,
             "ppo_update_index"       : self.ppo_update_index,
-            "dataset_state"          : self.dataset.get_state(),
             "lr_scheduler_step"      : self.ppo.lr_scheduler.current_step,
             "entropy_scheduler_step" : self.ppo.entropy_scheduler.current_step,
         }
@@ -356,23 +302,15 @@ class Trainer:
 
         return state
     
-    def rollout_worker_count(self):
-        if self.device.startswith("cuda"):
-            return 1
-        return self.config.training.rollout_workers
+    def collect_rollouts(self, episode_indices):
+        return [self.rollout.rollout(episode_index) for episode_index in tqdm(episode_indices, desc="Processing episodes in update", leave=False)]
 
-    def collect_rollouts(self, chunk_data):
-        if self.rollout_worker_count() <= 1:
-            return [self.rollout.rollout(item) for item in tqdm(chunk_data, desc="Processing episodes in chunk", leave=False)]
+    def run_update(self, episode_indices):
+        self.logger.section("[Update Processing]")
+        self.logger.subsection(f"Total episodes in update : {len(episode_indices)}")
+        self.logger.subsection(f"Starting episode index   : {self.episode_index} \n")
 
-        return self.parallel_collector.collect(chunk_data, self.ppo.policy)
-
-    def run_chunk(self, chunk_data):
-        self.logger.section("[Chunk Processing]")
-        self.logger.subsection(f"Total episodes in chunk : {len(chunk_data)}")
-        self.logger.subsection(f"Starting episode index  : {self.episode_index} \n")
-
-        episodes           = self.collect_rollouts(chunk_data)
+        episodes           = self.collect_rollouts(episode_indices)
         episodes_processed = 0
 
         for experiences, operator_stats, step_payloads in episodes:
@@ -390,7 +328,7 @@ class Trainer:
 
             self.telemetry.episode(episode_reward, len(experiences), operator_stats, self.episode_index)
 
-        self.logger.subsection(f"Chunk complete: {episodes_processed} episodes processed")
+        self.logger.subsection(f"Update complete: {episodes_processed} episodes processed")
         return episodes_processed
      
     def ppo_update(self):
@@ -425,32 +363,30 @@ class Trainer:
         self.logger.subsection("Model summary saved \n")
 
         self.logger.section("[Training Loop]")
-        chunk_paths = self.dataset.chunk_paths
-        total_chunks = len(chunk_paths)
-        self.logger.subsection(f"Total chunks to process: {total_chunks}")
-
-        if self.config.training.rollout_workers > 1 and self.device.startswith("cuda"):
-            self.logger.subsection("Rollout runs serially: fork-based workers deadlock against a CUDA context")
-        self.logger.subsection(f"Rollout workers: {self.rollout_worker_count() or 'auto'} \n")
+        num_updates         = self.config.training.num_updates
+        episodes_per_update = self.config.training.episodes_per_update
+        self.logger.subsection(f"Total updates to process: {num_updates}")
+        self.logger.subsection(f"Episodes per update: {episodes_per_update} \n")
 
         self.resource_monitor.start()
         try:
-            for chunk_idx, chunk_path in tqdm(enumerate(chunk_paths), desc="Training chunks", total=total_chunks):
-                chunk_data = torch.load(chunk_path, map_location="cpu", weights_only=False)
+            for update_idx in tqdm(range(self.ppo_update_index, num_updates), desc="Training updates", total=num_updates, initial=self.ppo_update_index):
+                episode_indices = list(range(self.episode_index, self.episode_index + episodes_per_update))
 
-                episodes_processed = self.run_chunk(chunk_data)
+                episodes_processed = self.run_update(episode_indices)
                 self.tracker.set_step(self.global_step_counter)
 
-                self.telemetry.episodes_processed(episodes_processed, chunk_idx)
+                self.telemetry.episodes_processed(episodes_processed, update_idx)
 
                 self.ppo_update()
+
+                self.ppo_update_index += 1
                 self.checkpoint.save(self.ppo, self)
 
-                progress_pct = ((chunk_idx + 1) / total_chunks) * 100
-                self.logger.subsection(f"Overall Progress: {progress_pct:.1f}% ({chunk_idx + 1}/{total_chunks} chunks)")
-                self.telemetry.chunk_progress(chunk_idx, total_chunks)
+                progress_pct = (self.ppo_update_index / num_updates) * 100
+                self.logger.subsection(f"Overall Progress: {progress_pct:.1f}% ({self.ppo_update_index}/{num_updates} updates)")
+                self.telemetry.chunk_progress(update_idx, num_updates)
 
-                del chunk_data
                 gc.collect()
         finally:
             self.resource_monitor.stop()

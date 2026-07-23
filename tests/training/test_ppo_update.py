@@ -4,7 +4,6 @@ import os
 import pytest
 import torch
 
-from core.dataset import Dataset, generate_events
 from core.training import Trainer
 from tools.logger import NullLogger
 from tools.tracker import Tracker
@@ -16,25 +15,22 @@ def build_trainer(cpu_config, tmp_path, tracker):
     run_dir.mkdir()
 
     cpu_config.io.logdir                      = str(run_dir)
-    cpu_config.io.dataset_dir                 = str(tmp_path / "data")
     cpu_config.training.max_steps_per_episode = 2
     cpu_config.training.minibatch_size        = 4
     cpu_config.training.num_epochs            = 2
     cpu_config.ppo.kl_divergence_threshold    = 100.0
 
-    dataset = Dataset(dataset_dir=str(tmp_path / "data"), config=cpu_config)
-    return Trainer(dataset=dataset, config=cpu_config, logger=NullLogger(), tracker=tracker)
+    return Trainer(config=cpu_config, logger=NullLogger(), tracker=tracker)
 
 
-def populate_memory(trainer, cpu_config):
-    items, _ = generate_events(batch_size=3, seed=1, config=cpu_config)
-    trainer.run_chunk(items)
+def populate_memory(trainer):
+    trainer.run_update([0, 1, 2])
 
 
 def test_real_update_fills_then_clears_memory(cpu_config, seeded, fake_vroom, tmp_path):
     trainer = build_trainer(cpu_config, tmp_path, Tracker(writer=FakeWriter()))
 
-    populate_memory(trainer, cpu_config)
+    populate_memory(trainer)
 
     assert len(trainer.ppo.memory.rewards) == 6
 
@@ -46,7 +42,7 @@ def test_real_update_fills_then_clears_memory(cpu_config, seeded, fake_vroom, tm
 
 def test_real_update_changes_parameters_and_stays_finite(cpu_config, seeded, fake_vroom, tmp_path):
     trainer = build_trainer(cpu_config, tmp_path, Tracker(writer=FakeWriter()))
-    populate_memory(trainer, cpu_config)
+    populate_memory(trainer)
 
     before = [parameter.detach().clone() for parameter in trainer.ppo.policy.parameters()]
 
@@ -63,7 +59,7 @@ def test_real_update_changes_parameters_and_stays_finite(cpu_config, seeded, fak
 def test_real_update_reports_finite_loss(cpu_config, seeded, fake_vroom, tmp_path):
     writer  = FakeWriter()
     trainer = build_trainer(cpu_config, tmp_path, Tracker(writer=writer))
-    populate_memory(trainer, cpu_config)
+    populate_memory(trainer)
 
     trainer.ppo.update()
 
@@ -75,7 +71,7 @@ def test_real_update_reports_finite_loss(cpu_config, seeded, fake_vroom, tmp_pat
 
 def test_real_update_advances_global_steps(cpu_config, seeded, fake_vroom, tmp_path):
     trainer = build_trainer(cpu_config, tmp_path, Tracker(writer=FakeWriter()))
-    populate_memory(trainer, cpu_config)
+    populate_memory(trainer)
 
     before_update = trainer.ppo.global_update_step
     trainer.ppo.update()
@@ -86,7 +82,7 @@ def test_real_update_advances_global_steps(cpu_config, seeded, fake_vroom, tmp_p
 
 def test_checkpoint_written_then_resumed_restores_counters(cpu_config, seeded, fake_vroom, tmp_path):
     trainer = build_trainer(cpu_config, tmp_path, Tracker(writer=FakeWriter()))
-    populate_memory(trainer, cpu_config)
+    populate_memory(trainer)
     trainer.ppo.update()
 
     trainer.global_step_counter = 99
@@ -98,12 +94,7 @@ def test_checkpoint_written_then_resumed_restores_counters(cpu_config, seeded, f
     assert os.path.exists(checkpoint_path)
 
     cpu_config.io.resume_from_run = os.path.basename(cpu_config.io.logdir)
-    resumed = Trainer(
-        dataset = Dataset(dataset_dir=str(tmp_path / "data"), config=cpu_config),
-        config  = cpu_config,
-        logger  = NullLogger(),
-        tracker = Tracker(writer=FakeWriter()),
-    )
+    resumed = Trainer(config=cpu_config, logger=NullLogger(), tracker=Tracker(writer=FakeWriter()))
 
     assert resumed.global_step_counter == 99
     assert resumed.episode_index == 8

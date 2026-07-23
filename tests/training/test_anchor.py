@@ -3,7 +3,6 @@ import math
 import pytest
 import torch
 
-from core.dataset import Dataset, generate_events
 from core.shared import ActionMasker
 from core.training import ActionDistribution, Trainer
 from model.policy_model import Policy, PolicyCheckpoint
@@ -39,14 +38,12 @@ def build_anchored_trainer(cpu_config, tmp_path, tracker):
     cpu_config.io.logdir                      = str(run_dir)
     cpu_config.io.runs_dir                    = str(tmp_path / "runs")
     cpu_config.io.init_from_run               = "pre"
-    cpu_config.io.dataset_dir                 = str(tmp_path / "data")
     cpu_config.training.max_steps_per_episode = 2
     cpu_config.training.minibatch_size        = 4
     cpu_config.training.num_epochs            = 2
     cpu_config.ppo.kl_divergence_threshold    = 100.0
 
-    dataset = Dataset(dataset_dir=str(tmp_path / "data"), config=cpu_config)
-    return Trainer(dataset=dataset, config=cpu_config, logger=NullLogger(), tracker=tracker)
+    return Trainer(config=cpu_config, logger=NullLogger(), tracker=tracker)
 
 
 def test_kl_terms_matches_compute_totals(cpu_config, seeded):
@@ -78,8 +75,7 @@ def test_init_from_run_builds_frozen_reference(cpu_config, seeded, fake_vroom, t
 def test_no_reference_without_init_from_run(cpu_config, seeded, fake_vroom, tmp_path):
     cpu_config.io.logdir = str(tmp_path)
 
-    dataset = Dataset(dataset_dir=str(tmp_path / "data"), config=cpu_config)
-    trainer = Trainer(dataset=dataset, config=cpu_config, logger=NullLogger(), tracker=Tracker(writer=FakeWriter()))
+    trainer = Trainer(config=cpu_config, logger=NullLogger(), tracker=Tracker(writer=FakeWriter()))
 
     assert trainer.ppo.reference_policy is None
 
@@ -88,8 +84,7 @@ def test_anchored_update_logs_kl_and_stays_finite(cpu_config, seeded, fake_vroom
     writer  = FakeWriter()
     trainer = build_anchored_trainer(cpu_config, tmp_path, Tracker(writer=writer))
 
-    items, _ = generate_events(batch_size=3, seed=1, config=cpu_config)
-    trainer.run_chunk(items)
+    trainer.run_update([0, 1, 2])
     trainer.ppo.update()
 
     anchor_kls = [value for tag, value, _ in writer.scalars if tag == "batch/anchor_kl"]
@@ -108,12 +103,7 @@ def test_anchor_survives_checkpoint_roundtrip(cpu_config, seeded, fake_vroom, tm
     cpu_config.io.init_from_run   = None
     cpu_config.io.resume_from_run = "run"
 
-    resumed = Trainer(
-        dataset = Dataset(dataset_dir=str(tmp_path / "data"), config=cpu_config),
-        config  = cpu_config,
-        logger  = NullLogger(),
-        tracker = Tracker(writer=FakeWriter()),
-    )
+    resumed = Trainer(config=cpu_config, logger=NullLogger(), tracker=Tracker(writer=FakeWriter()))
 
     assert resumed.ppo.reference_policy is not None
     assert resumed.ppo.anchor_scheduler.current_step == 17

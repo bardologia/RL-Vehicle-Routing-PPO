@@ -1,13 +1,14 @@
 import random
 
 import numpy as np
+import torch
 
 from tools.auxiliary import generate_coords_batch
 from tools.logger import NullLogger
 from .graph import Graph
 from .mask import ActionMaskBuilder
 from .services import vroom
-from .state import EntityPool, Job, Route, RoutingState, Vehicle
+from .state import EntityPool, Job, RoutingState, Vehicle
 
 
 class ScenarioSampler:
@@ -279,7 +280,17 @@ class Environment:
 
         raise RuntimeError(f"Environment.reset exhausted {env.reset_max_attempts} attempts without a VROOM solution (mean_jobs={env.mean_jobs}, mean_vehicles={env.mean_vehicles})")
 
-    def load_from_dataset(self, item):
+    def sample_episode(self, seed):
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        self.reset()
+
+        event_type, num_items = self.generate_event()
+        self.apply_event(self.initial_state, event_type, num_items)
+
+    def load_scenario(self, item):
         self.jobs          = EntityPool([Job.from_dict(job) for job in item["jobs"]])
         self.vehicles      = EntityPool([Vehicle.from_dict(vehicle) for vehicle in item["vehicles"]])
         self.depot         = (float(item["depot"][0]), float(item["depot"][1]))

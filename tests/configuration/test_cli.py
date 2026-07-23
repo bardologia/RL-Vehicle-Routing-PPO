@@ -5,9 +5,9 @@ from configuration.cli import ConfigCli
 
 
 def test_cli_applies_int_override():
-    config = ConfigCli(Config(), ["--io.dataset_seed", "7"]).apply()
+    config = ConfigCli(Config(), ["--env.scenario_seed", "7"]).apply()
 
-    assert config.io.dataset_seed == 7
+    assert config.env.scenario_seed == 7
 
 
 def test_cli_applies_float_override():
@@ -47,9 +47,9 @@ def test_cli_applies_tuple_override():
 
 
 def test_cli_applies_multiple_overrides():
-    config = ConfigCli(Config(), ["--io.dataset_seed", "3", "--env.radius", "10.0"]).apply()
+    config = ConfigCli(Config(), ["--env.scenario_seed", "3", "--env.radius", "10.0"]).apply()
 
-    assert config.io.dataset_seed == 3
+    assert config.env.scenario_seed == 3
     assert config.env.radius == 10.0
 
 

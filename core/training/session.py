@@ -5,7 +5,6 @@ from torch.utils.tensorboard import SummaryWriter
 
 from tools.logger import Logger
 from tools.tracker import Tracker
-from core.dataset import Dataset
 from .training import Trainer
 
 
@@ -50,15 +49,12 @@ class TrainingPipeline:
         self.repo_root = repo_root
 
         self.runs_root   = None
-        self.dataset_dir = None
         self.session     = None
         self.logger      = None
-        self.dataset     = None
         self.trainer     = None
 
     def resolve_paths(self):
-        self.runs_root   = self._absolute(self.config.io.runs_dir)
-        self.dataset_dir = self._absolute(self.config.io.dataset_dir)
+        self.runs_root = self._absolute(self.config.io.runs_dir)
 
         self.config.io.runs_dir = self.runs_root
 
@@ -73,20 +69,12 @@ class TrainingPipeline:
     def build_logger(self):
         self.logger = Logger(log_dir=self.config.io.logdir, name="training", level="INFO")
 
-    def load_dataset(self):
-        if not os.path.isdir(self.dataset_dir):
-            raise FileNotFoundError(f"Dataset directory not found: {self.dataset_dir}")
-
-        self.config.io.dataset_dir = self.dataset_dir
-        self.dataset               = Dataset(dataset_dir=self.dataset_dir, config=self.config, shuffle_chunks=False, logger=self.logger)
-
     def build_trainer(self):
-        self.trainer = Trainer(dataset=self.dataset, config=self.config, logger=self.logger, tracker=self.session.tracker)
+        self.trainer = Trainer(config=self.config, logger=self.logger, tracker=self.session.tracker)
 
     def run(self):
         self.resolve_paths()
         self.open_session()
         self.build_logger()
-        self.load_dataset()
         self.build_trainer()
         return self.trainer.train()

@@ -1,4 +1,3 @@
-from core.dataset import generate_events
 from core.shared import Environment
 from core.training import EpisodeRollout
 from model.policy_model import Policy
@@ -31,10 +30,9 @@ def test_rollout_produces_experiences_stats_and_payloads(cpu_config, seeded, fak
     cpu_config.io.logdir                      = str(tmp_path)
     cpu_config.training.max_steps_per_episode = 3
 
-    items, _ = generate_events(batch_size=1, seed=7, config=cpu_config)
-    rollout  = build_rollout(cpu_config)
+    rollout = build_rollout(cpu_config)
 
-    experiences, op_stats, step_payloads = rollout.rollout(items[0])
+    experiences, op_stats, step_payloads = rollout.rollout(0)
 
     assert len(experiences) == 3
     assert len(step_payloads) == 3
@@ -52,10 +50,9 @@ def test_rollout_bootstrap_sets_tail_value_on_last(cpu_config, seeded, fake_vroo
     cpu_config.io.logdir                      = str(tmp_path)
     cpu_config.training.max_steps_per_episode = 2
 
-    items, _ = generate_events(batch_size=1, seed=4, config=cpu_config)
-    rollout  = build_rollout(cpu_config)
+    rollout = build_rollout(cpu_config)
 
-    experiences, _, _ = rollout.rollout(items[0])
+    experiences, _, _ = rollout.rollout(0)
 
     assert isinstance(experiences[-1]["bootstrap_value"], float)
     assert experiences[0]["bootstrap_value"] == 0.0
@@ -65,10 +62,9 @@ def test_rollout_operator_stats_track_rewards_per_operator(cpu_config, seeded, f
     cpu_config.io.logdir                      = str(tmp_path)
     cpu_config.training.max_steps_per_episode = 4
 
-    items, _ = generate_events(batch_size=1, seed=1, config=cpu_config)
-    rollout  = build_rollout(cpu_config)
+    rollout = build_rollout(cpu_config)
 
-    experiences, op_stats, _ = rollout.rollout(items[0])
+    experiences, op_stats, _ = rollout.rollout(0)
 
     recorded_rewards = sum(len(values) for values in op_stats["rewards"].values())
 
@@ -82,17 +78,14 @@ def test_rollout_applies_events_between_steps_when_forced(cpu_config, seeded, fa
     cpu_config.env.step_event_probability     = 1.0
     cpu_config.env.tick_seconds               = 0
 
-    items, _ = generate_events(batch_size=1, seed=7, config=cpu_config)
-    rollout  = build_rollout(cpu_config)
+    rollout = build_rollout(cpu_config)
 
-    rollout.environment.generate_event = lambda: ("new_job", 1)
+    calls = []
+    rollout.environment.generate_event = lambda: calls.append(1) or ("new_job", 1)
 
-    rollout.environment.load_from_dataset(items[0])
-    jobs_before = len(rollout.environment.jobs)
+    rollout.rollout(0)
 
-    rollout.rollout(items[0])
-
-    assert len(rollout.environment.jobs) == jobs_before + (cpu_config.training.max_steps_per_episode - 1)
+    assert len(calls) == cpu_config.training.max_steps_per_episode
 
 
 def test_rollout_applies_no_events_at_zero_probability(cpu_config, seeded, fake_vroom, tmp_path):
@@ -100,12 +93,12 @@ def test_rollout_applies_no_events_at_zero_probability(cpu_config, seeded, fake_
     cpu_config.training.max_steps_per_episode = 3
     cpu_config.env.step_event_probability     = 0.0
 
-    items, _ = generate_events(batch_size=1, seed=7, config=cpu_config)
-    rollout  = build_rollout(cpu_config)
+    rollout = build_rollout(cpu_config)
 
-    event_calls = []
-    rollout.environment.generate_event = lambda: event_calls.append(1) or ("new_job", 1)
+    setup_generate = rollout.environment.generate_event
+    calls          = []
+    rollout.environment.generate_event = lambda: calls.append(1) or setup_generate()
 
-    rollout.rollout(items[0])
+    rollout.rollout(0)
 
-    assert event_calls == []
+    assert len(calls) == 1
