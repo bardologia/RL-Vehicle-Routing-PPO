@@ -36,6 +36,8 @@ class ScenarioView {
 
     this.playing = false;
     this.animating = false;
+    this.focusMode = true;
+    this._animToken = 0;
 
     this.runOptions = { agent: "model", run_name: null, greedy: true, max_steps: 8, seed: 0, disruptions: 3 };
 
@@ -611,6 +613,7 @@ class ScenarioView {
           <button class="btn btn--sm" id="scn-next" title="next (→)">&rarr;</button>
           <input type="range" id="scn-slider" min="0" max="${steps.length - 1}" value="${this.stepIndex}">
           <span class="playback__step" id="scn-counter"></span>
+          <button class="btn btn--sm ${this.focusMode ? "is-on" : ""}" id="scn-focus" title="zoom into each vehicle in turn">◎ Focus</button>
         </div>
         <div class="reward-spark" id="scn-spark"></div>
         <div class="tl" id="scn-timeline"></div>
@@ -624,6 +627,10 @@ class ScenarioView {
     document.getElementById("scn-prev").addEventListener("click", () => { this.playing = false; this._goTo(this.stepIndex - 1, false); });
     document.getElementById("scn-next").addEventListener("click", () => { this.playing = false; this._goTo(this.stepIndex + 1, true); });
     document.getElementById("scn-play").addEventListener("click", () => this._play());
+    document.getElementById("scn-focus").addEventListener("click", (e) => {
+      this.focusMode = !this.focusMode;
+      e.currentTarget.classList.toggle("is-on", this.focusMode);
+    });
     document.getElementById("scn-discard").addEventListener("click", () => {
       this.playing = false;
       this.runResult = null;
@@ -686,19 +693,20 @@ class ScenarioView {
     while (this.playing && this.stepIndex < last) {
       await this._goTo(this.stepIndex + 1, true);
       if (!this.playing) break;
-      await this._sleep(650);
+      await this._sleep(this.focusMode ? 250 : 650);
     }
     this.playing = false;
     this._syncPlayback();
   }
 
   async _goTo(target, animate) {
-    if (this.animating) return;
     const steps = this.runResult.steps;
     target = Math.max(0, Math.min(steps.length - 1, target));
     const from = this.stepIndex;
 
     if (!animate || target !== from + 1) {
+      this._animToken++;
+      this.animating = false;
       this.stepIndex = target;
       this.fxLayer.clearLayers();
       this._draw();
@@ -706,32 +714,179 @@ class ScenarioView {
       return;
     }
 
+    if (this.animating) return;
     this.animating = true;
+    const token = ++this._animToken;
+    const alive = () => this._animToken === token && this.animating;
+
     const fromStep = steps[from];
     const toStep = steps[target];
     this.stepIndex = target;
     this._syncPlayback();
 
     try {
-      await this._animatePhase(fromStep, toStep);
+      await this._animatePhase(fromStep, toStep, alive);
     } catch (err) {
       this.playing = false;
     }
 
-    this.fxLayer.clearLayers();
-    this._draw(toStep);
-    this._syncPlayback();
-    this.animating = false;
+    if (this._animToken === token) {
+      this.fxLayer.clearLayers();
+      this._draw(toStep);
+      this._syncPlayback();
+      this.animating = false;
+    }
   }
 
-  async _animatePhase(fromStep, toStep) {
-    if (toStep.phase === "advance") {
+  async _animatePhase(fromStep, toStep, alive) {
+    if (this.focusMode && toStep.phase === "advance") {
+      await this._focusAdvance(fromStep, toStep, alive);
+    } else if (this.focusMode && toStep.phase === "edit") {
+      await this._focusEdit(fromStep, toStep, alive);
+    } else if (toStep.phase === "advance") {
       await this._fxAdvance(fromStep, toStep);
     } else if (toStep.phase === "commit") {
       await this._fxCommit(toStep);
     } else {
       await this._fxAction(fromStep, toStep);
     }
+  }
+
+  async _focusAdvance(fromStep, toStep, alive) {
+    const gapMin = Math.round((toStep.gap || 0) / 60);
+    const movers = fromStep.state.routes.map((route) => route.vehicle_id).sort((a, b) => a - b);
+    const served = (toStep.executed && toStep.executed.served) || [];
+    const failed = (toStep.executed && toStep.executed.failed) || [];
+    const dropped = (toStep.executed && toStep.executed.dropped) || 0;
+    const byVehicle = this._servedByVehicle(fromStep, served, failed);
+
+    this._showBanner(`⏱ +${gapMin} min — touring ${movers.length} vehicle${movers.length === 1 ? "" : "s"}`, "advance");
+    this._draw(fromStep, { hideVehicles: true });
+
+    for (const vehicleId of movers) {
+      if (!alive()) return;
+      await this._focusVehicleAdvance(fromStep, toStep, vehicleId, byVehicle[vehicleId], gapMin, alive);
+    }
+
+    if (dropped > 0 && this.depot && alive()) {
+      await this._flyToBounds(L.latLng(this.depot[1], this.depot[0]).toBounds(1400));
+      this._popMark([this.depot[1], this.depot[0]], `−${dropped} 🏍 depot`, "fx-dropped");
+      await this._sleep(700);
+    }
+
+    if (alive()) await this._focusDisruption(fromStep, toStep, served, failed, alive);
+    if (alive()) await this._flyToStep(toStep);
+  }
+
+  async _focusVehicleAdvance(fromStep, toStep, vehicleId, service, gapMin, alive) {
+    const fromVehicle = fromStep.vehicles.find((v) => v.id === vehicleId);
+    const toVehicle = toStep.vehicles.find((v) => v.id === vehicleId);
+    if (!fromVehicle) return;
+
+    const jobLocs = this._jobLocIndex(fromStep);
+    const from = [fromVehicle.start[1], fromVehicle.start[0]];
+    const to = toVehicle ? [toVehicle.start[1], toVehicle.start[0]] : from;
+    const route = fromStep.state.routes.find((r) => r.vehicle_id === vehicleId);
+    const path = route && route.path && route.path.length > 1 ? route.path : [from, to];
+    const endFrac = this._nearestFrac(path, to);
+
+    const served = (service && service.served) || [];
+    const failed = (service && service.failed) || [];
+    const framePts = path.concat(served.map((id) => jobLocs[id]), failed.map((id) => jobLocs[id])).filter(Boolean);
+    await this._flyToBounds(L.latLngBounds(framePts).pad(0.45));
+    if (!alive()) return;
+
+    const parts = [`Vehicle ${vehicleId}`, `drove ${gapMin} min`];
+    if (served.length) parts.push(`served ${served.join(", ")}`);
+    if (failed.length) parts.push(`failed ${failed.join(", ")}`);
+    if (!served.length && !failed.length) parts.push("en route");
+    this._showBanner(parts.join(" · "), "advance");
+
+    const ghost = this._ghostVehicle(fromVehicle);
+    this._pulseRing(from, this._color(vehicleId));
+    await this._tween(950, (t) => ghost.setLatLng(this._pointAlong(path, this._ease(t) * endFrac)));
+
+    for (const id of served) if (jobLocs[id]) this._popMark(jobLocs[id], "✓", "fx-served");
+    for (const id of failed) if (jobLocs[id]) this._popMark(jobLocs[id], "✕", "fx-failed");
+    await this._sleep(served.length || failed.length ? 750 : 400);
+  }
+
+  async _focusDisruption(fromStep, toStep, served, failed, alive) {
+    const fromJobs = this._jobLocIndex(fromStep);
+    const toJobs = this._jobLocIndex(toStep);
+    const points = [];
+
+    for (const id of Object.keys(toJobs)) if (!(id in fromJobs)) points.push(toJobs[id]);
+    const executed = new Set([...served, ...failed].map(Number));
+    for (const id of Object.keys(fromJobs)) if (!(id in toJobs) && !executed.has(Number(id))) points.push(fromJobs[id]);
+
+    const fromVeh = new Set(fromStep.vehicles.map((v) => v.id));
+    const toVeh = new Set(toStep.vehicles.map((v) => v.id));
+    for (const v of toStep.vehicles) if (!fromVeh.has(v.id)) points.push([v.start[1], v.start[0]]);
+    for (const v of fromStep.vehicles) if (!toVeh.has(v.id)) points.push([v.start[1], v.start[0]]);
+
+    if (!points.length) return;
+    await this._flyToBounds(L.latLngBounds(points).pad(0.5));
+    if (!alive()) return;
+    await this._fxDisruption(fromStep, toStep, served, failed);
+  }
+
+  async _focusEdit(fromStep, toStep, alive) {
+    const a = toStep.action;
+    if (!a || a.operator_name === "DO_NOTHING") { await this._fxAction(fromStep, toStep); return; }
+
+    const jobLocs = this._jobLocIndex(fromStep, toStep);
+    const veh = fromStep.vehicles.find((v) => v.id === a.vehicle_id) || toStep.vehicles.find((v) => v.id === a.vehicle_id);
+    const job = jobLocs[a.job_id];
+    if (job && veh) {
+      const route = fromStep.state.routes.find((r) => r.vehicle_id === a.vehicle_id);
+      const pts = [job, [veh.start[1], veh.start[0]]].concat(route && route.path ? route.path : []);
+      await this._flyToBounds(L.latLngBounds(pts).pad(0.5));
+    }
+    if (!alive()) return;
+    await this._fxAction(fromStep, toStep);
+  }
+
+  _servedByVehicle(fromStep, served, failed) {
+    const owner = {};
+    for (const route of fromStep.state.routes) {
+      for (const stop of route.stops) owner[stop.job_id] = route.vehicle_id;
+    }
+
+    const map = {};
+    for (const id of served) {
+      const vid = owner[id];
+      if (vid == null) continue;
+      (map[vid] = map[vid] || { served: [], failed: [] }).served.push(id);
+    }
+    for (const id of failed) {
+      const vid = owner[id];
+      if (vid == null) continue;
+      (map[vid] = map[vid] || { served: [], failed: [] }).failed.push(id);
+    }
+    return map;
+  }
+
+  _flyToStep(step) {
+    const pts = step.vehicles.map((v) => [v.start[1], v.start[0]]).concat(step.jobs.map((j) => [j.location[1], j.location[0]]));
+    if (this.depot) pts.push([this.depot[1], this.depot[0]]);
+    if (!pts.length) return Promise.resolve();
+    return this._flyToBounds(L.latLngBounds(pts).pad(0.2));
+  }
+
+  _flyToBounds(bounds) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      this.map.once("moveend", finish);
+      try {
+        this.map.flyToBounds(bounds, { duration: 0.7, padding: [50, 50], maxZoom: 16 });
+      } catch (err) {
+        finish();
+        return;
+      }
+      setTimeout(finish, 1600);
+    });
   }
 
   async _fxAdvance(fromStep, toStep) {
