@@ -34,7 +34,9 @@ def test_environment_config_defaults():
     assert config.job_insert_min == 2
     assert config.job_insert_max == 3
     assert config.vehicle_remove_min == 1
-    assert config.step_event_probability == 0.3
+    assert config.disruption_gap_mean == 1800
+    assert config.disruption_gap_min == 300
+    assert config.disruption_gap_max == 5400
 
 
 def test_io_config_defaults():
@@ -169,7 +171,8 @@ def test_training_config_defaults():
     config = TrainingConfig()
 
     assert config.device == "cuda"
-    assert config.max_steps_per_episode == 5
+    assert config.max_disruptions_per_episode == 5
+    assert config.max_edits_per_round == 8
     assert config.num_updates == 16
     assert config.episodes_per_update == 1024
     assert config.minibatch_size == 128

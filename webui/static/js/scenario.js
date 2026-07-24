@@ -25,7 +25,7 @@ class ScenarioView {
     this.assignment = null;
     this.depot = null;
 
-    this.runOptions = { agent: "model", run_name: null, greedy: true, max_steps: 8, seed: 0, event_probability: 0.0 };
+    this.runOptions = { agent: "model", run_name: null, greedy: true, max_steps: 8, seed: 0, disruptions: 1 };
   }
 
   async enter() {
@@ -500,10 +500,10 @@ class ScenarioView {
           <label class="switch" id="scn-greedy-wrap" style="align-self:end;${o.agent === "model" ? "" : "display:none"}"><input type="checkbox" id="scn-greedy" ${o.greedy ? "checked" : ""}><i></i><span>greedy (argmax)</span></label>
           <label class="field"><span class="field__label"><span>Max steps</span></span><input type="number" id="scn-steps" value="${o.max_steps}" min="1" max="50" step="1"></label>
           <label class="field"><span class="field__label"><span>Seed</span></span><input type="number" id="scn-seed" value="${o.seed}" step="1"></label>
-          <label class="field"><span class="field__label"><span>Event prob.</span></span><input type="number" id="scn-events" value="${o.event_probability}" min="0" max="1" step="0.1"></label>
+          <label class="field"><span class="field__label"><span>Disruptions</span></span><input type="number" id="scn-disruptions" value="${o.disruptions}" min="1" max="20" step="1"></label>
           <div class="field" style="justify-content:flex-end"><button class="btn btn--primary" id="scn-run" ${this.runBusy ? "disabled" : ""}>${this.runBusy ? "Running…" : "Run agent"}</button></div>
         </div>
-        <p class="scn-hint" style="margin:10px 0 0">With event probability &gt; 0, random disruptions (new/removed jobs and vehicles) fire between steps, like in training.</p>
+        <p class="scn-hint" style="margin:10px 0 0">Each disruption round is a guaranteed event (new/removed jobs and vehicles) followed by the agent's response burst at frozen time; a random wait then moves the vehicles forward before the next disruption. Round one starts from the scenario as built. Max steps caps the total rendered decisions.</p>
         ${this.activeTemplate ? `<p class="scn-hint" style="margin:6px 0 0"><b>${escapeHtml(this.activeTemplate.title)}</b> — ${escapeHtml(this.activeTemplate.expected)}</p>` : ""}
       </div>
       <div id="scn-run-result"></div>`;
@@ -533,7 +533,7 @@ class ScenarioView {
     o.greedy = !!(document.getElementById("scn-greedy") || {}).checked;
     o.max_steps = Number(document.getElementById("scn-steps").value) || 8;
     o.seed = Number(document.getElementById("scn-seed").value) || 0;
-    o.event_probability = Number(document.getElementById("scn-events").value) || 0;
+    o.disruptions = Number(document.getElementById("scn-disruptions").value) || 1;
 
     this.runBusy = true;
     this._renderRunPanel();
@@ -548,7 +548,7 @@ class ScenarioView {
       greedy: o.greedy,
       max_steps: o.max_steps,
       seed: o.seed,
-      event_probability: o.event_probability,
+      disruptions: o.disruptions,
     });
 
     this.runBusy = false;

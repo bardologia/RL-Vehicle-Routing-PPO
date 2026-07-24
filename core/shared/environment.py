@@ -189,8 +189,8 @@ class ExecutionAdvancer:
         if env.jobs.contains(stop.job_id):
             env.jobs.remove({stop.job_id})
 
-    def advance(self, env, state: RoutingState, tick_seconds: int):
-        horizon = env.clock + tick_seconds
+    def advance(self, env, state: RoutingState, gap_seconds: int):
+        horizon = env.clock + gap_seconds
         summary = {"served": [], "failed": [], "dropped": 0}
 
         remaining_by_vehicle = {}
@@ -286,9 +286,7 @@ class Environment:
         torch.manual_seed(seed)
 
         self.reset()
-
-        event_type, num_items = self.generate_event()
-        self.apply_event(self.initial_state, event_type, num_items)
+        self.apply_disruption(self.initial_state)
 
     def load_scenario(self, item):
         self.jobs          = EntityPool([Job.from_dict(job) for job in item["jobs"]])
@@ -344,20 +342,27 @@ class Environment:
         self.current_state = event_state
         return event_state
 
-    def apply_random_event(self):
-        if random.random() >= self.config.env.step_event_probability:
-            return
+    def apply_disruption(self, state):
+        for _ in range(self.config.env.reset_max_attempts):
+            event_type, num_items = self.generate_event()
+            if num_items > 0:
+                self.apply_event(state, event_type, num_items)
+                return {"type": event_type, "count": num_items}
 
-        event_type, num_items = self.generate_event()
-        if num_items > 0:
-            self.apply_event(self.current_state, event_type, num_items)
+        num_items = self.config.env.job_insert_min
+        self.apply_event(state, "new_job", num_items)
+        return {"type": "new_job", "count": num_items}
 
-    def advance_execution(self):
-        tick = self.config.env.tick_seconds
-        if tick <= 0:
+    def sample_disruption_gap(self):
+        env = self.config.env
+        gap = np.random.exponential(env.disruption_gap_mean)
+        return int(min(max(gap, env.disruption_gap_min), env.disruption_gap_max))
+
+    def advance_execution(self, gap_seconds):
+        if gap_seconds <= 0:
             return {"served": [], "failed": [], "dropped": 0}
 
-        new_state, summary = self.execution_advancer.advance(self, self.current_state, tick)
+        new_state, summary = self.execution_advancer.advance(self, self.current_state, gap_seconds)
         self.current_state = new_state
         return summary
 

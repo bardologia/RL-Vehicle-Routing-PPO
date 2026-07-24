@@ -27,8 +27,9 @@ def build_rollout(cpu_config):
 
 
 def test_rollout_produces_experiences_stats_and_payloads(cpu_config, seeded, fake_vroom, tmp_path):
-    cpu_config.io.logdir                      = str(tmp_path)
-    cpu_config.training.max_steps_per_episode = 3
+    cpu_config.io.logdir                            = str(tmp_path)
+    cpu_config.training.max_disruptions_per_episode = 3
+    cpu_config.training.max_edits_per_round         = 1
 
     rollout = build_rollout(cpu_config)
 
@@ -47,8 +48,9 @@ def test_rollout_produces_experiences_stats_and_payloads(cpu_config, seeded, fak
 
 
 def test_rollout_bootstrap_sets_tail_value_on_last(cpu_config, seeded, fake_vroom, tmp_path):
-    cpu_config.io.logdir                      = str(tmp_path)
-    cpu_config.training.max_steps_per_episode = 2
+    cpu_config.io.logdir                            = str(tmp_path)
+    cpu_config.training.max_disruptions_per_episode = 2
+    cpu_config.training.max_edits_per_round         = 1
 
     rollout = build_rollout(cpu_config)
 
@@ -59,8 +61,9 @@ def test_rollout_bootstrap_sets_tail_value_on_last(cpu_config, seeded, fake_vroo
 
 
 def test_rollout_operator_stats_track_rewards_per_operator(cpu_config, seeded, fake_vroom, tmp_path):
-    cpu_config.io.logdir                      = str(tmp_path)
-    cpu_config.training.max_steps_per_episode = 4
+    cpu_config.io.logdir                            = str(tmp_path)
+    cpu_config.training.max_disruptions_per_episode = 4
+    cpu_config.training.max_edits_per_round         = 1
 
     rollout = build_rollout(cpu_config)
 
@@ -72,11 +75,10 @@ def test_rollout_operator_stats_track_rewards_per_operator(cpu_config, seeded, f
     assert set(op_stats["count"].keys()) == {0, 1, 2}
 
 
-def test_rollout_applies_events_between_steps_when_forced(cpu_config, seeded, fake_vroom, tmp_path):
-    cpu_config.io.logdir                      = str(tmp_path)
-    cpu_config.training.max_steps_per_episode = 3
-    cpu_config.env.step_event_probability     = 1.0
-    cpu_config.env.tick_seconds               = 0
+def test_rollout_applies_one_disruption_per_round(cpu_config, seeded, fake_vroom, tmp_path):
+    cpu_config.io.logdir                            = str(tmp_path)
+    cpu_config.training.max_disruptions_per_episode = 3
+    cpu_config.training.max_edits_per_round         = 1
 
     rollout = build_rollout(cpu_config)
 
@@ -85,19 +87,18 @@ def test_rollout_applies_events_between_steps_when_forced(cpu_config, seeded, fa
 
     rollout.rollout(0)
 
-    assert len(calls) == cpu_config.training.max_steps_per_episode
+    assert len(calls) == cpu_config.training.max_disruptions_per_episode
 
 
-def test_rollout_applies_no_events_at_zero_probability(cpu_config, seeded, fake_vroom, tmp_path):
-    cpu_config.io.logdir                      = str(tmp_path)
-    cpu_config.training.max_steps_per_episode = 3
-    cpu_config.env.step_event_probability     = 0.0
+def test_rollout_single_round_applies_only_the_initial_disruption(cpu_config, seeded, fake_vroom, tmp_path):
+    cpu_config.io.logdir                            = str(tmp_path)
+    cpu_config.training.max_disruptions_per_episode = 1
+    cpu_config.training.max_edits_per_round         = 1
 
     rollout = build_rollout(cpu_config)
 
-    setup_generate = rollout.environment.generate_event
-    calls          = []
-    rollout.environment.generate_event = lambda: calls.append(1) or setup_generate()
+    calls = []
+    rollout.environment.generate_event = lambda: calls.append(1) or ("new_job", 1)
 
     rollout.rollout(0)
 

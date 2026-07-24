@@ -23,7 +23,8 @@ def test_forkpool_serial_runs_initializer_then_worker():
 
 
 def test_teacher_worker_task_returns_episode_records(cpu_config, seeded, fake_vroom):
-    cpu_config.training.max_steps_per_episode = 2
+    cpu_config.training.max_disruptions_per_episode = 2
+    cpu_config.training.max_edits_per_round         = 1
 
     _teacher_worker_init(cpu_config)
     episodes = _teacher_worker_task((0, [0, 1]))

@@ -16,7 +16,9 @@ class EnvironmentConfig:
     repossession_service_min         : int = 300
     repossession_service_max         : int = 900
 
-    tick_seconds: int = 900
+    disruption_gap_mean : int = 1800
+    disruption_gap_min  : int = 300
+    disruption_gap_max  : int = 5400
 
     min_vehicles : int = 2
     min_jobs     : int = 4
@@ -41,8 +43,6 @@ class EnvironmentConfig:
     vehicle_insert_max: int = 1
     vehicle_remove_min: int = 1
     vehicle_remove_max: int = 1
-
-    step_event_probability: float = 0.3
 
     @property
     def outlier_probability(self):

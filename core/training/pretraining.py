@@ -391,7 +391,7 @@ class PretrainingPipeline:
         workers = self.config.pretrain.collect_workers
 
         self.logger.section("[Teacher Rollouts]")
-        self.logger.subsection(f"Collecting {target} episodes of {self.config.training.max_steps_per_episode} steps on {workers or 'auto'} workers")
+        self.logger.subsection(f"Collecting {target} episodes of up to {self.config.training.max_disruptions_per_episode} disruptions on {workers or 'auto'} workers")
 
         episode_indices = list(range(target))
         batches         = Batcher(self.config.pretrain.collect_batch_size).split(episode_indices)

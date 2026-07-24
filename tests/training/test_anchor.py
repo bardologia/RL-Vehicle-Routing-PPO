@@ -35,13 +35,14 @@ def build_anchored_trainer(cpu_config, tmp_path, tracker):
 
     save_perturbed_policy(cpu_config, tmp_path / "runs", "pre")
 
-    cpu_config.io.logdir                      = str(run_dir)
-    cpu_config.io.runs_dir                    = str(tmp_path / "runs")
-    cpu_config.io.init_from_run               = "pre"
-    cpu_config.training.max_steps_per_episode = 2
-    cpu_config.training.minibatch_size        = 4
-    cpu_config.training.num_epochs            = 2
-    cpu_config.ppo.kl_divergence_threshold    = 100.0
+    cpu_config.io.logdir                            = str(run_dir)
+    cpu_config.io.runs_dir                          = str(tmp_path / "runs")
+    cpu_config.io.init_from_run                     = "pre"
+    cpu_config.training.max_disruptions_per_episode = 2
+    cpu_config.training.max_edits_per_round         = 1
+    cpu_config.training.minibatch_size              = 4
+    cpu_config.training.num_epochs                  = 2
+    cpu_config.ppo.kl_divergence_threshold          = 100.0
 
     return Trainer(config=cpu_config, logger=NullLogger(), tracker=tracker)
 

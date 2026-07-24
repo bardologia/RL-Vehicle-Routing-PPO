@@ -17,8 +17,8 @@ def test_fixed_operator_agent_emits_constant_action():
 
 
 def test_episode_evaluator_is_deterministic_per_seed(cpu_config, seeded, fake_vroom):
-    cpu_config.training.max_steps_per_episode = 3
-    cpu_config.env.step_event_probability     = 1.0
+    cpu_config.training.max_disruptions_per_episode = 3
+    cpu_config.training.max_edits_per_round         = 1
 
     environment = Environment(cpu_config)
     evaluator   = EpisodeEvaluator(environment, cpu_config)
@@ -36,9 +36,9 @@ def build_evaluation_setup(cpu_config, tmp_path):
 
     cpu_config.io.runs_dir                    = str(tmp_path / "runs")
     cpu_config.io.run_name                    = "eval_run"
-    cpu_config.evaluation.episodes            = 2
-    cpu_config.training.max_steps_per_episode = 2
-    cpu_config.env.step_event_probability     = 0.0
+    cpu_config.evaluation.episodes                  = 2
+    cpu_config.training.max_disruptions_per_episode = 2
+    cpu_config.training.max_edits_per_round         = 1
 
 
 def test_evaluation_pipeline_reports_all_baselines(cpu_config, seeded, fake_vroom, tmp_path):

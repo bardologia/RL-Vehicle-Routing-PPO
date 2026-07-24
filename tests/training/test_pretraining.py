@@ -199,8 +199,8 @@ def test_teacher_removal_disabled_falls_back_to_no_op(environment, fake_vroom):
 
 
 def test_collector_records_have_discounted_returns(cpu_config, seeded, fake_vroom):
-    cpu_config.training.max_steps_per_episode = 2
-    cpu_config.env.step_event_probability     = 0.0
+    cpu_config.training.max_disruptions_per_episode = 2
+    cpu_config.training.max_edits_per_round         = 1
 
     from core.shared import Environment
     environment = Environment(cpu_config)
@@ -254,9 +254,9 @@ def test_pretraining_pipeline_saves_policy_checkpoint(cpu_config, seeded, fake_v
     cpu_config.io.run_name                    = "pretrain_run"
     cpu_config.pretrain.episodes              = 2
     cpu_config.pretrain.bc_epochs             = 1
-    cpu_config.pretrain.minibatch_size        = 8
-    cpu_config.training.max_steps_per_episode = 2
-    cpu_config.env.step_event_probability     = 0.0
+    cpu_config.pretrain.minibatch_size              = 8
+    cpu_config.training.max_disruptions_per_episode = 2
+    cpu_config.training.max_edits_per_round         = 1
 
     pipeline = PretrainingPipeline(cpu_config, repo_root=str(tmp_path))
     metrics  = pipeline.run()

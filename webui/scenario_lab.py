@@ -226,17 +226,6 @@ class ScenarioLab:
         self._models[run_name] = (mtime, model)
         return model
 
-    def _apply_events(self, env, probability):
-        if probability <= 0 or random.random() >= probability:
-            return []
-
-        event_type, num_items = env.generate_event()
-        if num_items <= 0:
-            return []
-
-        env.apply_event(env.current_state, event_type, num_items)
-        return [{"type": event_type, "count": num_items}]
-
     def _render_action(self, env, action):
         entry = {
             "operator"      : action.operator,
@@ -271,12 +260,12 @@ class ScenarioLab:
         vehicles          = payload.get("vehicles") or []
         depot             = payload.get("depot")
         assignment        = payload.get("assignment")
-        agent_name        = payload.get("agent", "model")
-        run_name          = payload.get("run_name")
-        greedy            = bool(payload.get("greedy", True))
-        max_steps         = int(payload.get("max_steps", 10))
-        seed              = int(payload.get("seed", 0))
-        event_probability = float(payload.get("event_probability", 0.0))
+        agent_name  = payload.get("agent", "model")
+        run_name    = payload.get("run_name")
+        greedy      = bool(payload.get("greedy", True))
+        max_steps   = int(payload.get("max_steps", 10))
+        seed        = int(payload.get("seed", 0))
+        disruptions = int(payload.get("disruptions", 1))
 
         if not jobs or not vehicles:
             return {"error": "scenario needs at least one job and one vehicle"}
@@ -286,8 +275,8 @@ class ScenarioLab:
             return {"error": f"unknown agent '{agent_name}'"}
         if not 1 <= max_steps <= 50:
             return {"error": "max_steps must be between 1 and 50"}
-        if not 0.0 <= event_probability <= 1.0:
-            return {"error": "event_probability must be between 0 and 1"}
+        if not 1 <= disruptions <= 20:
+            return {"error": "disruptions must be between 1 and 20"}
 
         with self.lock:
             env = self._ensure_env()
@@ -313,30 +302,43 @@ class ScenarioLab:
             env.current_state = solution
             env.initial_state = solution.copy()
 
-            agent = self._build_agent(agent_name, run_name, greedy)
+            agent    = self._build_agent(agent_name, run_name, greedy)
+            edit_cap = live_config.training.max_edits_per_round
 
             steps             = [self._render_step(0, env, None, None, None, [], None, 0.0)]
             cumulative_reward = 0.0
-            stopped_reason    = "max_steps_reached"
+            stopped_reason    = "rounds_complete"
+            index             = 0
 
-            for index in range(1, max_steps + 1):
-                executed = env.advance_execution() if index > 1 else None
-                events   = self._apply_events(env, event_probability) if index > 1 else []
+            for round_index in range(disruptions):
+                events   = []
+                executed = None
+                if round_index > 0:
+                    executed = env.advance_execution(env.sample_disruption_gap())
+                    events   = [env.apply_disruption(env.current_state)]
 
-                graph, mask_info = env.observe()
-                action           = agent.act(env, graph, mask_info, max_steps - index + 1)
+                for edit_index in range(edit_cap):
+                    graph, mask_info = env.observe()
+                    action           = agent.act(env, graph, mask_info, edit_cap - edit_index)
 
-                old_state, new_state = env.apply_action_to(env.current_state, action)
-                rewards, costs       = env.step(old_state, new_state, action.operator)
+                    old_state, new_state = env.apply_action_to(env.current_state, action)
+                    rewards, costs       = env.step(old_state, new_state, action.operator)
 
-                env.current_state  = new_state
-                cumulative_reward += sum(rewards.values())
+                    env.current_state  = new_state
+                    cumulative_reward += sum(rewards.values())
 
-                rendered = self._render_action(env, action)
-                steps.append(self._render_step(index, env, rendered, rewards, costs, events, executed, cumulative_reward))
+                    index   += 1
+                    rendered = self._render_action(env, action)
+                    steps.append(self._render_step(index, env, rendered, rewards, costs, events if edit_index == 0 else [], executed if edit_index == 0 else None, cumulative_reward))
 
-                if action.operator == 2 and event_probability <= 0 and live_config.env.tick_seconds <= 0:
-                    stopped_reason = "agent_do_nothing"
+                    if action.operator == 2:
+                        break
+
+                    if index >= max_steps:
+                        stopped_reason = "max_steps_reached"
+                        break
+
+                if index >= max_steps:
                     break
 
             initial = steps[0]["state"]
