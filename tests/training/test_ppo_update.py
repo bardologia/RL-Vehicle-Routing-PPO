@@ -24,7 +24,7 @@ def build_trainer(cpu_config, tmp_path, tracker):
 
 
 def populate_memory(trainer):
-    trainer.run_update([0, 1, 2])
+    trainer._run_update([0, 1, 2])
 
 
 def test_real_update_fills_then_clears_memory(cpu_config, seeded, fake_vroom, tmp_path):

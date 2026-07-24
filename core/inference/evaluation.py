@@ -76,7 +76,7 @@ class EvaluationPipeline:
         self.agents      = None
         self.results     = None
 
-    def resolve_run(self):
+    def _resolve_run(self):
         run_name = self.config.io.run_name
         if not run_name:
             raise ValueError("config.io.run_name must name the run directory whose checkpoint is evaluated")
@@ -89,17 +89,17 @@ class EvaluationPipeline:
         if not os.path.isdir(self.run_dir):
             raise FileNotFoundError(f"Run directory not found: {self.run_dir}")
 
-    def build_environment(self):
+    def _build_environment(self):
         vroom.logger     = self.logger
         self.environment = Environment(self.config, logger=self.logger)
 
-    def load_model(self):
+    def _load_model(self):
         self.model = Policy(self.config)
         self.model.to(self.model.device)
         PolicyCheckpoint().load(self.model, self.config.io.checkpoint_filename, self.run_dir, map_location=self.model.device)
         self.model.eval()
 
-    def build_agents(self):
+    def _build_agents(self):
         self.agents = {
             "model"          : ModelAgent(self.model),
             "teacher"        : TeacherAgent(RegretInsertionTeacher(self.config)),
@@ -107,7 +107,7 @@ class EvaluationPipeline:
             "do_nothing"     : FixedOperatorAgent(2),
         }
 
-    def aggregate(self, episodes):
+    def _aggregate(self, episodes):
         rewards    = [episode["total_reward"] for episode in episodes]
         costs      = [episode["final_cost"] for episode in episodes]
         unassigned = [episode["final_unassigned"] for episode in episodes]
@@ -124,7 +124,7 @@ class EvaluationPipeline:
             "operator_frequency"    : {f"op{operator}": count / total_actions for operator, count in operator_totals.items()},
         }
 
-    def evaluate(self):
+    def _evaluate(self):
         evaluator      = EpisodeEvaluator(self.environment, self.config)
         seed           = self.config.evaluation.seed
         episodes_count = self.config.evaluation.episodes
@@ -135,11 +135,11 @@ class EvaluationPipeline:
             for index in tqdm(range(episodes_count), desc=f"Evaluating {name}", unit="episode"):
                 episodes.append(evaluator.run(agent, seed + index))
 
-            self.results[name] = self.aggregate(episodes)
+            self.results[name] = self._aggregate(episodes)
 
         return self.results
 
-    def report(self):
+    def _report(self):
         for name, metrics in self.results.items():
             flat = {key: value for key, value in metrics.items() if key != "operator_frequency"}
             flat.update(metrics["operator_frequency"])
@@ -152,10 +152,10 @@ class EvaluationPipeline:
         self.logger.info(f"Evaluation report saved to {report_path}")
 
     def run(self):
-        self.resolve_run()
-        self.build_environment()
-        self.load_model()
-        self.build_agents()
-        self.evaluate()
-        self.report()
+        self._resolve_run()
+        self._build_environment()
+        self._load_model()
+        self._build_agents()
+        self._evaluate()
+        self._report()
         return self.results

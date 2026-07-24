@@ -38,7 +38,7 @@ class TensorLogger:
     def clear(self):
         self.records.clear()
 
-    def to_markdown(self, title: str = "Shape Log", sort_by_layer: bool = False) -> str:
+    def _to_markdown(self, title: str = "Shape Log", sort_by_layer: bool = False) -> str:
         rows = list(self.records)
         if sort_by_layer:
             rows.sort(key=lambda r: r[0])
@@ -69,7 +69,7 @@ class TensorLogger:
         return "\n".join(lines)
 
     def save_markdown(self, path, title: str = "Shape Log", sort_by_layer: bool = False):
-        Path(path).write_text(self.to_markdown(title=title, sort_by_layer=sort_by_layer), encoding="utf-8")
+        Path(path).write_text(self._to_markdown(title=title, sort_by_layer=sort_by_layer), encoding="utf-8")
 
 
 class ModelSummary:
@@ -92,7 +92,7 @@ class ModelSummary:
             self.total_params += n_params
             self.rows.append((name, module.__class__.__name__, n_params))
 
-    def to_markdown(self, title="Model Summary") -> str:
+    def _to_markdown(self, title="Model Summary") -> str:
         if not self.rows:
             return f"# {title}\n\nNo layers found."
 
@@ -113,4 +113,4 @@ class ModelSummary:
         return "\n".join(md)
 
     def save_markdown(self, path: str, title: str = "Model Summary"):
-        Path(path).write_text(self.to_markdown(title=title), encoding="utf-8")
+        Path(path).write_text(self._to_markdown(title=title), encoding="utf-8")

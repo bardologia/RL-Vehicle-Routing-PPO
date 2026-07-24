@@ -13,7 +13,7 @@ class ActionDistribution:
         self.large_negative_value = config.training.large_negative_value
         self.masker               = masker
 
-    def masked_action_logits(self, vehicle_logits, job_logits, mask_info):
+    def _masked_action_logits(self, vehicle_logits, job_logits, mask_info):
         vehicle_masked = vehicle_logits.clone()
         job_masked     = job_logits.clone()
 
@@ -54,7 +54,7 @@ class ActionDistribution:
         return vehicle_masked, job_masked
 
     @staticmethod
-    def categorical_kl(old_logits, new_logits):
+    def _categorical_kl(old_logits, new_logits):
         old_log_probs     = torch.log_softmax(old_logits, dim=-1)
         new_log_probs     = torch.log_softmax(new_logits, dim=-1)
         old_probabilities = torch.softmax(old_logits, dim=-1)
@@ -78,8 +78,8 @@ class ActionDistribution:
         masked_old_operator_logits = self.masker.mask_operator(old_operator_logits, mask_info).float()
         masked_new_operator_logits = self.masker.mask_operator(new_operator_logits, mask_info).float()
 
-        old_vehicle_masked, old_job_masked = self.masked_action_logits(old_vehicle_logits, old_job_logits, mask_info)
-        new_vehicle_masked, new_job_masked = self.masked_action_logits(new_vehicle_logits, new_job_logits, mask_info)
+        old_vehicle_masked, old_job_masked = self._masked_action_logits(old_vehicle_logits, old_job_logits, mask_info)
+        new_vehicle_masked, new_job_masked = self._masked_action_logits(new_vehicle_logits, new_job_logits, mask_info)
 
         old_vehicle_masked = old_vehicle_masked.float()
         new_vehicle_masked = new_vehicle_masked.float()
@@ -90,9 +90,9 @@ class ActionDistribution:
         old_vehicle_probs  = torch.softmax(old_vehicle_masked, dim=-1)
         joint_old          = old_operator_probs.unsqueeze(-1) * old_vehicle_probs
 
-        operator_kl    = self.categorical_kl(masked_old_operator_logits, masked_new_operator_logits)
-        vehicle_kl_exp = (old_operator_probs * self.categorical_kl(old_vehicle_masked, new_vehicle_masked)).sum()
-        job_kl_exp     = (joint_old * self.categorical_kl(old_job_masked, new_job_masked)).sum()
+        operator_kl    = self._categorical_kl(masked_old_operator_logits, masked_new_operator_logits)
+        vehicle_kl_exp = (old_operator_probs * self._categorical_kl(old_vehicle_masked, new_vehicle_masked)).sum()
+        job_kl_exp     = (joint_old * self._categorical_kl(old_job_masked, new_job_masked)).sum()
 
         return {
             "operator_kl"    : operator_kl,
@@ -122,7 +122,7 @@ class ActionDistribution:
         )
 
         masked_new_operator_logits         = self.masker.mask_operator(new_operator_logits, mask_info).float()
-        new_vehicle_masked, new_job_masked = self.masked_action_logits(new_vehicle_logits, new_job_logits, mask_info)
+        new_vehicle_masked, new_job_masked = self._masked_action_logits(new_vehicle_logits, new_job_logits, mask_info)
 
         new_vehicle_masked = new_vehicle_masked.float()
         new_job_masked     = new_job_masked.float()
@@ -268,7 +268,7 @@ class PPO(nn.Module):
             "job_actor"      : self.policy.job_actor,
         }
 
-    def gae(self, rewards, values, dones, bootstrap_values):
+    def _gae(self, rewards, values, dones, bootstrap_values):
         advantages = torch.zeros_like(rewards)
         gamma   = self.config.ppo.gamma
         lambda_ = self.config.ppo.gae_lambda
@@ -289,7 +289,7 @@ class PPO(nn.Module):
         returns = advantages + values
         return advantages, returns
 
-    def prepare_batch(self):
+    def _prepare_batch(self):
         device                = self.device
         actions               = np.array([[a.operator, a.vehicle_index, a.job_index] for a in self.memory.actions], dtype=np.int64)
         rewards               = torch.tensor(self.memory.rewards, dtype=torch.float32, device=device)
@@ -302,7 +302,7 @@ class PPO(nn.Module):
         values                = torch.stack(self.memory.state_values).to(device)
         actions_tensor        = torch.from_numpy(actions).to(device)
 
-        advantages, returns = self.gae(rewards, values, dones, bootstrap_values)
+        advantages, returns = self._gae(rewards, values, dones, bootstrap_values)
         normalized_advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         batch = {
@@ -320,7 +320,7 @@ class PPO(nn.Module):
 
         return batch
 
-    def action_distributions(self, sample_index, batch_data, logits, mask_info):
+    def _action_distributions(self, sample_index, batch_data, logits, mask_info):
         operator_logits = logits["operator_logits"]
         vehicle_logits  = logits["vehicle_logits"]
         job_logits      = logits["job_logits"]
@@ -372,7 +372,7 @@ class PPO(nn.Module):
 
         return new_distribution, new_log_probs
 
-    def policy_loss(self, new_log_prob, old_log_prob, advantage):
+    def _policy_loss(self, new_log_prob, old_log_prob, advantage):
         prob_ratio    = torch.exp(new_log_prob - old_log_prob)
         unclipped_obj = prob_ratio * advantage
 
@@ -392,7 +392,7 @@ class PPO(nn.Module):
 
         return policy_loss_dict
 
-    def value_loss(self, old_value, pred_state_value, target_return):
+    def _value_loss(self, old_value, pred_state_value, target_return):
         clip_ratio         = self.config.ppo.value_clip_ratio
         value_pred_clipped = old_value + torch.clamp(pred_state_value - old_value, -clip_ratio, clip_ratio)
 
@@ -408,7 +408,7 @@ class PPO(nn.Module):
 
         return value_loss_dict
 
-    def entropy_and_kl(self, sample_index, logits, mask_info):
+    def _entropy_and_kl(self, sample_index, logits, mask_info):
         operator_logits = logits["operator_logits"]
         vehicle_logits  = logits["vehicle_logits"]
         job_logits      = logits["job_logits"]
@@ -430,7 +430,7 @@ class PPO(nn.Module):
 
         return entropy_dict, kl_dict
 
-    def anchor_loss(self, reference_sample, logits_dict, mask_info):
+    def _anchor_loss(self, reference_sample, logits_dict, mask_info):
         with torch.no_grad():
             reference_logits = self.reference_policy.compute_logits(
                 actor_embeddings  = reference_sample["embeddings"],
@@ -451,7 +451,7 @@ class PPO(nn.Module):
 
         return anchor_terms["total_kl"]
 
-    def process_batch(self, batch_indices, batch_data):
+    def _process_batch(self, batch_indices, batch_data):
         batch_graph = Batch.from_data_list([self.memory.graphs[idx] for idx in batch_indices])
         per_sample  = self.policy.forward_batch(batch_graph)
 
@@ -491,20 +491,20 @@ class PPO(nn.Module):
                 selected_operator = None,
             )
 
-            new_distribution_dict, new_log_prob_dict = self.action_distributions(sample_index, batch_data, logits_dict, mask_info)
+            new_distribution_dict, new_log_prob_dict = self._action_distributions(sample_index, batch_data, logits_dict, mask_info)
 
             new_log_prob = new_log_prob_dict["total"]
             old_log_prob = old_log_prob_dict["total"]
 
-            policy_loss_dict      = self.policy_loss(new_log_prob, old_log_prob, advantage)
-            value_loss_dict       = self.value_loss(old_value, pred_state_value, target_return)
-            entropy_dict, kl_dict = self.entropy_and_kl(sample_index, logits_dict, mask_info)
+            policy_loss_dict      = self._policy_loss(new_log_prob, old_log_prob, advantage)
+            value_loss_dict       = self._value_loss(old_value, pred_state_value, target_return)
+            entropy_dict, kl_dict = self._entropy_and_kl(sample_index, logits_dict, mask_info)
 
             entropy_loss = self.current_entropy_coef * entropy_dict["total_entropy"]
             total_loss   = policy_loss_dict["policy_loss"] + self.config.ppo.value_loss_coef * value_loss_dict["value_loss"] - entropy_loss
 
             if reference_samples is not None:
-                anchor_kl           = self.anchor_loss(reference_samples[i], logits_dict, mask_info)
+                anchor_kl           = self._anchor_loss(reference_samples[i], logits_dict, mask_info)
                 total_loss          = total_loss + self.current_anchor_coef * anchor_kl
                 accumulated_anchor += float(anchor_kl.item())
 
@@ -554,8 +554,8 @@ class PPO(nn.Module):
         else:
             self.optimizer.step()
 
-    def minibatch_step(self, batch_indices, batch_data):
-        mean_batch_loss_tensor, mean_batch_loss_value, mean_batch_kl, mean_anchor_kl = self.process_batch(batch_indices, batch_data)
+    def _minibatch_step(self, batch_indices, batch_data):
+        mean_batch_loss_tensor, mean_batch_loss_value, mean_batch_kl, mean_anchor_kl = self._process_batch(batch_indices, batch_data)
 
         self.global_batch_step += 1
 
@@ -576,7 +576,7 @@ class PPO(nn.Module):
     def update(self):
         self.policy.train()
         total_samples  = len(self.memory.rewards)
-        batch_data     = self.prepare_batch()
+        batch_data     = self._prepare_batch()
         indices        = np.arange(total_samples)
 
         self.telemetry.buffer_size(total_samples, self.global_update_step)
@@ -593,7 +593,7 @@ class PPO(nn.Module):
                 end_index     = start_index + self.minibatch_size
                 batch_indices = indices[start_index:end_index]
 
-                mean_batch_loss_value, mean_batch_kl = self.minibatch_step(batch_indices, batch_data)
+                mean_batch_loss_value, mean_batch_kl = self._minibatch_step(batch_indices, batch_data)
 
                 epoch_kl_sum   += mean_batch_kl
                 epoch_loss_sum += mean_batch_loss_value

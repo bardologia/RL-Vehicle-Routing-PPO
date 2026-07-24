@@ -17,7 +17,7 @@ class RunDirectory:
         self.writer  = None
         self.tracker = None
 
-    def resolve_path(self):
+    def _resolve_path(self):
         resume_name = self.config.io.resume_from_run
 
         if resume_name:
@@ -29,17 +29,17 @@ class RunDirectory:
         run_name = self.config.io.run_name or datetime.now().strftime("run_%Y%m%d-%H%M%S")
         return os.path.join(self.runs_root, run_name)
 
-    def open_writer(self):
+    def _open_writer(self):
         os.makedirs(self.path, exist_ok=True)
 
         self.writer  = SummaryWriter(log_dir=self.path)
         self.tracker = Tracker(writer=self.writer)
 
     def prepare(self):
-        self.path             = self.resolve_path()
+        self.path             = self._resolve_path()
         self.config.io.logdir = self.path
 
-        self.open_writer()
+        self._open_writer()
         return self
 
 
@@ -53,7 +53,7 @@ class TrainingPipeline:
         self.logger      = None
         self.trainer     = None
 
-    def resolve_paths(self):
+    def _resolve_paths(self):
         self.runs_root = self._absolute(self.config.io.runs_dir)
 
         self.config.io.runs_dir = self.runs_root
@@ -63,18 +63,18 @@ class TrainingPipeline:
             return path
         return os.path.join(str(self.repo_root), path)
 
-    def open_session(self):
+    def _open_session(self):
         self.session = RunDirectory(self.config, self.runs_root).prepare()
 
-    def build_logger(self):
+    def _build_logger(self):
         self.logger = Logger(log_dir=self.config.io.logdir, name="training", level="INFO")
 
-    def build_trainer(self):
+    def _build_trainer(self):
         self.trainer = Trainer(config=self.config, logger=self.logger, tracker=self.session.tracker)
 
     def run(self):
-        self.resolve_paths()
-        self.open_session()
-        self.build_logger()
-        self.build_trainer()
+        self._resolve_paths()
+        self._open_session()
+        self._build_logger()
+        self._build_trainer()
         return self.trainer.train()

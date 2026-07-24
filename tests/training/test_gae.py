@@ -17,7 +17,7 @@ def test_gae_matches_hand_computed_values(ppo):
     dones      = torch.tensor([0.0, 1.0])
     bootstraps = torch.tensor([0.0, 2.0])
 
-    advantages, returns = ppo.gae(rewards, values, dones, bootstraps)
+    advantages, returns = ppo._gae(rewards, values, dones, bootstraps)
 
     expected_last  = 1.0 + 0.5 * 2.0 - 0.25
     expected_first = (1.0 + 0.5 * 0.25 - 0.5) + 0.5 * 0.5 * expected_last
@@ -32,8 +32,8 @@ def test_gae_uses_bootstrap_value_at_truncation(ppo):
     values  = torch.tensor([0.0])
     dones   = torch.tensor([1.0])
 
-    adv_zero, _ = ppo.gae(rewards, values, dones, torch.tensor([0.0]))
-    adv_boot, _ = ppo.gae(rewards, values, dones, torch.tensor([4.0]))
+    adv_zero, _ = ppo._gae(rewards, values, dones, torch.tensor([0.0]))
+    adv_boot, _ = ppo._gae(rewards, values, dones, torch.tensor([4.0]))
 
     assert adv_boot.item() == pytest.approx(adv_zero.item() + 0.5 * 4.0)
 
@@ -44,11 +44,11 @@ def test_gae_does_not_leak_across_episode_boundaries(ppo):
     dones      = torch.tensor([0.0, 1.0, 0.0, 1.0])
     bootstraps = torch.tensor([0.0, 0.0, 0.0, 0.0])
 
-    advantages, _ = ppo.gae(rewards, values, dones, bootstraps)
+    advantages, _ = ppo._gae(rewards, values, dones, bootstraps)
 
     rewards_alt       = rewards.clone()
     rewards_alt[2:]   = 100.0
-    advantages_alt, _ = ppo.gae(rewards_alt, values, dones, bootstraps)
+    advantages_alt, _ = ppo._gae(rewards_alt, values, dones, bootstraps)
 
     assert torch.allclose(advantages[:2], advantages_alt[:2])
 
@@ -59,7 +59,7 @@ def test_gae_flows_within_episode(ppo):
     dones      = torch.tensor([0.0, 0.0, 1.0])
     bootstraps = torch.tensor([0.0, 0.0, 0.0])
 
-    advantages, _ = ppo.gae(rewards, values, dones, bootstraps)
+    advantages, _ = ppo._gae(rewards, values, dones, bootstraps)
 
     assert advantages[2].item() == pytest.approx(8.0)
     assert advantages[1].item() > 0.0
@@ -73,7 +73,7 @@ def test_gae_all_done_buffer_is_per_step_td_error(ppo):
     dones      = torch.tensor([1.0, 1.0, 1.0])
     bootstraps = torch.tensor([1.0, 0.0, 2.0])
 
-    advantages, returns = ppo.gae(rewards, values, dones, bootstraps)
+    advantages, returns = ppo._gae(rewards, values, dones, bootstraps)
 
     for t in range(3):
         expected = rewards[t] + ppo.config.ppo.gamma * bootstraps[t] - values[t]
@@ -88,10 +88,10 @@ def test_gae_two_episode_buffer_is_independent(ppo):
     dones      = torch.tensor([0.0, 1.0, 0.0, 1.0])
     bootstraps = torch.tensor([0.0, 3.0, 0.0, 5.0])
 
-    advantages, _ = ppo.gae(rewards, values, dones, bootstraps)
+    advantages, _ = ppo._gae(rewards, values, dones, bootstraps)
 
-    first_episode  = ppo.gae(rewards[:2], values[:2], dones[:2], bootstraps[:2])[0]
-    second_episode = ppo.gae(rewards[2:], values[2:], dones[2:], bootstraps[2:])[0]
+    first_episode  = ppo._gae(rewards[:2], values[:2], dones[:2], bootstraps[:2])[0]
+    second_episode = ppo._gae(rewards[2:], values[2:], dones[2:], bootstraps[2:])[0]
 
     assert torch.allclose(advantages[:2], first_episode)
     assert torch.allclose(advantages[2:], second_episode)
@@ -103,7 +103,7 @@ def test_gae_returns_shape_matches_rewards(ppo):
     dones      = torch.tensor([0.0, 0.0, 1.0])
     bootstraps = torch.tensor([0.0, 0.0, 0.0])
 
-    advantages, returns = ppo.gae(rewards, values, dones, bootstraps)
+    advantages, returns = ppo._gae(rewards, values, dones, bootstraps)
 
     assert advantages.shape == rewards.shape
     assert returns.shape == rewards.shape

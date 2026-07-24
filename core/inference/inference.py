@@ -184,7 +184,7 @@ class InferencePipeline:
         self.model         = None
         self.result        = None
 
-    def resolve_run(self):
+    def _resolve_run(self):
         run_name = self.config.io.run_name
         if not run_name:
             raise ValueError("config.io.run_name must name the run directory to load for inference")
@@ -197,27 +197,27 @@ class InferencePipeline:
         if not os.path.isdir(self.run_dir):
             raise FileNotFoundError(f"Run directory not found: {self.run_dir}")
 
-    def build_environment(self):
+    def _build_environment(self):
         self.environment = Environment(self.config)
         self.environment.reset()
         self.initial_state = self.environment.current_state.copy()
 
-    def load_model(self):
+    def _load_model(self):
         self.model = Policy(self.config)
         PolicyCheckpoint().load(self.model, self.config.io.checkpoint_filename, self.run_dir, map_location=self.device)
 
-    def infer(self):
+    def _infer(self):
         inference   = ModelInference(self.model, self.environment, max_steps=self.max_steps, device=self.device, verbose=False)
         self.result = inference.run(self.initial_state)
 
-    def report(self):
+    def _report(self):
         self.logger.kv_table(self.result.summary(), title="Inference Summary")
 
     def run(self):
-        self.resolve_run()
-        self.build_environment()
-        self.load_model()
-        self.infer()
-        self.report()
+        self._resolve_run()
+        self._build_environment()
+        self._load_model()
+        self._infer()
+        self._report()
         return self.result
     

@@ -42,7 +42,7 @@ def test_evaluate_cost_does_not_mutate_state(environment):
     state          = environment.current_state
     payload_before = state.to_payload()
 
-    environment.evaluate_cost(state)
+    environment._evaluate_cost(state)
 
     assert state.to_payload() == payload_before
 

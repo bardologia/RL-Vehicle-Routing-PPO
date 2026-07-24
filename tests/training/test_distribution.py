@@ -20,7 +20,7 @@ def build_distribution(cpu_config):
 def test_categorical_kl_of_identical_logits_is_zero():
     logits = torch.randn(6)
 
-    kl = ActionDistribution.categorical_kl(logits, logits)
+    kl = ActionDistribution._categorical_kl(logits, logits)
 
     assert torch.allclose(kl, torch.tensor(0.0), atol=1e-6)
 
@@ -28,7 +28,7 @@ def test_categorical_kl_of_identical_logits_is_zero():
 def test_categorical_kl_is_positive_for_different_logits():
     torch.manual_seed(0)
 
-    kl = ActionDistribution.categorical_kl(torch.randn(6), torch.randn(6))
+    kl = ActionDistribution._categorical_kl(torch.randn(6), torch.randn(6))
 
     assert kl.item() > 0.0
 
@@ -46,7 +46,7 @@ def test_masked_action_logits_none_info_returns_clones(cpu_config):
     vehicle_logits = torch.randn(3, 6)
     job_logits     = torch.randn(3, 6, 20)
 
-    vehicle_masked, job_masked = distribution.masked_action_logits(vehicle_logits, job_logits, None)
+    vehicle_masked, job_masked = distribution._masked_action_logits(vehicle_logits, job_logits, None)
 
     assert torch.equal(vehicle_masked, vehicle_logits)
     assert torch.equal(job_masked, job_logits)
@@ -59,7 +59,7 @@ def test_masked_action_logits_matches_per_row_masking(cpu_config, seeded):
     vehicle_logits = torch.randn(O, V)
     job_logits     = torch.randn(O, V, J)
 
-    vehicle_masked, job_masked = distribution.masked_action_logits(vehicle_logits, job_logits, MASK_INFO)
+    vehicle_masked, job_masked = distribution._masked_action_logits(vehicle_logits, job_logits, MASK_INFO)
 
     for operator_index in range(O):
         expected_vehicle = masker.mask_vehicle(vehicle_logits[operator_index], MASK_INFO, operator_index)

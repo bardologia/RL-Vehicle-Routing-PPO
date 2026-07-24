@@ -11,7 +11,7 @@ class NodeBuilder:
     def __init__(self, graph):
         self.graph = graph
 
-    def vehicle_nodes(self):
+    def _vehicle_nodes(self):
         load_by_vehicle_id = {route.vehicle_id: len(route.job_ids) for route in self.graph.state.routes}
 
         for vehicle in self.graph.vehicles:
@@ -28,9 +28,9 @@ class NodeBuilder:
                 "depot_distance"  : float(depot_m),
             }
 
-            self.add_node(f"veh:{vehicle.id}", "vehicle", float(vehicle.start[0]), float(vehicle.start[1]), metadata)
+            self._add_node(f"veh:{vehicle.id}", "vehicle", float(vehicle.start[0]), float(vehicle.start[1]), metadata)
 
-    def job_nodes(self):
+    def _job_nodes(self):
         state = self.graph.state
 
         assigned_vehicle_by_job = {}
@@ -53,9 +53,9 @@ class NodeBuilder:
                 "depot_distance"      : float(depot_m),
             }
 
-            self.add_node(f"job:{job.id}", "job", float(job.location[0]), float(job.location[1]), metadata)
+            self._add_node(f"job:{job.id}", "job", float(job.location[0]), float(job.location[1]), metadata)
 
-    def add_node(self, identifier, node_type, longitude, latitude, metadata):
+    def _add_node(self, identifier, node_type, longitude, latitude, metadata):
         idx = len(self.graph.nodes)
 
         self.graph.nodes.append(
@@ -73,15 +73,15 @@ class NodeBuilder:
         self.graph.nodes_by_type[node_type].append(idx)
 
     def build(self):
-        self.vehicle_nodes()
-        self.job_nodes()
+        self._vehicle_nodes()
+        self._job_nodes()
 
 
 class EdgeBuilder:
     def __init__(self, graph):
         self.graph = graph
 
-    def job_sequence(self, routes):
+    def _job_sequence(self, routes):
         for route in routes:
             for current_stop, next_stop in zip(route.stops, route.stops[1:]):
                 current_index = self.graph.node_index_by_key.get(("job", f"job:{current_stop.job_id}"))
@@ -90,9 +90,9 @@ class EdgeBuilder:
                     continue
 
                 dist_m, dur_s = haversine_distance(current_stop.location[0], current_stop.location[1], next_stop.location[0], next_stop.location[1])
-                self.add_edge(current_index, next_index, dist_m, dur_s, etype=0, is_same_route=1.0, is_assigned=1.0, is_bidirectional=True)
+                self._add_edge(current_index, next_index, dist_m, dur_s, etype=0, is_same_route=1.0, is_assigned=1.0, is_bidirectional=True)
 
-    def vehicle_assigned(self, routes):
+    def _vehicle_assigned(self, routes):
         for route in routes:
             vehicle_index = self.graph.node_index_by_key.get(("vehicle", f"veh:{route.vehicle_id}"))
             if vehicle_index is None:
@@ -106,9 +106,9 @@ class EdgeBuilder:
                     continue
 
                 dist_m, dur_s = haversine_distance(vehicle_node["longitude"], vehicle_node["latitude"], stop.location[0], stop.location[1])
-                self.add_edge(vehicle_index, job_index, dist_m, dur_s, etype=1, is_same_route=1.0, is_assigned=1.0, is_bidirectional=True)
+                self._add_edge(vehicle_index, job_index, dist_m, dur_s, etype=1, is_same_route=1.0, is_assigned=1.0, is_bidirectional=True)
 
-    def job_vehicle_proximity(self, job_nodes, vehicle_nodes):
+    def _job_vehicle_proximity(self, job_nodes, vehicle_nodes):
         for job_node in job_nodes:
             assigned_vehicle_id = job_node["metadata"]["assigned_vehicle_id"]
 
@@ -120,9 +120,9 @@ class EdgeBuilder:
                     and int(vehicle_node["metadata"]["vehicle_id"]) == int(assigned_vehicle_id)
                 )
 
-                self.add_edge(job_node["index"], vehicle_node["index"], dist_m, dur_s, etype=2, is_same_route=0.0, is_assigned=is_assigned_flag, is_bidirectional=True)
+                self._add_edge(job_node["index"], vehicle_node["index"], dist_m, dur_s, etype=2, is_same_route=0.0, is_assigned=is_assigned_flag, is_bidirectional=True)
 
-    def add_edge(self, src_idx, dst_idx, distance_meters, duration_seconds, *, etype, is_same_route, is_assigned, is_bidirectional=False):
+    def _add_edge(self, src_idx, dst_idx, distance_meters, duration_seconds, *, etype, is_same_route, is_assigned, is_bidirectional=False):
         distance_km = max(float(distance_meters) / 1000.0, 0.0)
         duration_h  = max(float(duration_seconds) / 3600.0, 0.0)
 
@@ -150,9 +150,9 @@ class EdgeBuilder:
         job_nodes     = [self.graph.nodes[idx] for idx in self.graph.nodes_by_type["job"]]
         vehicle_nodes = [self.graph.nodes[idx] for idx in self.graph.nodes_by_type["vehicle"]]
 
-        self.job_sequence(routes)
-        self.vehicle_assigned(routes)
-        self.job_vehicle_proximity(job_nodes, vehicle_nodes)
+        self._job_sequence(routes)
+        self._vehicle_assigned(routes)
+        self._job_vehicle_proximity(job_nodes, vehicle_nodes)
 
 
 class Graph:
@@ -267,7 +267,7 @@ class Graph:
 
         return edge_buffers
 
-    def pack_data(self):
+    def _pack_data(self):
         data = HeteroData()
 
         lon_mean, lon_std, lat_mean, lat_std = self._coordinate_stats()
@@ -312,7 +312,7 @@ class Graph:
         self.node_builder.build()
         self.edge_builder.build()
 
-        data = self.relation_completer.build(self.pack_data())
+        data = self.relation_completer.build(self._pack_data())
         data.mappings = self.mappings()
 
         return data
@@ -330,7 +330,7 @@ class RelationCompleter:
     def __init__(self, config):
         self.config = config
 
-    def ensure_relations(self, data: HeteroData) -> None:
+    def _ensure_relations(self, data: HeteroData) -> None:
         for relation in self.required_relations:
             store = data[relation]
             if "edge_index" not in store:
@@ -339,5 +339,5 @@ class RelationCompleter:
                 store.edge_attr = torch.empty((0, 4), dtype=torch.float32)
 
     def build(self, data: HeteroData) -> HeteroData:
-        self.ensure_relations(data)
+        self._ensure_relations(data)
         return data

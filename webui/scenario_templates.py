@@ -23,7 +23,7 @@ class ScenarioTemplates:
             "description"     : f"Vehicle {vehicle_id}",
         }
 
-    def cheap_detour(self):
+    def _cheap_detour(self):
         return {
             "key"         : "cheap_detour",
             "title"       : "Cheap detour insert",
@@ -39,7 +39,7 @@ class ScenarioTemplates:
             "assignment" : {0: [0, 1]},
         }
 
-    def far_low_priority(self):
+    def _far_low_priority(self):
         return {
             "key"         : "far_low_priority",
             "title"       : "Far low-priority job",
@@ -55,7 +55,7 @@ class ScenarioTemplates:
             "assignment" : {0: [0, 1]},
         }
 
-    def priority_rescue(self):
+    def _priority_rescue(self):
         return {
             "key"         : "priority_rescue",
             "title"       : "Priority overrides distance",
@@ -71,7 +71,7 @@ class ScenarioTemplates:
             "assignment" : {0: [0, 1]},
         }
 
-    def wrong_vehicle(self):
+    def _wrong_vehicle(self):
         return {
             "key"         : "wrong_vehicle",
             "title"       : "Job on the wrong vehicle",
@@ -92,7 +92,7 @@ class ScenarioTemplates:
             "assignment" : {0: [0, 1, 2], 1: [3, 4]},
         }
 
-    def multi_trip(self):
+    def _multi_trip(self):
         return {
             "key"         : "multi_trip",
             "title"       : "Multi-trip repossessions",
@@ -109,7 +109,7 @@ class ScenarioTemplates:
             "assignment" : {0: []},
         }
 
-    def abandon_outlier(self):
+    def _abandon_outlier(self):
         return {
             "key"         : "abandon_outlier",
             "title"       : "Abandon the outlier",
@@ -125,7 +125,7 @@ class ScenarioTemplates:
             "assignment" : {0: [0, 1, 2]},
         }
 
-    def wake_idle(self):
+    def _wake_idle(self):
         return {
             "key"         : "wake_idle",
             "title"       : "Wake the idle vehicle",
@@ -146,7 +146,7 @@ class ScenarioTemplates:
             "assignment" : {0: [0, 1, 2]},
         }
 
-    def tangled_routes(self):
+    def _tangled_routes(self):
         return {
             "key"         : "tangled_routes",
             "title"       : "Tangled routes",
@@ -164,7 +164,7 @@ class ScenarioTemplates:
             "assignment" : {0: [0], 1: [1]},
         }
 
-    def all_settled(self):
+    def _all_settled(self):
         return {
             "key"         : "all_settled",
             "title"       : "Nothing to do",
@@ -186,13 +186,13 @@ class ScenarioTemplates:
 
     def catalog(self):
         return [
-            self.cheap_detour(),
-            self.far_low_priority(),
-            self.priority_rescue(),
-            self.wrong_vehicle(),
-            self.multi_trip(),
-            self.abandon_outlier(),
-            self.wake_idle(),
-            self.tangled_routes(),
-            self.all_settled(),
+            self._cheap_detour(),
+            self._far_low_priority(),
+            self._priority_rescue(),
+            self._wrong_vehicle(),
+            self._multi_trip(),
+            self._abandon_outlier(),
+            self._wake_idle(),
+            self._tangled_routes(),
+            self._all_settled(),
         ]
