@@ -1,8 +1,10 @@
 import json
+import time
 from typing import List, Optional, Tuple
 
 import polyline as polyline_module
 import requests
+from requests.exceptions import RequestException
 
 from configuration import config
 from tools.auxiliary import retry_api_call
@@ -68,18 +70,48 @@ class OsrmClient:
 
 
 class VroomClient:
+    MAX_ATTEMPTS   = 3
+    BACKOFF_FACTOR = 0.5
+
     def __init__(self, service_config, logger=None):
         self.service = service_config
         self.logger  = logger or NullLogger()
         self._solve_cache = {}
 
-    @retry_api_call(max_retries=3, backoff_factor=0.5)
-    def _post(self, payload) -> Optional[dict]:
-        response = requests.post(self.service.vroom_url, json=payload, timeout=20)
-        if response.status_code != 200:
-            self.logger.warning(f"VROOM error: {response.text}")
+    def _vroom_error_code(self, response) -> Optional[int]:
+        try:
+            body = response.json()
+        except ValueError:
             return None
-        return response.json()
+        return body.get("code") if isinstance(body, dict) else None
+
+    def _post(self, payload) -> Optional[dict]:
+        for attempt in range(self.MAX_ATTEMPTS):
+            transient = None
+
+            try:
+                response = requests.post(self.service.vroom_url, json=payload, timeout=20)
+            except RequestException as error:
+                transient = str(error)
+            else:
+                if response.status_code == 200:
+                    return response.json()
+
+                error_code = self._vroom_error_code(response)
+                if error_code is not None:
+                    self.logger.warning(f"VROOM could not solve the request (code {error_code}): {response.text[:160]}")
+                    return None
+                if response.status_code < 500:
+                    self.logger.warning(f"VROOM rejected the request ({response.status_code}): {response.text[:160]}")
+                    return None
+
+                transient = f"{response.status_code}: {response.text[:160]}"
+
+            if attempt + 1 < self.MAX_ATTEMPTS:
+                time.sleep(self.BACKOFF_FACTOR * (2 ** attempt))
+
+        self.logger.warning(f"VROOM unavailable after {self.MAX_ATTEMPTS} attempts ({transient}); treating as no solution")
+        return None
 
     def solve(self, jobs: List[Job], vehicles: List[Vehicle], depot=None, clock=None) -> Optional[RoutingState]:
         job_payloads = []

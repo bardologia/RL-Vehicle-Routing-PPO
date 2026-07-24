@@ -70,7 +70,7 @@ def test_vroom_solve_caches_identical_requests(cpu_config, monkeypatch):
 
 
 def test_vroom_solve_does_not_cache_failures(cpu_config, monkeypatch):
-    responses = [FakeResponse(500, text="boom"), FakeResponse(200, payload=load_fixture("vroom_solution_small"))]
+    responses = [FakeResponse(500, text="boom"), FakeResponse(500, text="boom"), FakeResponse(500, text="boom"), FakeResponse(200, payload=load_fixture("vroom_solution_small"))]
 
     def fake_post(url, json=None, timeout=None):
         return responses.pop(0)
@@ -78,14 +78,18 @@ def test_vroom_solve_does_not_cache_failures(cpu_config, monkeypatch):
     monkeypatch.setattr(services_module.requests, "post", fake_post)
 
     client = VroomClient(cpu_config.service, logger=CapturingLogger())
+    client.BACKOFF_FACTOR = 0
 
     assert client.solve(make_jobs(1), make_vehicles(1)) is None
     assert isinstance(client.solve(make_jobs(1), make_vehicles(1)), RoutingState)
 
 
-def test_vroom_solve_returns_none_on_non_200(cpu_config, monkeypatch):
+def test_vroom_solve_returns_none_on_client_error(cpu_config, monkeypatch):
+    calls = {"count": 0}
+
     def fake_post(url, json=None, timeout=None):
-        return FakeResponse(500, text="boom")
+        calls["count"] += 1
+        return FakeResponse(400, text="bad request")
 
     monkeypatch.setattr(services_module.requests, "post", fake_post)
 
@@ -93,7 +97,40 @@ def test_vroom_solve_returns_none_on_non_200(cpu_config, monkeypatch):
     client = VroomClient(cpu_config.service, logger=logger)
 
     assert client.solve(make_jobs(1), make_vehicles(1)) is None
-    assert any("VROOM error" in message for message in logger.warnings)
+    assert calls["count"] == 1
+    assert any("VROOM rejected" in message for message in logger.warnings)
+
+
+def test_vroom_solve_retries_transient_server_errors(cpu_config, monkeypatch):
+    responses = [FakeResponse(503, text="busy"), FakeResponse(200, payload=load_fixture("vroom_solution_small"))]
+
+    def fake_post(url, json=None, timeout=None):
+        return responses.pop(0)
+
+    monkeypatch.setattr(services_module.requests, "post", fake_post)
+
+    client = VroomClient(cpu_config.service, logger=CapturingLogger())
+    client.BACKOFF_FACTOR = 0
+
+    assert isinstance(client.solve(make_jobs(1), make_vehicles(1)), RoutingState)
+    assert not responses
+
+
+def test_vroom_solve_does_not_retry_solver_error_codes(cpu_config, monkeypatch):
+    calls = {"count": 0}
+
+    def fake_post(url, json=None, timeout=None):
+        calls["count"] += 1
+        return FakeResponse(500, payload={"code": 1, "error": "cannot create std::vector larger than max_size()"}, text='{"code":1}')
+
+    monkeypatch.setattr(services_module.requests, "post", fake_post)
+
+    logger = CapturingLogger()
+    client = VroomClient(cpu_config.service, logger=logger)
+
+    assert client.solve(make_jobs(1), make_vehicles(1)) is None
+    assert calls["count"] == 1
+    assert any("code 1" in message for message in logger.warnings)
 
 
 def test_osrm_distance_duration_caches_by_rounded_key(cpu_config, monkeypatch):
