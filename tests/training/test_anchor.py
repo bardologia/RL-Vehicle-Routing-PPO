@@ -84,7 +84,7 @@ def test_anchored_update_logs_kl_and_stays_finite(cpu_config, seeded, fake_vroom
     writer  = FakeWriter()
     trainer = build_anchored_trainer(cpu_config, tmp_path, Tracker(writer=writer))
 
-    trainer.run_update([0, 1, 2])
+    trainer._run_update([0, 1, 2])
     trainer.ppo.update()
 
     anchor_kls = [value for tag, value, _ in writer.scalars if tag == "batch/anchor_kl"]

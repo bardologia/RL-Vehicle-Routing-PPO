@@ -237,7 +237,7 @@ def test_evaluate_cost_matches_reward_config(environment):
     state  = environment.current_state
     reward = environment.config.reward
 
-    distance_cost, unassigned_cost, idle_cost, priority_cost = environment.evaluate_cost(state)
+    distance_cost, unassigned_cost, idle_cost, priority_cost = environment._evaluate_cost(state)
 
     expected_priority = sum(
         environment.jobs.by_id(job_id).priority

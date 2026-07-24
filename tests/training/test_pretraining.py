@@ -72,7 +72,7 @@ def test_best_insertion_ignores_unprofitable_high_regret_jobs(cpu_config):
     teacher = RegretInsertionTeacher(cpu_config)
     options = {7: [(-3.0, 0)], 8: [(2.0, 0), (1.0, 1)]}
 
-    best = teacher.best_insertion(options, baseline=0.0)
+    best = teacher._best_insertion(options, baseline=0.0)
 
     assert best["job_id"] == 8
     assert best["vehicle_id"] == 0
@@ -83,7 +83,7 @@ def test_best_insertion_returns_none_when_nothing_profitable(cpu_config):
     teacher = RegretInsertionTeacher(cpu_config)
     options = {7: [(-3.0, 0)], 8: [(-0.5, 0), (-1.0, 1)]}
 
-    assert teacher.best_insertion(options, baseline=0.0) is None
+    assert teacher._best_insertion(options, baseline=0.0) is None
 
 
 def test_insertion_plan_value_grows_with_horizon(environment, fake_vroom):
@@ -94,8 +94,8 @@ def test_insertion_plan_value_grows_with_horizon(environment, fake_vroom):
     load_scenario(environment, jobs, vehicles, state)
 
     teacher    = RegretInsertionTeacher(environment.config)
-    short_plan = teacher.insertion_plan(environment, environment.current_state, horizon=1, baseline=0.0)
-    long_plan  = teacher.insertion_plan(environment, environment.current_state, horizon=3, baseline=0.0)
+    short_plan = teacher._insertion_plan(environment, environment.current_state, horizon=1, baseline=0.0)
+    long_plan  = teacher._insertion_plan(environment, environment.current_state, horizon=3, baseline=0.0)
 
     assert short_plan["action"] is not None
     assert long_plan["value"] > short_plan["value"]
@@ -176,9 +176,9 @@ def test_best_removal_value_includes_reinsertion_continuation(environment, fake_
     load_scenario(environment, jobs, vehicles, state)
 
     teacher = RegretInsertionTeacher(environment.config)
-    best    = teacher.best_removal(environment, environment.current_state, horizon=3, baseline=0.0)
+    best    = teacher._best_removal(environment, environment.current_state, horizon=3, baseline=0.0)
 
-    one_step = {option["job_id"]: option["reward"] for option in teacher.removal_options(environment, environment.current_state)}
+    one_step = {option["job_id"]: option["reward"] for option in teacher._removal_options(environment, environment.current_state)}
 
     assert best["job_id"] == jobs[0].id
     assert one_step[best["job_id"]] < 0.0

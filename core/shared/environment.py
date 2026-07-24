@@ -380,7 +380,7 @@ class Environment:
 
         return old_state, new_state
 
-    def evaluate_cost(self, state: RoutingState):
+    def _evaluate_cost(self, state: RoutingState):
         base_cost       = float(state.cost)
         num_unassigned  = state.num_unassigned
         active_vehicles = state.num_routes
@@ -400,15 +400,15 @@ class Environment:
 
         return distance_cost, unassigned_cost, idle_cost, priority_cost
 
-    def evaluate_disruption(self, old_state: RoutingState, new_state: RoutingState):
+    def _evaluate_disruption(self, old_state: RoutingState, new_state: RoutingState):
         old_vehicle_by_job = {stop.job_id: route.vehicle_id for route in old_state.routes for stop in route.stops}
         new_vehicle_by_job = {stop.job_id: route.vehicle_id for route in new_state.routes for stop in route.stops}
 
         return sum(1 for job_id, vehicle_id in old_vehicle_by_job.items() if new_vehicle_by_job.get(job_id) != vehicle_id)
 
     def step(self, old_state, new_state, operator_index):
-        old_distance_cost, old_unassigned_cost, old_idle_cost, old_priority_cost = self.evaluate_cost(old_state)
-        new_distance_cost, new_unassigned_cost, new_idle_cost, new_priority_cost = self.evaluate_cost(new_state)
+        old_distance_cost, old_unassigned_cost, old_idle_cost, old_priority_cost = self._evaluate_cost(old_state)
+        new_distance_cost, new_unassigned_cost, new_idle_cost, new_priority_cost = self._evaluate_cost(new_state)
 
         distance_reward   = -(new_distance_cost   - old_distance_cost)
         unassigned_reward = -(new_unassigned_cost - old_unassigned_cost)
@@ -422,7 +422,7 @@ class Environment:
             2: reward_config.no_action_cost,
         }
 
-        disruption    = self.evaluate_disruption(old_state, new_state)
+        disruption    = self._evaluate_disruption(old_state, new_state)
         action_cost   = operator_costs[operator_index] + reward_config.disruption_cost * disruption
         action_reward = -action_cost
 

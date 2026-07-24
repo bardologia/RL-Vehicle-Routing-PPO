@@ -13,14 +13,14 @@ from web_ui_server import WebUIServer
 
 
 class ServeEntry:
-    def parse(self):
+    def _parse(self):
         parser = argparse.ArgumentParser(description="RL Vehicle Routing PPO web console")
         parser.add_argument("--host", default="127.0.0.1")
         parser.add_argument("--port", type=int, default=8766)
         return parser.parse_args()
 
     def run(self):
-        args = self.parse()
+        args = self._parse()
         WebUIServer(args.host, args.port).serve()
 
 

@@ -22,11 +22,11 @@ class RegretInsertionTeacher:
         self.config        = config
         self.allow_removal = allow_removal
 
-    def no_op_reward(self, environment, state):
+    def _no_op_reward(self, environment, state):
         rewards, _ = environment.step(state, state, 2)
         return sum(rewards.values())
 
-    def insertion_options(self, environment, state):
+    def _insertion_options(self, environment, state):
         assigned_ids = state.assigned_job_ids
         eligible_ids = sorted(job_id for job_id in state.unassigned_ids if environment.jobs.contains(job_id) and job_id not in assigned_ids)
 
@@ -42,7 +42,7 @@ class RegretInsertionTeacher:
 
         return options
 
-    def best_insertion(self, options, baseline):
+    def _best_insertion(self, options, baseline):
         best = None
 
         for job_id in sorted(options):
@@ -58,7 +58,7 @@ class RegretInsertionTeacher:
 
         return best
 
-    def refresh_options(self, environment, state, options, inserted_job_id, vehicle_id):
+    def _refresh_options(self, environment, state, options, inserted_job_id, vehicle_id):
         options.pop(inserted_job_id, None)
 
         for job_id in list(options):
@@ -76,16 +76,16 @@ class RegretInsertionTeacher:
 
         return options
 
-    def insertion_plan(self, environment, state, horizon, baseline):
+    def _insertion_plan(self, environment, state, horizon, baseline):
         plan = {"value": 0.0, "action": None}
         if horizon <= 0:
             return plan
 
         discount = 1.0
-        options  = self.insertion_options(environment, state)
+        options  = self._insertion_options(environment, state)
 
         for _ in range(horizon):
-            best = self.best_insertion(options, baseline)
+            best = self._best_insertion(options, baseline)
             if best is None:
                 break
 
@@ -100,11 +100,11 @@ class RegretInsertionTeacher:
             plan["value"] += discount * sum(rewards.values())
             discount      *= self.config.ppo.gamma
             state          = new_state
-            options        = self.refresh_options(environment, state, options, best["job_id"], best["vehicle_id"])
+            options        = self._refresh_options(environment, state, options, best["job_id"], best["vehicle_id"])
 
         return plan
 
-    def removal_options(self, environment, state):
+    def _removal_options(self, environment, state):
         options = []
 
         for route in state.routes:
@@ -124,13 +124,13 @@ class RegretInsertionTeacher:
 
         return options
 
-    def best_removal(self, environment, state, horizon, baseline):
+    def _best_removal(self, environment, state, horizon, baseline):
         gamma   = self.config.ppo.gamma
-        options = sorted(self.removal_options(environment, state), key=lambda option: (-option["reward"], option["vehicle_id"], option["job_id"]))
+        options = sorted(self._removal_options(environment, state), key=lambda option: (-option["reward"], option["vehicle_id"], option["job_id"]))
 
         best = None
         for option in options:
-            continuation = self.insertion_plan(environment, option["state"], horizon - 1, baseline)
+            continuation = self._insertion_plan(environment, option["state"], horizon - 1, baseline)
             value        = option["reward"] + gamma * continuation["value"]
 
             if best is None or value > best["value"]:
@@ -139,13 +139,13 @@ class RegretInsertionTeacher:
         return best
 
     def select_action(self, environment, state, remaining_steps=None):
-        baseline = self.no_op_reward(environment, state)
+        baseline = self._no_op_reward(environment, state)
         horizon  = self.config.pretrain.plan_horizon
 
         if remaining_steps is not None:
             horizon = min(horizon, remaining_steps)
 
-        plan = self.insertion_plan(environment, state, horizon, baseline)
+        plan = self._insertion_plan(environment, state, horizon, baseline)
 
         chosen_value = baseline
         action       = Action(operator=2, vehicle_index=0, job_index=0)
@@ -155,7 +155,7 @@ class RegretInsertionTeacher:
             action       = plan["action"]
 
         if self.allow_removal:
-            removal = self.best_removal(environment, state, horizon, baseline)
+            removal = self._best_removal(environment, state, horizon, baseline)
             if removal is not None and removal["value"] > chosen_value:
                 chosen_value = removal["value"]
                 action       = Action(operator=1, vehicle_index=environment.vehicles.index_of(removal["vehicle_id"]), job_index=environment.jobs.index_of(removal["job_id"]))
@@ -174,7 +174,7 @@ class TeacherRolloutCollector:
         self.scenario_seed = config.env.scenario_seed
         self.driver        = EpisodeDriver(environment, config)
 
-    def attach_returns(self, records):
+    def _attach_returns(self, records):
         running = 0.0
         for record in reversed(records):
             running          = record["reward"] + self.gamma * running
@@ -196,7 +196,7 @@ class TeacherRolloutCollector:
                 "reward"    : float(sum(rewards.values())),
             })
 
-        return self.attach_returns(records)
+        return self._attach_returns(records)
 
 
 _TEACHER_WORKER = {}
@@ -246,7 +246,7 @@ class BCTrainer:
 
         self.global_batch_step = 0
 
-    def sample_losses(self, sample, record):
+    def _sample_losses(self, sample, record):
         action    = record["action"]
         mask_info = record["mask_info"]
 
@@ -280,7 +280,7 @@ class BCTrainer:
 
         return {"operator": operator_loss, "vehicle": vehicle_loss, "job": job_loss, "value": value_loss}, hits
 
-    def minibatch_step(self, batch_records):
+    def _minibatch_step(self, batch_records):
         batch_graph = Batch.from_data_list([record["graph"] for record in batch_records])
         per_sample  = self.policy.forward_batch(batch_graph)
 
@@ -288,7 +288,7 @@ class BCTrainer:
         hits   = {head: 0.0 for head in ("operator", "vehicle", "job")}
 
         for sample, record in zip(per_sample, batch_records):
-            sample_loss, sample_hits = self.sample_losses(sample, record)
+            sample_loss, sample_hits = self._sample_losses(sample, record)
 
             for head in losses:
                 losses[head] = losses[head] + sample_loss[head]
@@ -326,7 +326,7 @@ class BCTrainer:
             for start_index in range(0, len(records), self.minibatch_size):
                 batch_records = [records[index] for index in indices[start_index:start_index + self.minibatch_size]]
 
-                loss_values, hits = self.minibatch_step(batch_records)
+                loss_values, hits = self._minibatch_step(batch_records)
 
                 epoch_loss    += loss_values["total"]
                 epoch_batches += 1
@@ -363,7 +363,7 @@ class PretrainingPipeline:
         self.num_episodes = 0
         self.num_records  = 0
 
-    def resolve_paths(self):
+    def _resolve_paths(self):
         self.runs_root = self._absolute(self.config.io.runs_dir)
 
     def _absolute(self, path):
@@ -371,17 +371,17 @@ class PretrainingPipeline:
             return path
         return os.path.join(str(self.repo_root), path)
 
-    def open_session(self):
+    def _open_session(self):
         self.session = RunDirectory(self.config, self.runs_root).prepare()
 
-    def build_logger(self):
+    def _build_logger(self):
         self.logger = Logger(log_dir=self.config.io.logdir, name="pretraining", level="INFO")
 
-    def build_collection(self):
+    def _build_collection(self):
         vroom.logger   = self.logger
         self.telemetry = PPOTelemetry(self.session.tracker, self.config)
 
-    def build_training(self):
+    def _build_training(self):
         self.policy  = Policy(self.config).to(self.config.training.device)
         masker       = ActionMasker(self.config)
         self.trainer = BCTrainer(self.policy, masker, self.config, self.telemetry, logger=self.logger)
@@ -414,7 +414,7 @@ class PretrainingPipeline:
         self.logger.subsection(f"Collected {self.num_records} records from {self.num_episodes} episodes \n")
         return records
 
-    def save_checkpoint(self):
+    def _save_checkpoint(self):
         training_state = {
             "phase"    : "pretraining",
             "episodes" : self.num_episodes,
@@ -431,15 +431,15 @@ class PretrainingPipeline:
         self.logger.subsection(f"Pretrained policy saved to {os.path.join(self.config.io.logdir, self.config.io.checkpoint_filename)}")
 
     def run(self):
-        self.resolve_paths()
-        self.open_session()
-        self.build_logger()
+        self._resolve_paths()
+        self._open_session()
+        self._build_logger()
 
-        self.build_collection()
+        self._build_collection()
         records = self.collect()
 
-        self.build_training()
+        self._build_training()
         metrics = self.trainer.train(records)
 
-        self.save_checkpoint()
+        self._save_checkpoint()
         return metrics

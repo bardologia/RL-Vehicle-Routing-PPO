@@ -91,13 +91,13 @@ class EpisodeRollout:
         self.scenario_seed = config.env.scenario_seed
         self.driver        = EpisodeDriver(environment, config)
 
-    def forward_action(self, graph, mask_info):
+    def _forward_action(self, graph, mask_info):
         graph = graph.to(self.device)
         with torch.no_grad():
             ppo_output = self.policy.select_action(graph, mask_info)
         return graph, ppo_output
 
-    def build_experience(self, graph, mask_info, reward, ppo_output):
+    def _build_experience(self, graph, mask_info, reward, ppo_output):
         return {
             "graph"               : graph,
             "mask_info"           : mask_info,
@@ -114,7 +114,7 @@ class EpisodeRollout:
             "done"                : False,
         }
 
-    def bootstrap(self, experiences):
+    def _bootstrap(self, experiences):
         experiences[-1]["done"] = True
 
         tail_graph, _ = self.environment.observe()
@@ -128,7 +128,7 @@ class EpisodeRollout:
         step_payloads  = []
 
         for step in self.driver.episode(self.scenario_seed + episode_index):
-            graph, ppo_output = self.forward_action(step.graph, step.mask_info)
+            graph, ppo_output = self._forward_action(step.graph, step.mask_info)
 
             action         = ppo_output["action"]
             value          = float(ppo_output["state_value"].item())
@@ -141,10 +141,10 @@ class EpisodeRollout:
             operator_stats['rewards'][operator_index].append(reward)
             step_payloads.append((rewards, costs, value))
 
-            experiences.append(self.build_experience(graph, step.mask_info, reward, ppo_output))
+            experiences.append(self._build_experience(graph, step.mask_info, reward, ppo_output))
 
         if experiences:
-            self.bootstrap(experiences)
+            self._bootstrap(experiences)
 
         return experiences, operator_stats, step_payloads
 
@@ -173,16 +173,16 @@ class Trainer:
         self.episode_index       = 0
         self.ppo_update_index    = 0
 
-        self.ppo         = self.initialize()
+        self.ppo         = self._initialize()
         self.environment = Environment(config, logger=self.logger)
         self.summary     = ModelSummary(self.ppo)
 
         self.rollout = EpisodeRollout(self.environment, self.ppo.policy, self.config)
 
-        self.clear_memory()
+        self._clear_memory()
         self.logger.subsection("Trainer initialized successfully")
 
-    def initialize(self):
+    def _initialize(self):
         self.logger.section("[PPO Initialization]")
         lr_config      = self.config.lr
         entropy_config = self.config.entropy
@@ -270,7 +270,7 @@ class Trainer:
 
         self.logger.subsection(f"Anchor KL enabled: {ppo_config.anchor_kl_start} -> {ppo_config.anchor_kl_end} over {ppo_config.anchor_anneal_steps} steps")
 
-    def clear_memory(self):
+    def _clear_memory(self):
         gc.collect()
         torch.cuda.empty_cache()
         torch.cuda.ipc_collect()
@@ -292,15 +292,15 @@ class Trainer:
 
         return state
     
-    def collect_rollouts(self, episode_indices):
+    def _collect_rollouts(self, episode_indices):
         return [self.rollout.rollout(episode_index) for episode_index in tqdm(episode_indices, desc="Processing episodes in update", leave=False)]
 
-    def run_update(self, episode_indices):
+    def _run_update(self, episode_indices):
         self.logger.section("[Update Processing]")
         self.logger.subsection(f"Total episodes in update : {len(episode_indices)}")
         self.logger.subsection(f"Starting episode index   : {self.episode_index} \n")
 
-        episodes           = self.collect_rollouts(episode_indices)
+        episodes           = self._collect_rollouts(episode_indices)
         episodes_processed = 0
 
         for experiences, operator_stats, step_payloads in episodes:
@@ -321,11 +321,11 @@ class Trainer:
         self.logger.subsection(f"Update complete: {episodes_processed} episodes processed")
         return episodes_processed
      
-    def ppo_update(self):
+    def _ppo_update(self):
         self.logger.section("[PPO Update]")
         self.ppo.update()
 
-    def dump_tensor_shapes(self):
+    def _dump_tensor_shapes(self):
         tensor_logger = TensorLogger(self.ppo).attach()
 
         graph, _ = self.environment.observe()
@@ -349,7 +349,7 @@ class Trainer:
         self.logger.subsection("Generating model architecture summary")
         self.summary.run()
         self.summary.save_markdown(os.path.join(self.config.io.logdir, "model_summary.md"), title="PPO Model Summary")
-        self.dump_tensor_shapes()
+        self._dump_tensor_shapes()
         self.logger.subsection("Model summary saved \n")
 
         self.logger.section("[Training Loop]")
@@ -363,12 +363,12 @@ class Trainer:
             for update_idx in tqdm(range(self.ppo_update_index, num_updates), desc="Training updates", total=num_updates, initial=self.ppo_update_index):
                 episode_indices = list(range(self.episode_index, self.episode_index + episodes_per_update))
 
-                episodes_processed = self.run_update(episode_indices)
+                episodes_processed = self._run_update(episode_indices)
                 self.tracker.set_step(self.global_step_counter)
 
                 self.telemetry.episodes_processed(episodes_processed, update_idx)
 
-                self.ppo_update()
+                self._ppo_update()
 
                 self.ppo_update_index += 1
                 self.checkpoint.save(self.ppo, self)
