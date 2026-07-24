@@ -63,7 +63,7 @@ class ScenarioLab:
     def sample(self, num_jobs, num_vehicles, seed):
         import numpy as np
         from configuration import config
-        from core.shared.environment import ScenarioSampler
+        from core.shared.sampling import ScenarioSampler
         from core.shared.state import EntityPool
 
         random.seed(seed)
@@ -238,10 +238,14 @@ class ScenarioLab:
 
         return entry
 
-    def _render_step(self, index, env, action, rewards, costs, events, executed, cumulative_reward):
-        step = {
-            "index"             : index,
+    def _render_step(self, seq, phase, round_index, edit_index, env, action, rewards, costs, events, executed, gap, cumulative_reward):
+        return {
+            "seq"               : seq,
+            "phase"             : phase,
+            "round"             : round_index,
+            "edit"              : edit_index,
             "clock"             : env.clock,
+            "gap"               : gap,
             "events"            : events,
             "executed"          : executed,
             "action"            : action,
@@ -253,7 +257,6 @@ class ScenarioLab:
             "jobs"              : [job.to_dict() for job in env.jobs],
             "vehicles"          : [vehicle.to_dict() for vehicle in env.vehicles],
         }
-        return step
 
     def run(self, payload):
         jobs              = payload.get("jobs") or []
@@ -305,17 +308,19 @@ class ScenarioLab:
             agent    = self._build_agent(agent_name, run_name, greedy)
             edit_cap = live_config.training.max_edits_per_round
 
-            steps             = [self._render_step(0, env, None, None, None, [], None, 0.0)]
+            steps             = [self._render_step(0, "initial", 0, None, env, None, None, None, [], None, None, 0.0)]
             cumulative_reward = 0.0
             stopped_reason    = "rounds_complete"
-            index             = 0
+            decisions         = 0
+            rounds_played     = 0
 
             for round_index in range(disruptions):
-                events   = []
-                executed = None
+                rounds_played += 1
                 if round_index > 0:
-                    executed = env.advance_execution(env.sample_disruption_gap())
-                    events   = [env.apply_disruption(env.current_state)]
+                    gap      = env.sample_disruption_gap()
+                    executed = env.advance_execution(gap)
+                    event    = env.apply_disruption(env.current_state)
+                    steps.append(self._render_step(len(steps), "advance", round_index, None, env, None, None, None, [event], executed, gap, cumulative_reward))
 
                 for edit_index in range(edit_cap):
                     graph, mask_info = env.observe()
@@ -327,18 +332,19 @@ class ScenarioLab:
                     env.current_state  = new_state
                     cumulative_reward += sum(rewards.values())
 
-                    index   += 1
-                    rendered = self._render_action(env, action)
-                    steps.append(self._render_step(index, env, rendered, rewards, costs, events if edit_index == 0 else [], executed if edit_index == 0 else None, cumulative_reward))
+                    decisions += 1
+                    phase      = "commit" if action.operator == 2 else "edit"
+                    rendered   = self._render_action(env, action)
+                    steps.append(self._render_step(len(steps), phase, round_index, edit_index, env, rendered, rewards, costs, [], None, None, cumulative_reward))
 
                     if action.operator == 2:
                         break
 
-                    if index >= max_steps:
+                    if decisions >= max_steps:
                         stopped_reason = "max_steps_reached"
                         break
 
-                if index >= max_steps:
+                if decisions >= max_steps:
                     break
 
             initial = steps[0]["state"]
@@ -347,7 +353,9 @@ class ScenarioLab:
             summary = {
                 "agent"              : agent_name,
                 "run_name"           : run_name if agent_name == "model" else None,
-                "total_steps"        : len(steps) - 1,
+                "total_steps"        : decisions,
+                "total_rounds"       : rounds_played,
+                "total_frames"       : len(steps) - 1,
                 "stopped_reason"     : stopped_reason,
                 "initial_cost"       : initial["cost"],
                 "final_cost"         : final["cost"],
