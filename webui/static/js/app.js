@@ -114,4 +114,7 @@ class App {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => new App().init());
+document.addEventListener("DOMContentLoaded", () => {
+  window.app = new App();
+  window.app.init();
+});

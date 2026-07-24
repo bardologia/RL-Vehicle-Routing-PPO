@@ -1,5 +1,12 @@
 "use strict";
 
+const SCN_EVENT_LABELS = {
+  new_job:        ["new job", "new jobs"],
+  remove_job:     ["job cancelled", "jobs cancelled"],
+  new_vehicle:    ["vehicle arrived", "vehicles arrived"],
+  remove_vehicle: ["vehicle broke down", "vehicles broke down"],
+};
+
 class ScenarioView {
   constructor() {
     this.toolbar = document.getElementById("scn-toolbar");
@@ -8,6 +15,8 @@ class ScenarioView {
     this.map = null;
     this.routeLayer = null;
     this.markerLayer = null;
+    this.fxLayer = null;
+    this.banner = null;
 
     this.jobs = [];
     this.vehicles = [];
@@ -25,7 +34,12 @@ class ScenarioView {
     this.assignment = null;
     this.depot = null;
 
-    this.runOptions = { agent: "model", run_name: null, greedy: true, max_steps: 8, seed: 0, disruptions: 1 };
+    this.playing = false;
+    this.animating = false;
+
+    this.runOptions = { agent: "model", run_name: null, greedy: true, max_steps: 8, seed: 0, disruptions: 3 };
+
+    this._onKey = this._onKey.bind(this);
   }
 
   async enter() {
@@ -42,12 +56,16 @@ class ScenarioView {
       if (this.templates.length) this.templateKey = this.templates[0].key;
     }
 
+    document.addEventListener("keydown", this._onKey);
     this._renderToolbar();
     this._renderRail();
     this._draw();
   }
 
-  leave() {}
+  leave() {
+    this.playing = false;
+    document.removeEventListener("keydown", this._onKey);
+  }
 
   _initMap() {
     this.map = L.map("scn-map", { zoomControl: true }).setView([-23.55, -46.63], 12);
@@ -58,28 +76,21 @@ class ScenarioView {
 
     this.routeLayer = L.layerGroup().addTo(this.map);
     this.markerLayer = L.layerGroup().addTo(this.map);
+    this.fxLayer = L.layerGroup().addTo(this.map);
+
+    this.banner = document.createElement("div");
+    this.banner.className = "scn-banner";
+    document.querySelector(".scenario__map-wrap").appendChild(this.banner);
 
     this.map.on("click", (e) => this._onMapClick(e));
   }
 
   _color(vehicleId) {
-    const order = this._displayVehicles().findIndex((v) => v.id === vehicleId);
-    return LineChart.palette(order < 0 ? 0 : order);
+    return LineChart.palette(vehicleId);
   }
 
-  _displayJobs() {
-    if (this.runResult) return this.runResult.steps[this.stepIndex].jobs;
-    return this.jobs;
-  }
-
-  _displayVehicles() {
-    if (this.runResult) return this.runResult.steps[this.stepIndex].vehicles;
-    return this.vehicles;
-  }
-
-  _displayState() {
-    if (this.runResult) return this.runResult.steps[this.stepIndex].state;
-    return this.solveState;
+  _currentStep() {
+    return this.runResult ? this.runResult.steps[this.stepIndex] : null;
   }
 
   _onMapClick(e) {
@@ -120,6 +131,7 @@ class ScenarioView {
     this.solveState = null;
     this.runResult = null;
     this.stepIndex = 0;
+    this.playing = false;
     this.activeTemplate = null;
     this.assignment = null;
     this._renderRail();
@@ -169,14 +181,16 @@ class ScenarioView {
     });
   }
 
-  _draw() {
+  _draw(overrideStep, opts) {
     if (!this.map) return;
+    opts = opts || {};
     this.routeLayer.clearLayers();
     this.markerLayer.clearLayers();
 
-    const state = this._displayState();
-    const jobs = this._displayJobs();
-    const vehicles = this._displayVehicles();
+    const step = overrideStep || this._currentStep();
+    const state = step ? step.state : this.solveState;
+    const jobs = step ? step.jobs : this.jobs;
+    const vehicles = step ? step.vehicles : this.vehicles;
 
     const assignment = {};
     if (state) {
@@ -209,21 +223,23 @@ class ScenarioView {
         iconSize: [24, 24],
         iconAnchor: [12, 12],
       });
-      const depotMarker = L.marker([this.depot[1], this.depot[0]], { icon: depotIcon }).addTo(this.markerLayer);
-      depotMarker.bindTooltip("Depot (drop point)");
+      L.marker([this.depot[1], this.depot[0]], { icon: depotIcon }).addTo(this.markerLayer).bindTooltip("Depot (drop point)");
     }
 
-    for (const vehicle of vehicles) {
-      const hasRoute = state && state.routes.some((r) => r.vehicle_id === vehicle.id);
-      const color = hasRoute ? this._color(vehicle.id) : "#5b636a";
-      const icon = L.divIcon({
-        className: "",
-        html: `<div class="veh-icon" style="width:22px;height:22px;background:${color}">${vehicle.id}</div>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
-      });
-      const marker = L.marker([vehicle.start[1], vehicle.start[0]], { icon }).addTo(this.markerLayer);
-      marker.on("click", () => this._selectEntity("vehicle", vehicle.id));
+    if (!opts.hideVehicles) {
+      for (const vehicle of vehicles) {
+        const hasRoute = state && state.routes.some((r) => r.vehicle_id === vehicle.id);
+        const color = hasRoute ? this._color(vehicle.id) : "#5b636a";
+        const onboard = vehicle.onboard ? `<span class="veh-icon__load">${vehicle.onboard}</span>` : "";
+        const icon = L.divIcon({
+          className: "",
+          html: `<div class="veh-icon" style="width:22px;height:22px;background:${color}">${vehicle.id}${onboard}</div>`,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+        });
+        const marker = L.marker([vehicle.start[1], vehicle.start[0]], { icon }).addTo(this.markerLayer);
+        marker.on("click", () => this._selectEntity("vehicle", vehicle.id));
+      }
     }
 
     for (const job of jobs) {
@@ -498,12 +514,12 @@ class ScenarioView {
           <label class="field" id="scn-ckpt-wrap" style="${o.agent === "model" ? "" : "display:none"}"><span class="field__label"><span>Checkpoint</span></span>
             <select id="scn-ckpt">${ckptOptions || `<option value="">no checkpoints</option>`}</select></label>
           <label class="switch" id="scn-greedy-wrap" style="align-self:end;${o.agent === "model" ? "" : "display:none"}"><input type="checkbox" id="scn-greedy" ${o.greedy ? "checked" : ""}><i></i><span>greedy (argmax)</span></label>
+          <label class="field"><span class="field__label"><span>Disruptions</span></span><input type="number" id="scn-disruptions" value="${o.disruptions}" min="1" max="20" step="1"></label>
           <label class="field"><span class="field__label"><span>Max steps</span></span><input type="number" id="scn-steps" value="${o.max_steps}" min="1" max="50" step="1"></label>
           <label class="field"><span class="field__label"><span>Seed</span></span><input type="number" id="scn-seed" value="${o.seed}" step="1"></label>
-          <label class="field"><span class="field__label"><span>Disruptions</span></span><input type="number" id="scn-disruptions" value="${o.disruptions}" min="1" max="20" step="1"></label>
-          <div class="field" style="justify-content:flex-end"><button class="btn btn--primary" id="scn-run" ${this.runBusy ? "disabled" : ""}>${this.runBusy ? "Running…" : "Run agent"}</button></div>
+          <div class="field" style="grid-column:1/-1;justify-content:flex-end"><button class="btn btn--primary" id="scn-run" ${this.runBusy ? "disabled" : ""}>${this.runBusy ? "Running…" : "Run agent"}</button></div>
         </div>
-        <p class="scn-hint" style="margin:10px 0 0">Each disruption round is a guaranteed event (new/removed jobs and vehicles) followed by the agent's response burst at frozen time; a random wait then moves the vehicles forward before the next disruption. Round one starts from the scenario as built. Max steps caps the total rendered decisions.</p>
+        <p class="scn-hint" style="margin:10px 0 0">Each <b>disruption round</b> is a guaranteed event (new/removed jobs or vehicles) followed by the agent's <b>response burst</b> at frozen time; a random wait then <b>advances</b> the vehicles before the next disruption. Round one starts from the scenario as built. Max steps caps total edits.</p>
         ${this.activeTemplate ? `<p class="scn-hint" style="margin:6px 0 0"><b>${escapeHtml(this.activeTemplate.title)}</b> — ${escapeHtml(this.activeTemplate.expected)}</p>` : ""}
       </div>
       <div id="scn-run-result"></div>`;
@@ -536,6 +552,7 @@ class ScenarioView {
     o.disruptions = Number(document.getElementById("scn-disruptions").value) || 1;
 
     this.runBusy = true;
+    this.playing = false;
     this._renderRunPanel();
 
     const res = await apiPost("/api/scenario/run", {
@@ -562,7 +579,7 @@ class ScenarioView {
     this.stepIndex = 0;
     this._renderRunPanel();
     this._draw();
-    toast(`${res.summary.total_steps} steps · ${res.summary.stopped_reason}`, "ok");
+    toast(`${res.summary.total_rounds} rounds · ${res.summary.total_steps} edits · ${res.summary.stopped_reason}`, "ok");
   }
 
   _renderRunResult() {
@@ -573,54 +590,394 @@ class ScenarioView {
     }
 
     const { steps, summary } = this.runResult;
-    const step = steps[this.stepIndex];
+    const rewardClass = summary.cumulative_reward > 0 ? "pos" : summary.cumulative_reward < 0 ? "neg" : "";
 
     host.innerHTML = `
       <div class="card">
         <h3 class="card__title">Run — ${escapeHtml(summary.agent)}${summary.run_name ? ` · ${escapeHtml(summary.run_name)}` : ""}</h3>
         <div class="summary-strip">
-          <div class="cell"><b>${summary.total_steps}</b><span>steps</span></div>
-          <div class="cell"><b>${fmtNum(summary.cumulative_reward, 3)}</b><span>total reward</span></div>
-          <div class="cell"><b>${fmtNum(summary.initial_cost, 0)} → ${fmtNum(summary.final_cost, 0)}</b><span>cost</span></div>
+          <div class="cell"><b>${summary.total_rounds}</b><span>rounds</span></div>
+          <div class="cell"><b>${summary.total_steps}</b><span>edits</span></div>
+          <div class="cell"><b class="${rewardClass}">${fmtNum(summary.cumulative_reward, 3)}</b><span>total reward</span></div>
           <div class="cell"><b>${summary.initial_unassigned} → ${summary.final_unassigned}</b><span>unassigned</span></div>
         </div>
-        <p class="scn-hint" style="margin:8px 0 0">stopped: ${escapeHtml(summary.stopped_reason)}</p>
+        <p class="scn-hint" style="margin:8px 0 0">cost ${fmtNum(summary.initial_cost, 0)} → ${fmtNum(summary.final_cost, 0)} · stopped: ${escapeHtml(summary.stopped_reason)}</p>
       </div>
 
       <div class="card">
-        <h3 class="card__title">Playback</h3>
-        <div class="playback">
-          <button class="btn btn--sm" id="scn-prev">&larr;</button>
+        <div class="playbar">
+          <button class="btn btn--sm" id="scn-prev" title="previous (←)">&larr;</button>
+          <button class="btn btn--sm btn--primary" id="scn-play" title="play / pause (space)">▶</button>
+          <button class="btn btn--sm" id="scn-next" title="next (→)">&rarr;</button>
           <input type="range" id="scn-slider" min="0" max="${steps.length - 1}" value="${this.stepIndex}">
-          <button class="btn btn--sm" id="scn-next">&rarr;</button>
-          <span class="playback__step">${this.stepIndex}/${steps.length - 1}</span>
+          <span class="playback__step" id="scn-counter"></span>
         </div>
-        <div class="step-info" style="margin-top:12px">${this._stepInfoHtml(step)}</div>
+        <div class="reward-spark" id="scn-spark"></div>
+        <div class="tl" id="scn-timeline"></div>
+        <div class="step-info" id="scn-info" style="margin-top:14px"></div>
       </div>
 
       <button class="btn btn--ghost" id="scn-discard">Discard run &amp; edit scenario</button>`;
 
     const slider = document.getElementById("scn-slider");
-    slider.addEventListener("input", () => {
-      this.stepIndex = Number(slider.value);
-      this._renderRunResult();
-      this._draw();
-    });
-    document.getElementById("scn-prev").addEventListener("click", () => this._step(-1));
-    document.getElementById("scn-next").addEventListener("click", () => this._step(1));
+    slider.addEventListener("input", () => { this.playing = false; this._goTo(Number(slider.value), false); });
+    document.getElementById("scn-prev").addEventListener("click", () => { this.playing = false; this._goTo(this.stepIndex - 1, false); });
+    document.getElementById("scn-next").addEventListener("click", () => { this.playing = false; this._goTo(this.stepIndex + 1, true); });
+    document.getElementById("scn-play").addEventListener("click", () => this._play());
     document.getElementById("scn-discard").addEventListener("click", () => {
+      this.playing = false;
       this.runResult = null;
       this.stepIndex = 0;
+      this.fxLayer.clearLayers();
       this._renderRail();
       this._draw();
     });
+
+    document.getElementById("scn-timeline").innerHTML = this._timelineHtml(steps);
+    document.querySelectorAll("#scn-timeline .tl-node").forEach((el) => {
+      el.addEventListener("click", () => { this.playing = false; this._goTo(Number(el.dataset.seq), false); });
+    });
+
+    this._syncPlayback();
   }
 
-  _step(delta) {
-    const max = this.runResult.steps.length - 1;
-    this.stepIndex = Math.min(max, Math.max(0, this.stepIndex + delta));
-    this._renderRunResult();
-    this._draw();
+  _syncPlayback() {
+    if (!this.runResult) return;
+    const steps = this.runResult.steps;
+    const step = steps[this.stepIndex];
+
+    const slider = document.getElementById("scn-slider");
+    if (slider) slider.value = this.stepIndex;
+
+    const counter = document.getElementById("scn-counter");
+    if (counter) counter.textContent = `${this.stepIndex}/${steps.length - 1}`;
+
+    const play = document.getElementById("scn-play");
+    if (play) play.textContent = this.playing ? "❚❚" : "▶";
+
+    const info = document.getElementById("scn-info");
+    if (info) info.innerHTML = this._stepInfoHtml(step);
+
+    const spark = document.getElementById("scn-spark");
+    if (spark) spark.innerHTML = this._sparklineSvg(steps, this.stepIndex);
+
+    document.querySelectorAll("#scn-timeline .tl-node").forEach((el) => {
+      el.classList.toggle("is-current", Number(el.dataset.seq) === this.stepIndex);
+      el.classList.toggle("is-seen", Number(el.dataset.seq) <= this.stepIndex);
+    });
+  }
+
+  _onKey(e) {
+    if (!this.runResult) return;
+    const tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "select" || tag === "textarea") return;
+    if (e.key === "ArrowRight") { e.preventDefault(); this.playing = false; this._goTo(this.stepIndex + 1, true); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); this.playing = false; this._goTo(this.stepIndex - 1, false); }
+    else if (e.key === " ") { e.preventDefault(); this._play(); }
+  }
+
+  async _play() {
+    if (this.playing) { this.playing = false; this._syncPlayback(); return; }
+    const last = this.runResult.steps.length - 1;
+    if (this.stepIndex >= last) { this.stepIndex = 0; this._draw(); this._syncPlayback(); await this._sleep(200); }
+    this.playing = true;
+    this._syncPlayback();
+
+    while (this.playing && this.stepIndex < last) {
+      await this._goTo(this.stepIndex + 1, true);
+      if (!this.playing) break;
+      await this._sleep(650);
+    }
+    this.playing = false;
+    this._syncPlayback();
+  }
+
+  async _goTo(target, animate) {
+    if (this.animating) return;
+    const steps = this.runResult.steps;
+    target = Math.max(0, Math.min(steps.length - 1, target));
+    const from = this.stepIndex;
+
+    if (!animate || target !== from + 1) {
+      this.stepIndex = target;
+      this.fxLayer.clearLayers();
+      this._draw();
+      this._syncPlayback();
+      return;
+    }
+
+    this.animating = true;
+    const fromStep = steps[from];
+    const toStep = steps[target];
+    this.stepIndex = target;
+    this._syncPlayback();
+
+    try {
+      await this._animatePhase(fromStep, toStep);
+    } catch (err) {
+      this.playing = false;
+    }
+
+    this.fxLayer.clearLayers();
+    this._draw(toStep);
+    this._syncPlayback();
+    this.animating = false;
+  }
+
+  async _animatePhase(fromStep, toStep) {
+    if (toStep.phase === "advance") {
+      await this._fxAdvance(fromStep, toStep);
+    } else if (toStep.phase === "commit") {
+      await this._fxCommit(toStep);
+    } else {
+      await this._fxAction(fromStep, toStep);
+    }
+  }
+
+  async _fxAdvance(fromStep, toStep) {
+    const gapMin = Math.round((toStep.gap || 0) / 60);
+    this._showBanner(`⏱ +${gapMin} min — vehicles advancing`, "advance");
+
+    this._draw(fromStep, { hideVehicles: true });
+
+    const ghosts = [];
+    const toById = {};
+    for (const v of toStep.vehicles) toById[v.id] = v;
+
+    for (const v of fromStep.vehicles) {
+      const from = [v.start[1], v.start[0]];
+      const target = toById[v.id] ? [toById[v.id].start[1], toById[v.id].start[0]] : from;
+      const route = fromStep.state.routes.find((r) => r.vehicle_id === v.id);
+      const path = route && route.path && route.path.length > 1 ? route.path : [from, target];
+      const endFrac = this._nearestFrac(path, target);
+      const marker = this._ghostVehicle(v);
+      ghosts.push({ marker, path, endFrac });
+    }
+
+    const served = (toStep.executed && toStep.executed.served) || [];
+    const failed = (toStep.executed && toStep.executed.failed) || [];
+    const dropped = (toStep.executed && toStep.executed.dropped) || 0;
+    const jobLoc = this._jobLocIndex(fromStep);
+
+    await this._tween(1100, (t) => {
+      const e = this._ease(t);
+      for (const g of ghosts) g.marker.setLatLng(this._pointAlong(g.path, e * g.endFrac));
+    });
+
+    for (const id of served) if (jobLoc[id]) this._popMark(jobLoc[id], "✓", "fx-served");
+    for (const id of failed) if (jobLoc[id]) this._popMark(jobLoc[id], "✕", "fx-failed");
+    if (dropped > 0 && this.depot) this._popMark([this.depot[1], this.depot[0]], `−${dropped} 🏍`, "fx-dropped");
+    if (served.length || failed.length || dropped > 0) await this._sleep(500);
+
+    ghosts.forEach((g) => this.fxLayer.removeLayer(g.marker));
+    await this._fxDisruption(fromStep, toStep, served, failed);
+  }
+
+  async _fxDisruption(fromStep, toStep, served, failed) {
+    const fromJobs = this._jobLocIndex(fromStep);
+    const toJobs = this._jobLocIndex(toStep);
+    const executed = new Set([...served, ...failed].map(Number));
+
+    const addedJobs = Object.keys(toJobs).filter((id) => !(id in fromJobs)).map(Number);
+    const cancelledJobs = Object.keys(fromJobs).filter((id) => !(id in toJobs) && !executed.has(Number(id))).map(Number);
+
+    const fromVeh = new Set(fromStep.vehicles.map((v) => v.id));
+    const toVeh = new Set(toStep.vehicles.map((v) => v.id));
+    const addedVeh = toStep.vehicles.filter((v) => !fromVeh.has(v.id));
+    const removedVeh = fromStep.vehicles.filter((v) => !toVeh.has(v.id));
+
+    const event = (toStep.events && toStep.events[0]) || null;
+    if (event) {
+      const [one, many] = SCN_EVENT_LABELS[event.type] || [event.type, event.type];
+      this._showBanner(`⚡ ${event.count} ${event.count === 1 ? one : many}`, "disrupt");
+    }
+
+    for (const id of addedJobs) this._ripple(toJobs[id], "fx-add-job");
+    for (const id of cancelledJobs) this._popMark(fromJobs[id], "✕", "fx-cancel");
+    for (const v of addedVeh) this._ripple([v.start[1], v.start[0]], "fx-add-veh");
+    for (const v of removedVeh) this._popMark([v.start[1], v.start[0]], "⚠", "fx-cancel");
+
+    await this._sleep(850);
+  }
+
+  async _fxAction(fromStep, toStep) {
+    const a = toStep.action;
+    this._draw(fromStep);
+
+    if (!a || a.operator_name === "DO_NOTHING") {
+      await this._sleep(220);
+      return;
+    }
+
+    const jobLoc = this._jobLocIndex(fromStep, toStep);
+    const veh = (fromStep.vehicles.find((v) => v.id === a.vehicle_id)) || (toStep.vehicles.find((v) => v.id === a.vehicle_id));
+    const job = jobLoc[a.job_id];
+    if (!job || !veh) { await this._sleep(200); return; }
+
+    const vehLL = [veh.start[1], veh.start[0]];
+    const insert = a.operator_name === "INSERT";
+    const color = this._color(a.vehicle_id);
+
+    this._showBanner(`${insert ? "＋ INSERT" : "－ REMOVE"} job ${a.job_id} ${insert ? "→" : "⇠"} veh ${a.vehicle_id}`, insert ? "insert" : "remove");
+    this._pulseRing(job, insert ? color : "#b91c1c");
+    this._pulseRing(vehLL, color);
+
+    const arcPts = this._arcPoints(insert ? job : vehLL, insert ? vehLL : job, 0.22);
+    const arc = L.polyline([], { color: insert ? color : "#b91c1c", weight: 3, opacity: 0.9, dashArray: "6 6" }).addTo(this.fxLayer);
+    const dot = L.circleMarker(arcPts[0], { radius: 5, color: "#fff", weight: 2, fillColor: insert ? color : "#b91c1c", fillOpacity: 1 }).addTo(this.fxLayer);
+
+    await this._tween(760, (t) => {
+      const e = this._ease(t);
+      const k = Math.max(1, Math.round(e * (arcPts.length - 1)));
+      arc.setLatLngs(arcPts.slice(0, k + 1));
+      dot.setLatLng(arcPts[k]);
+    });
+
+    if (toStep.total_reward != null) this._rewardPop(job, toStep.total_reward);
+    await this._sleep(280);
+  }
+
+  async _fxCommit(toStep) {
+    this._showBanner("✓ round committed — plan locked in", "commit");
+    this._draw(toStep);
+    for (const route of toStep.state.routes) {
+      if (route.path && route.path.length > 1) {
+        L.polyline(route.path, { color: "#15803d", weight: 5, opacity: 0.5, className: "fx-commit-line" }).addTo(this.fxLayer);
+      }
+    }
+    if (toStep.total_reward != null && toStep.total_reward !== 0) {
+      const first = toStep.state.routes[0];
+      if (first && first.start) this._rewardPop([first.start[1], first.start[0]], toStep.total_reward);
+    }
+    await this._sleep(620);
+  }
+
+  _ghostVehicle(v) {
+    const icon = L.divIcon({
+      className: "",
+      html: `<div class="veh-icon veh-icon--moving" style="width:22px;height:22px;background:${this._color(v.id)}">${v.id}</div>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    return L.marker([v.start[1], v.start[0]], { icon, interactive: false }).addTo(this.fxLayer);
+  }
+
+  _ripple(latlng, cls) {
+    const icon = L.divIcon({ className: "", html: `<div class="fx-ripple ${cls}"></div>`, iconSize: [1, 1], iconAnchor: [0, 0] });
+    const marker = L.marker(latlng, { icon, interactive: false }).addTo(this.fxLayer);
+    setTimeout(() => { if (this.fxLayer) this.fxLayer.removeLayer(marker); }, 1400);
+  }
+
+  _popMark(latlng, text, cls) {
+    const icon = L.divIcon({ className: "", html: `<div class="fx-pop ${cls}">${text}</div>`, iconSize: [1, 1], iconAnchor: [0, 0] });
+    const marker = L.marker(latlng, { icon, interactive: false }).addTo(this.fxLayer);
+    setTimeout(() => { if (this.fxLayer) this.fxLayer.removeLayer(marker); }, 1400);
+  }
+
+  _pulseRing(latlng, color) {
+    const icon = L.divIcon({ className: "", html: `<div class="fx-pulse" style="border-color:${color}"></div>`, iconSize: [1, 1], iconAnchor: [0, 0] });
+    const marker = L.marker(latlng, { icon, interactive: false }).addTo(this.fxLayer);
+    setTimeout(() => { if (this.fxLayer) this.fxLayer.removeLayer(marker); }, 1200);
+  }
+
+  _rewardPop(latlng, value) {
+    const cls = value > 0 ? "pos" : value < 0 ? "neg" : "";
+    const text = `${value > 0 ? "+" : ""}${fmtNum(value, 2)}`;
+    const icon = L.divIcon({ className: "", html: `<div class="fx-reward ${cls}">${text}</div>`, iconSize: [1, 1], iconAnchor: [0, -6] });
+    const marker = L.marker(latlng, { icon, interactive: false }).addTo(this.fxLayer);
+    setTimeout(() => { if (this.fxLayer) this.fxLayer.removeLayer(marker); }, 1300);
+  }
+
+  _showBanner(html, kind) {
+    if (!this.banner) return;
+    this.banner.className = `scn-banner scn-banner--${kind}`;
+    this.banner.innerHTML = html;
+    void this.banner.offsetWidth;
+    this.banner.classList.add("is-on");
+    clearTimeout(this._bannerTimer);
+    this._bannerTimer = setTimeout(() => this.banner.classList.remove("is-on"), 1900);
+  }
+
+  _jobLocIndex() {
+    const index = {};
+    for (const step of arguments) {
+      if (!step || !step.jobs) continue;
+      for (const job of step.jobs) if (!(job.id in index)) index[job.id] = [job.location[1], job.location[0]];
+    }
+    return index;
+  }
+
+  _pointAlong(path, frac) {
+    if (path.length === 1) return path[0];
+    const total = this._pathLength(path);
+    let target = frac * total;
+    for (let i = 1; i < path.length; i++) {
+      const seg = this._segLen(path[i - 1], path[i]);
+      if (target <= seg || i === path.length - 1) {
+        const r = seg === 0 ? 0 : target / seg;
+        return [path[i - 1][0] + (path[i][0] - path[i - 1][0]) * r, path[i - 1][1] + (path[i][1] - path[i - 1][1]) * r];
+      }
+      target -= seg;
+    }
+    return path[path.length - 1];
+  }
+
+  _nearestFrac(path, target) {
+    if (path.length < 2) return 1;
+    const total = this._pathLength(path);
+    let acc = 0, best = 0, bestD = Infinity;
+    for (let i = 0; i < path.length; i++) {
+      if (i > 0) acc += this._segLen(path[i - 1], path[i]);
+      const d = this._segLen(path[i], target);
+      if (d < bestD) { bestD = d; best = acc; }
+    }
+    return total === 0 ? 1 : best / total;
+  }
+
+  _pathLength(path) {
+    let s = 0;
+    for (let i = 1; i < path.length; i++) s += this._segLen(path[i - 1], path[i]);
+    return s;
+  }
+
+  _segLen(a, b) {
+    return Math.hypot(a[0] - b[0], a[1] - b[1]);
+  }
+
+  _arcPoints(a, b, bend) {
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const ctrl = [mid[0] - dy * bend, mid[1] + dx * bend];
+    const pts = [];
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 24, u = 1 - t;
+      pts.push([
+        u * u * a[0] + 2 * u * t * ctrl[0] + t * t * b[0],
+        u * u * a[1] + 2 * u * t * ctrl[1] + t * t * b[1],
+      ]);
+    }
+    return pts;
+  }
+
+  _tween(duration, onFrame) {
+    return new Promise((resolve) => {
+      const start = performance.now();
+      const tick = (now) => {
+        const raw = Math.min(1, (now - start) / duration);
+        onFrame(raw);
+        if (raw < 1 && this.animating !== false) requestAnimationFrame(tick);
+        else resolve();
+      };
+      requestAnimationFrame(tick);
+    });
+  }
+
+  _ease(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  _sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   _clockLabel(clock) {
@@ -630,31 +987,83 @@ class ScenarioView {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
+  _timelineHtml(steps) {
+    const rounds = [];
+    for (const step of steps) {
+      if (step.phase === "initial") { rounds.push({ round: 0, nodes: [step] }); continue; }
+      let group = rounds.find((g) => g.round === step.round);
+      if (!group) { group = { round: step.round, nodes: [] }; rounds.push(group); }
+      group.nodes.push(step);
+    }
+
+    return rounds.map((g) => {
+      const nodes = g.nodes.map((s) => this._timelineNode(s)).join("");
+      return `<div class="tl-round"><span class="tl-round__lab">R${g.round + 1}</span><div class="tl-round__nodes">${nodes}</div></div>`;
+    }).join("");
+  }
+
+  _timelineNode(step) {
+    let cls = "tl-node--edit", glyph = "•", title = "";
+    if (step.phase === "initial") { cls = "tl-node--start"; glyph = "▸"; title = "initial VROOM plan"; }
+    else if (step.phase === "advance") { cls = "tl-node--advance"; glyph = "⏱"; title = this._advanceTitle(step); }
+    else if (step.phase === "commit") { cls = "tl-node--commit"; glyph = "✓"; title = "commit — advance the world"; }
+    else if (step.action && step.action.operator_name === "INSERT") { cls = "tl-node--insert"; glyph = "＋"; title = `insert job ${step.action.job_id} → veh ${step.action.vehicle_id}`; }
+    else if (step.action && step.action.operator_name === "REMOVE") { cls = "tl-node--remove"; glyph = "－"; title = `remove job ${step.action.job_id} from veh ${step.action.vehicle_id}`; }
+
+    return `<button class="tl-node ${cls}" data-seq="${step.seq}" title="${escapeHtml(title)}">${glyph}</button>`;
+  }
+
+  _advanceTitle(step) {
+    const ev = (step.events && step.events[0]) || null;
+    const gap = Math.round((step.gap || 0) / 60);
+    const label = ev ? `${ev.count} ${(SCN_EVENT_LABELS[ev.type] || [ev.type, ev.type])[ev.count === 1 ? 0 : 1]}` : "disruption";
+    return `advance +${gap} min · ${label}`;
+  }
+
   _stepInfoHtml(step) {
-    if (step.index === 0) {
+    if (step.phase === "initial") {
       return `<div class="step-action is-noop">Initial plan at ${this._clockLabel(step.clock)} · cost ${fmtNum(step.state.cost, 0)} · ${step.state.num_unassigned} unassigned</div>`;
     }
 
-    const parts = [];
-    parts.push(`<div class="step-event">clock ${this._clockLabel(step.clock)}</div>`);
+    if (step.phase === "advance") return this._advanceInfoHtml(step);
+    return this._actionInfoHtml(step);
+  }
 
-    const executed = step.executed;
-    if (executed) {
-      if (executed.served.length) parts.push(`<div class="step-event">served job(s) ${executed.served.join(", ")}</div>`);
-      if (executed.failed.length) parts.push(`<div class="step-event">repossession(s) ${executed.failed.join(", ")} failed (bike not found)</div>`);
-      if (executed.dropped > 0) parts.push(`<div class="step-event">dropped ${executed.dropped} bike(s) at the depot</div>`);
+  _advanceInfoHtml(step) {
+    const parts = [];
+    const gap = Math.round((step.gap || 0) / 60);
+    parts.push(`<div class="step-phase step-phase--advance">⏱ world advanced +${gap} min · clock ${this._clockLabel(step.clock)}</div>`);
+
+    const ex = step.executed;
+    if (ex) {
+      if (ex.served.length) parts.push(`<div class="step-event step-event--ok">✓ served job(s) ${ex.served.join(", ")}</div>`);
+      if (ex.failed.length) parts.push(`<div class="step-event step-event--bad">✕ repossession(s) ${ex.failed.join(", ")} failed (bike not found)</div>`);
+      if (ex.dropped > 0) parts.push(`<div class="step-event">🏍 dropped ${ex.dropped} bike(s) at the depot</div>`);
     }
 
     for (const event of step.events || []) {
-      const label = { new_job: "new job(s) appeared", remove_job: "job(s) cancelled", new_vehicle: "vehicle(s) arrived", remove_vehicle: "vehicle(s) broke down" }[event.type] || event.type;
-      parts.push(`<div class="step-event">⚡ ${event.count} ${label}</div>`);
+      const [one, many] = SCN_EVENT_LABELS[event.type] || [event.type, event.type];
+      parts.push(`<div class="step-event step-event--disrupt">⚡ ${event.count} ${event.count === 1 ? one : many}</div>`);
     }
 
+    parts.push(`<dl class="kv">
+      <dt>plan cost</dt><dd>${fmtNum(step.state.cost, 0)}</dd>
+      <dt>unassigned</dt><dd>${step.state.num_unassigned}</dd>
+      <dt>cumulative</dt><dd>${fmtNum(step.cumulative_reward, 3)}</dd>
+    </dl>
+    <p class="scn-hint" style="margin:0">Advancing carries no reward — execution and the new disruption are exogenous. The agent responds below.</p>`);
+
+    return parts.join("");
+  }
+
+  _actionInfoHtml(step) {
+    const parts = [];
     const a = step.action;
     const cls = { INSERT: "", REMOVE: "is-remove", DO_NOTHING: "is-noop" }[a.operator_name] || "";
     let text = a.operator_name;
-    if (a.operator_name === "INSERT") text = `INSERT job ${a.job_id} → vehicle ${a.vehicle_id}`;
-    if (a.operator_name === "REMOVE") text = `REMOVE job ${a.job_id} from vehicle ${a.vehicle_id}`;
+    if (a.operator_name === "INSERT") text = `＋ INSERT job ${a.job_id} → vehicle ${a.vehicle_id}`;
+    if (a.operator_name === "REMOVE") text = `－ REMOVE job ${a.job_id} from vehicle ${a.vehicle_id}`;
+    if (a.operator_name === "DO_NOTHING") text = `✓ DO_NOTHING — commit round ${step.round + 1}`;
     parts.push(`<div class="step-action ${cls}">${text}</div>`);
 
     const r = step.rewards || {};
@@ -676,6 +1085,34 @@ class ScenarioView {
     </dl>`);
 
     return parts.join("");
+  }
+
+  _sparklineSvg(steps, currentSeq) {
+    const values = steps.map((s) => s.cumulative_reward);
+    const min = Math.min(0, ...values);
+    const max = Math.max(0, ...values);
+    const span = max - min || 1;
+    const n = steps.length;
+    const W = 100, H = 30, pad = 2;
+
+    const x = (i) => pad + (n <= 1 ? 0 : (i / (n - 1)) * (W - 2 * pad));
+    const y = (v) => pad + (1 - (v - min) / span) * (H - 2 * pad);
+    const zeroY = y(0);
+
+    const line = values.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    const area = `${line} L${x(n - 1).toFixed(1)},${zeroY.toFixed(1)} L${x(0).toFixed(1)},${zeroY.toFixed(1)} Z`;
+    const cx = x(currentSeq), cy = y(values[currentSeq]);
+    const cur = values[currentSeq];
+    const curCls = cur > 0 ? "pos" : cur < 0 ? "neg" : "";
+
+    return `
+      <div class="reward-spark__head"><span>cumulative reward</span><span class="reward-spark__val ${curCls}">${fmtNum(cur, 3)}</span></div>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="reward-spark__svg">
+        <path d="${area}" class="rs-area"/>
+        <line x1="0" y1="${zeroY.toFixed(1)}" x2="${W}" y2="${zeroY.toFixed(1)}" class="rs-zero"/>
+        <path d="${line}" class="rs-line"/>
+        <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="2.2" class="rs-dot ${curCls}"/>
+      </svg>`;
   }
 }
 
