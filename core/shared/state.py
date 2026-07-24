@@ -85,14 +85,15 @@ class Vehicle:
     description     : str = ""
 
     def vroom_payload(self, clock: Optional[int] = None) -> Dict:
-        window_start = int(self.time_window[0]) if clock is None else max(int(clock), int(self.time_window[0]))
+        window_end   = int(self.time_window[1])
+        window_start = int(self.time_window[0]) if clock is None else min(max(int(clock), int(self.time_window[0])), window_end)
 
         return {
             "id"              : int(self.id),
             "start"           : [float(self.start[0]), float(self.start[1])],
             "capacity"        : [int(self.capacity)],
             "skills"          : [int(self.id) + 1],
-            "time_window"     : [window_start, int(self.time_window[1])],
+            "time_window"     : [window_start, window_end],
             "speed_factor"    : float(self.speed_factor),
             "return_to_depot" : bool(self.return_to_depot),
             "description"     : self.description,

@@ -37,6 +37,14 @@ def test_vehicle_vroom_payload_wraps_capacity_and_amount():
     assert vehicle.vroom_payload()["capacity"] == [3]
 
 
+def test_vehicle_vroom_payload_clamps_window_to_shift_end():
+    vehicle = Vehicle(id=2, start=(-46.7, -23.6), time_window=(28800, 72000))
+
+    assert vehicle.vroom_payload()["time_window"]        == [28800, 72000]
+    assert vehicle.vroom_payload(40000)["time_window"]   == [40000, 72000]
+    assert vehicle.vroom_payload(80000)["time_window"]   == [72000, 72000]
+
+
 def test_stop_dict_round_trip():
     stop = Stop(job_id=4, location=(-46.6, -23.5), arrival=100, duration=50, service=300, load=2)
 
