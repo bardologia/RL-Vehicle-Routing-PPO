@@ -1,5 +1,15 @@
+import pytest
+
 from core.training.pretraining import _teacher_worker_init, _teacher_worker_task
 from tools.parallel import Batcher, ForkPool
+
+
+def _double(value):
+    return value * 2
+
+
+def _explode(value):
+    raise ValueError("worker blew up")
 
 
 def test_batcher_splits_into_bounded_chunks():
@@ -20,6 +30,18 @@ def test_forkpool_serial_runs_initializer_then_worker():
     results = ForkPool(1).map(worker, [1, 2, 3], initializer=initializer, initargs=(10,))
 
     assert results == [11, 12, 13]
+
+
+def test_forkpool_matches_the_serial_run_element_for_element():
+    results = ForkPool(2).map(_double, [1, 2, 3, 4, 5])
+
+    assert results == ForkPool(1).map(_double, [1, 2, 3, 4, 5])
+    assert results == [2, 4, 6, 8, 10]
+
+
+def test_forkpool_propagates_a_worker_failure():
+    with pytest.raises(ValueError, match="worker blew up"):
+        ForkPool(2).map(_explode, [1, 2, 3])
 
 
 def test_teacher_worker_task_returns_episode_records(cpu_config, seeded, fake_vroom):

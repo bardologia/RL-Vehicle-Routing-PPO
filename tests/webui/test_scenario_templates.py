@@ -63,7 +63,7 @@ def test_catalog_entities_parse_and_stay_in_bounds():
             assert LAT_BOUNDS[0] <= parsed.start[1] <= LAT_BOUNDS[1]
 
 
-def test_catalog_assignments_reference_known_entities_within_capacity():
+def test_catalog_assignments_reference_known_entities_exactly_once():
     for template in catalog():
         assignment = template.get("assignment")
         if not assignment:

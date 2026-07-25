@@ -46,6 +46,60 @@ def test_vroom_solve_posts_full_payload_shape(cpu_config, monkeypatch):
     assert set(payload["vehicles"][0].keys()) == {"id", "start", "capacity", "skills", "time_window", "speed_factor", "description"}
 
 
+def test_repossession_payload_carries_a_shipment_to_the_depot(cpu_config, monkeypatch):
+    from core.shared.state import DELIVERY_ID_OFFSET
+
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured["payload"] = json
+        return FakeResponse(200, payload=load_fixture("vroom_solution_small"))
+
+    monkeypatch.setattr(services_module.requests, "post", fake_post)
+
+    depot = (-46.63, -23.55)
+    jobs  = make_jobs(2, kind="repossession")
+
+    VroomClient(cpu_config.service).solve(jobs, make_vehicles(1), depot=depot, clock=28800)
+
+    payload  = captured["payload"]
+    shipment = payload["shipments"][0]
+
+    assert payload["jobs"] == []
+    assert len(payload["shipments"]) == 2
+    assert shipment["pickup"]["id"] == jobs[0].id
+    assert shipment["pickup"]["location"] == [jobs[0].location[0], jobs[0].location[1]]
+    assert shipment["delivery"]["id"] == jobs[0].id + DELIVERY_ID_OFFSET
+    assert shipment["delivery"]["location"] == [depot[0], depot[1]]
+    assert shipment["amount"] == [jobs[0].amount]
+
+
+def test_onboard_load_payload_is_a_skill_bound_drop_job(cpu_config, monkeypatch):
+    from core.shared.state import DROP_JOB_ID_OFFSET
+
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured["payload"] = json
+        return FakeResponse(200, payload=load_fixture("vroom_solution_small"))
+
+    monkeypatch.setattr(services_module.requests, "post", fake_post)
+
+    depot    = (-46.63, -23.55)
+    vehicles = make_vehicles(1)
+    vehicles[0].onboard = 2
+
+    VroomClient(cpu_config.service).solve(make_jobs(1), vehicles, depot=depot, clock=28800)
+
+    drop = [job for job in captured["payload"]["jobs"] if job["id"] >= DROP_JOB_ID_OFFSET][0]
+
+    assert drop["id"] == DROP_JOB_ID_OFFSET + vehicles[0].id
+    assert drop["location"] == [depot[0], depot[1]]
+    assert drop["delivery"] == [2]
+    assert drop["skills"] == [vehicles[0].id + 1]
+    assert drop["priority"] == 100
+
+
 def test_vroom_solve_caches_identical_requests(cpu_config, monkeypatch):
     calls = {"count": 0}
 

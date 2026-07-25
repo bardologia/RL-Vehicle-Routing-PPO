@@ -11,8 +11,8 @@ REWARDS = {"distance_reward": 0.5, "action_reward": 0.5}
 COSTS   = {"old_distance_cost": 1.0, "new_distance_cost": 0.5}
 
 OPERATOR_STATS = {
-    "count"   : {0: 2, 1: 1, 2: 0, 3: 1},
-    "rewards" : {0: [1.0, 2.0], 1: [0.5], 2: [], 3: [-1.0]},
+    "count"   : {0: 2, 1: 1, 2: 0},
+    "rewards" : {0: [1.0, 2.0], 1: [0.5], 2: []},
 }
 
 
@@ -80,11 +80,16 @@ def test_sample_silent_off_cadence(cpu_config):
     assert tracker.metrics == []
 
 
-def test_null_tracker_suppresses_gated_emitters(cpu_config):
-    telemetry = PPOTelemetry(NullTracker(), cpu_config)
+def test_inactive_tracker_suppresses_gated_emitters(cpu_config):
+    tracker        = RecordingTracker()
+    tracker.active = False
+    telemetry      = PPOTelemetry(tracker, cpu_config)
 
     telemetry.step(REWARDS, COSTS, state_value=0.3, step=cpu_config.telemetry.step_every)
     telemetry.episode(reward=1.0, length=1, operator_stats=OPERATOR_STATS, episode_index=cpu_config.telemetry.episode_every)
+
+    assert tracker.scalars == []
+    assert tracker.metrics == []
 
 
 def test_ungated_emitters_always_record(cpu_config):
