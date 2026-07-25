@@ -222,7 +222,8 @@ def seeded():
 @pytest.fixture
 def fake_vroom(monkeypatch):
     fake = FakeVroom()
-    monkeypatch.setattr("core.shared.environment.vroom", fake)
+    for module in ("core.shared.actions", "core.shared.execution", "core.shared.environment"):
+        monkeypatch.setattr(f"{module}.vroom", fake)
     return fake
 
 
