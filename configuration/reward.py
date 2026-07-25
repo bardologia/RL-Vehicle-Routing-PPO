@@ -12,3 +12,5 @@ class RewardConfig:
     remove_job_cost : float = 0.1
     no_action_cost  : float = 0.0
     disruption_cost : float = 0.3
+
+    holding_reference_seconds : int = 3600

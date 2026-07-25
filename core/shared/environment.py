@@ -119,5 +119,8 @@ class Environment:
         new_state = self.action_handler.apply(self, old_state, action)
         return old_state, new_state
 
+    def holding_cost(self, state, gap_seconds):
+        return self.reward_calculator.evaluate_holding(self, state, gap_seconds)
+
     def step(self, old_state, new_state, operator_index):
         return self.reward_calculator.evaluate(self, old_state, new_state, operator_index)

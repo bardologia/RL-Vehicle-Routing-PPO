@@ -22,6 +22,12 @@ class RewardCalculator:
 
         return distance_cost, unassigned_cost, idle_cost, priority_cost
 
+    def evaluate_holding(self, env, state: RoutingState, gap_seconds: int) -> float:
+        _, unassigned_cost, _, priority_cost = self._evaluate_cost(env, state)
+
+        reference = max(float(env.config.reward.holding_reference_seconds), 1.0)
+        return (unassigned_cost + priority_cost) * float(gap_seconds) / reference
+
     def _vehicle_by_job(self, state: RoutingState):
         return {stop.job_id: route.vehicle_id for route in state.routes for stop in route.stops if stop.kind in ("job", "pickup")}
 
