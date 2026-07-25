@@ -124,7 +124,7 @@ class ScenarioView {
 
   _addVehicle(location) {
     const id = this._nextId(this.vehicles);
-    this.vehicles.push({ id, start: location, capacity: 4, onboard: 0, speed_factor: 1.0, time_window: [28800, 72000], return_to_depot: false, description: `Vehicle ${id}` });
+    this.vehicles.push({ id, start: location, capacity: 4, onboard: 0, speed_factor: 1.0, time_window: [28800, 72000], return_to_depot: false, progress_credit: 0, description: `Vehicle ${id}` });
     this.selected = { type: "vehicle", id };
     this._invalidate();
   }

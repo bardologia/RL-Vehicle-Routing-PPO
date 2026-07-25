@@ -60,6 +60,9 @@ class EpisodeEvaluator:
             "total_reward"     : total_reward,
             "final_cost"       : float(final_state.cost),
             "final_unassigned" : int(final_state.num_unassigned),
+            "served"           : int(self.driver.totals["served"]),
+            "failed"           : int(self.driver.totals["failed"]),
+            "dropped"          : int(self.driver.totals["dropped"]),
             "operator_counts"  : operator_counts,
         }
 
@@ -121,6 +124,9 @@ class EvaluationPipeline:
             "std_reward"            : float(np.std(rewards)),
             "mean_final_cost"       : float(np.mean(costs)),
             "mean_final_unassigned" : float(np.mean(unassigned)),
+            "mean_served"           : float(np.mean([episode["served"] for episode in episodes])),
+            "mean_failed"           : float(np.mean([episode["failed"] for episode in episodes])),
+            "mean_dropped"          : float(np.mean([episode["dropped"] for episode in episodes])),
             "operator_frequency"    : {f"op{operator}": count / total_actions for operator, count in operator_totals.items()},
         }
 

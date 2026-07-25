@@ -1,5 +1,5 @@
 from .services import vroom
-from .state import RoutingState, Vehicle
+from .state import DROP_JOB_ID_OFFSET, RoutingState, Vehicle
 
 
 class ActionHandler:
@@ -61,7 +61,12 @@ class ActionHandler:
         if required & solution.unassigned_ids:
             return None
 
-        return solution.routes[0]
+        route = solution.routes[0]
+        if vehicle.onboard > 0 and DROP_JOB_ID_OFFSET + vehicle.id not in {stop.job_id for stop in route.stops}:
+            self.logger.warning(f"Solution for vehicle {vehicle.id} does not deliver its onboard load")
+            return None
+
+        return route
 
     def insert_from_action(self, env, old_state, action):
         vehicle_id, job_id = self._action_ids(env, action)

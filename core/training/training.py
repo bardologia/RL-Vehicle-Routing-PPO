@@ -145,7 +145,7 @@ class EpisodeRollout:
         if experiences:
             self._bootstrap(experiences)
 
-        return experiences, operator_stats, step_payloads
+        return experiences, operator_stats, step_payloads, dict(self.driver.totals)
 
 
 class Trainer:
@@ -313,7 +313,7 @@ class Trainer:
         episodes           = self._collect_rollouts(episode_indices)
         episodes_processed = 0
 
-        for experiences, operator_stats, step_payloads in episodes:
+        for experiences, operator_stats, step_payloads, execution_totals in episodes:
             for rewards, costs, value in step_payloads:
                 self.telemetry.step(rewards, costs, value, self.global_step_counter)
 
@@ -327,6 +327,7 @@ class Trainer:
             episodes_processed += 1
 
             self.telemetry.episode(episode_reward, len(experiences), operator_stats, self.episode_index)
+            self.telemetry.execution(execution_totals, self.episode_index)
 
         self.logger.subsection(f"Update complete: {episodes_processed} episodes processed")
         return episodes_processed

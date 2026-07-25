@@ -33,7 +33,7 @@ def test_rollout_produces_experiences_stats_and_payloads(cpu_config, seeded, fak
 
     rollout = build_rollout(cpu_config)
 
-    experiences, op_stats, step_payloads = rollout.rollout(0)
+    experiences, op_stats, step_payloads, execution_totals = rollout.rollout(0)
 
     assert len(experiences) == 3
     assert len(step_payloads) == 3
@@ -54,7 +54,7 @@ def test_rollout_bootstrap_sets_tail_value_on_last(cpu_config, seeded, fake_vroo
 
     rollout = build_rollout(cpu_config)
 
-    experiences, _, _ = rollout.rollout(0)
+    experiences, _, _, _ = rollout.rollout(0)
 
     assert isinstance(experiences[-1]["bootstrap_value"], float)
     assert experiences[0]["bootstrap_value"] == 0.0
@@ -67,7 +67,7 @@ def test_rollout_operator_stats_track_rewards_per_operator(cpu_config, seeded, f
 
     rollout = build_rollout(cpu_config)
 
-    experiences, op_stats, _ = rollout.rollout(0)
+    experiences, op_stats, _, _ = rollout.rollout(0)
 
     recorded_rewards = sum(len(values) for values in op_stats["rewards"].values())
 

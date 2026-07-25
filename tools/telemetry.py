@@ -36,6 +36,12 @@ class PPOTelemetry:
         self.tracker.log_metrics('episode/operator_frequency', frequency, episode_index)
         self.tracker.log_metrics('episode/operator_avg_reward', avg_rewards, episode_index)
 
+    def execution(self, totals, episode_index):
+        if not self.tracker.active or episode_index % self.gates.episode_every != 0:
+            return
+
+        self.tracker.log_metrics('episode/execution', totals, episode_index)
+
     def episodes_processed(self, count, chunk_index):
         self.tracker.log_scalar('batch/episodes_processed', count, chunk_index)
 

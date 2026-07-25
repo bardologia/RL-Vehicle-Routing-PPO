@@ -81,9 +81,14 @@ class Vehicle:
     speed_factor    : float = 1.0
     time_window     : Tuple[int, int] = (8 * 3600, 20 * 3600)
     return_to_depot : bool = False
+    progress_credit : int = 0
     description     : str = ""
 
+    def working_clock(self, clock: Optional[int]) -> Optional[int]:
+        return None if clock is None else int(clock) - int(self.progress_credit)
+
     def vroom_payload(self, clock: Optional[int] = None) -> Dict:
+        clock        = self.working_clock(clock)
         window_end   = int(self.time_window[1])
         window_start = int(self.time_window[0]) if clock is None else min(max(int(clock), int(self.time_window[0])), window_end)
 
@@ -117,6 +122,7 @@ class Vehicle:
             "speed_factor"    : float(self.speed_factor),
             "time_window"     : [int(self.time_window[0]), int(self.time_window[1])],
             "return_to_depot" : bool(self.return_to_depot),
+            "progress_credit" : int(self.progress_credit),
             "description"     : self.description,
         }
 
@@ -130,6 +136,7 @@ class Vehicle:
             speed_factor    = float(data["speed_factor"]),
             time_window     = (int(data["time_window"][0]), int(data["time_window"][1])),
             return_to_depot = bool(data["return_to_depot"]),
+            progress_credit = int(data["progress_credit"]),
             description     = data["description"],
         )
 

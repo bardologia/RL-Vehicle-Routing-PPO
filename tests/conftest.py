@@ -29,7 +29,7 @@ class FakeVroom:
     def _vehicle_route(self, vehicle, taken, depot, clock):
         stops = []
         load  = vehicle.onboard
-        t     = max(int(clock or 0), int(vehicle.time_window[0]))
+        t     = max(int(vehicle.working_clock(clock) or 0), int(vehicle.time_window[0]))
 
         if load > 0:
             t += 300

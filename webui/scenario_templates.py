@@ -20,6 +20,7 @@ class ScenarioTemplates:
             "time_window"     : [28800, 72000],
             "speed_factor"    : 1.0,
             "return_to_depot" : False,
+            "progress_credit" : 0,
             "description"     : f"Vehicle {vehicle_id}",
         }
 

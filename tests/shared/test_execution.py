@@ -36,6 +36,36 @@ def test_tick_serves_due_stops_and_moves_vehicle(environment, fake_vroom):
     assert environment.vehicles.by_id(vehicles[0].id).start == jobs[0].location
 
 
+def test_short_gaps_accumulate_progress_until_the_stop_completes(environment, fake_vroom):
+    jobs     = make_jobs(1)
+    vehicles = make_vehicles(1)
+
+    load_execution_scenario(environment, jobs, vehicles, RoutingState(routes=[], unassigned_ids={jobs[0].id}))
+    environment.current_state = solved_state(environment, list(environment.jobs), list(environment.vehicles))
+
+    served = []
+    for _ in range(4):
+        served.extend(environment.advance_execution(200)["served"])
+
+    assert served == [jobs[0].id]
+
+
+def test_completing_every_stop_clears_the_progress_credit(environment, fake_vroom):
+    jobs     = make_jobs(1)
+    vehicles = make_vehicles(1)
+
+    load_execution_scenario(environment, jobs, vehicles, RoutingState(routes=[], unassigned_ids={jobs[0].id}))
+    environment.current_state = solved_state(environment, list(environment.jobs), list(environment.vehicles))
+
+    environment.advance_execution(200)
+
+    assert environment.vehicles.by_id(vehicles[0].id).progress_credit == 200
+
+    environment.advance_execution(GAP)
+
+    assert environment.vehicles.by_id(vehicles[0].id).progress_credit == 0
+
+
 def test_successful_pickup_loads_motorcycle(environment, fake_vroom):
     environment.config.env.repossession_success_probability = 1.0
 

@@ -22,14 +22,24 @@ class EpisodeDriver:
         self.environment     = environment
         self.max_disruptions = config.training.max_disruptions_per_episode
         self.max_edits       = config.training.max_edits_per_round
+        self.totals          = self._empty_totals()
+
+    def _empty_totals(self):
+        return {"served": 0, "failed": 0, "dropped": 0}
+
+    def _accumulate(self, summary):
+        self.totals["served"]  += len(summary["served"])
+        self.totals["failed"]  += len(summary["failed"])
+        self.totals["dropped"] += summary["dropped"]
 
     def episode(self, seed):
         self.environment.sample_episode(seed)
+        self.totals = self._empty_totals()
 
         for round_index in range(self.max_disruptions):
             if round_index > 0:
                 gap = self.environment.sample_disruption_gap()
-                self.environment.advance_execution(gap)
+                self._accumulate(self.environment.advance_execution(gap))
                 self.environment.apply_disruption(self.environment.current_state)
 
             for edit_index in range(self.max_edits):

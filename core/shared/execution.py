@@ -30,6 +30,8 @@ class ExecutionAdvancer:
         if completed:
             vehicle.start = completed[-1].location
 
+        self._carry_progress(vehicle, route, completed, env.clock, horizon)
+
         return [job_id for job_id in route.job_ids if env.jobs.contains(job_id)]
 
     def _complete_stop(self, env, vehicle, stop, planned_delivered, summary):
@@ -51,20 +53,32 @@ class ExecutionAdvancer:
         if env.jobs.contains(stop.job_id):
             env.jobs.remove({stop.job_id})
 
+    def _carry_progress(self, vehicle, route, completed, clock, horizon):
+        if len(completed) == len(route.stops):
+            vehicle.progress_credit = 0
+            return
+
+        started_at              = completed[-1].completion if completed else vehicle.working_clock(clock)
+        vehicle.progress_credit = max(int(horizon) - int(started_at), 0)
+
     def _resolve_remaining(self, env, state, remaining_by_vehicle):
         new_state = RoutingState(routes=[], unassigned_ids=set(state.unassigned_ids))
         for vehicle in env.vehicles:
-            remaining_ids = remaining_by_vehicle.get(vehicle.id, [])
-            self._resolve_vehicle(env, new_state, vehicle, remaining_ids)
+            if vehicle.id not in remaining_by_vehicle:
+                vehicle.progress_credit = 0
+
+            self._resolve_vehicle(env, new_state, vehicle, remaining_by_vehicle.get(vehicle.id, []))
 
         return new_state
 
     def _resolve_vehicle(self, env, new_state, vehicle, remaining_ids):
         if not remaining_ids and vehicle.onboard == 0:
+            vehicle.progress_credit = 0
             return
 
         if env.clock >= vehicle.time_window[1]:
             new_state.add_unassigned(set(remaining_ids))
+            vehicle.progress_credit = 0
             return
 
         remaining_jobs = [env.jobs.by_id(job_id) for job_id in remaining_ids]
@@ -73,6 +87,7 @@ class ExecutionAdvancer:
         if solution is None:
             self.logger.warning(f"Execution re-solve failed for vehicle {vehicle.id}")
             new_state.add_unassigned(set(remaining_ids))
+            vehicle.progress_credit = 0
             return
 
         if solution.routes:
