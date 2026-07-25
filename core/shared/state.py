@@ -193,7 +193,6 @@ class Route:
     waiting_time : int = 0
     distance     : int = 0
     geometry     : Optional[str] = None
-    path_coords  : Optional[List[Tuple[float, float]]] = None
 
     @property
     def job_ids(self) -> List[int]:
@@ -221,7 +220,6 @@ class Route:
             "waiting_time" : int(self.waiting_time),
             "distance"     : int(self.distance),
             "geometry"     : self.geometry,
-            "path_coords"  : [list(point) for point in self.path_coords] if self.path_coords is not None else None,
         }
 
     @classmethod
@@ -237,7 +235,6 @@ class Route:
             waiting_time = int(data["waiting_time"]),
             distance     = int(data["distance"]),
             geometry     = data["geometry"],
-            path_coords  = [tuple(point) for point in data["path_coords"]] if data["path_coords"] is not None else None,
         )
 
     @classmethod

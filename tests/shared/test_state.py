@@ -54,15 +54,13 @@ def test_stop_dict_round_trip():
     assert restored == stop
 
 
-def test_route_dict_round_trip_with_geometry_and_path():
-    route             = make_route(make_vehicles(1)[0], make_jobs(2))
-    route.geometry    = "abc"
-    route.path_coords = [(-46.6, -23.5), (-46.5, -23.4)]
+def test_route_dict_round_trip_with_geometry():
+    route          = make_route(make_vehicles(1)[0], make_jobs(2))
+    route.geometry = "abc"
 
     restored = Route.from_dict(route.to_dict())
 
     assert restored.geometry == "abc"
-    assert restored.path_coords == [(-46.6, -23.5), (-46.5, -23.4)]
     assert restored.job_ids == route.job_ids
 
 
@@ -74,7 +72,6 @@ def test_route_dict_round_trip_with_none_geometry_and_start():
     assert restored.start is None
     assert restored.end is None
     assert restored.geometry is None
-    assert restored.path_coords is None
 
 
 def test_route_job_ids_orders_by_stop_sequence():

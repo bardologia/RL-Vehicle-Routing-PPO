@@ -99,5 +99,7 @@ class ExecutionAdvancer:
         remaining_by_vehicle = self._complete_due_stops(env, state, horizon, summary)
         env.clock            = horizon
 
+        vroom.clear_cache()
+
         new_state = self._resolve_remaining(env, state, remaining_by_vehicle)
         return new_state, summary

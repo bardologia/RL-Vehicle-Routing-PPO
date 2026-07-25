@@ -1,10 +1,9 @@
-import polyline as polyline_module
+import pytest
 
 import core.shared.services as services_module
 
 from core.shared import RoutingState
-from core.shared.services import OsrmClient, VroomClient
-from core.shared.state import Route
+from core.shared.services import VroomClient
 from tests.conftest import CapturingLogger, load_fixture, make_jobs, make_vehicles
 
 
@@ -69,7 +68,7 @@ def test_vroom_solve_caches_identical_requests(cpu_config, monkeypatch):
     assert 999 not in client.solve(make_jobs(3), make_vehicles(2)).unassigned_ids
 
 
-def test_vroom_solve_does_not_cache_failures(cpu_config, monkeypatch):
+def test_vroom_solve_raises_when_the_service_stays_unavailable(cpu_config, monkeypatch):
     responses = [FakeResponse(500, text="boom"), FakeResponse(500, text="boom"), FakeResponse(500, text="boom"), FakeResponse(200, payload=load_fixture("vroom_solution_small"))]
 
     def fake_post(url, json=None, timeout=None):
@@ -80,8 +79,46 @@ def test_vroom_solve_does_not_cache_failures(cpu_config, monkeypatch):
     client = VroomClient(cpu_config.service, logger=CapturingLogger())
     client.BACKOFF_FACTOR = 0
 
-    assert client.solve(make_jobs(1), make_vehicles(1)) is None
+    with pytest.raises(RuntimeError, match="VROOM unavailable"):
+        client.solve(make_jobs(1), make_vehicles(1))
+
     assert isinstance(client.solve(make_jobs(1), make_vehicles(1)), RoutingState)
+
+
+def test_vroom_solve_retries_routing_failures_then_reports_none(cpu_config, monkeypatch):
+    calls = {"count": 0}
+
+    def fake_post(url, json=None, timeout=None):
+        calls["count"] += 1
+        return FakeResponse(500, payload={"code": 3, "error": "unroutable"}, text='{"code":3}')
+
+    monkeypatch.setattr(services_module.requests, "post", fake_post)
+
+    logger = CapturingLogger()
+    client = VroomClient(cpu_config.service, logger=logger)
+    client.BACKOFF_FACTOR = 0
+
+    assert client.solve(make_jobs(1), make_vehicles(1)) is None
+    assert calls["count"] == client.MAX_ATTEMPTS
+    assert any("could not route" in message for message in logger.warnings)
+
+
+def test_solve_cache_key_ignores_job_order(cpu_config, monkeypatch):
+    calls = {"count": 0}
+
+    def fake_post(url, json=None, timeout=None):
+        calls["count"] += 1
+        return FakeResponse(200, payload=load_fixture("vroom_solution_small"))
+
+    monkeypatch.setattr(services_module.requests, "post", fake_post)
+
+    client = VroomClient(cpu_config.service)
+    jobs   = make_jobs(3)
+
+    client.solve(jobs, make_vehicles(2))
+    client.solve(list(reversed(jobs)), make_vehicles(2))
+
+    assert calls["count"] == 1
 
 
 def test_vroom_solve_returns_none_on_client_error(cpu_config, monkeypatch):
@@ -132,100 +169,3 @@ def test_vroom_solve_does_not_retry_solver_error_codes(cpu_config, monkeypatch):
     assert calls["count"] == 1
     assert any("code 1" in message for message in logger.warnings)
 
-
-def test_osrm_distance_duration_caches_by_rounded_key(cpu_config, monkeypatch):
-    calls  = {"count": 0}
-    client = OsrmClient(cpu_config.service)
-
-    def fake_fetch(lon_a, lat_a, lon_b, lat_b):
-        calls["count"] += 1
-        return 1234.0, 56.0
-
-    monkeypatch.setattr(client, "_fetch_distance_duration", fake_fetch)
-
-    first  = client.distance_duration(-46.63, -23.55, -46.64, -23.56)
-    second = client.distance_duration(-46.63, -23.55, -46.64, -23.56)
-
-    assert first == (1234.0, 56.0)
-    assert second == first
-    assert calls["count"] == 1
-
-
-def test_osrm_distance_duration_rounds_beyond_fifth_decimal(cpu_config, monkeypatch):
-    calls  = {"count": 0}
-    client = OsrmClient(cpu_config.service)
-
-    def fake_fetch(lon_a, lat_a, lon_b, lat_b):
-        calls["count"] += 1
-        return 1.0, 2.0
-
-    monkeypatch.setattr(client, "_fetch_distance_duration", fake_fetch)
-
-    client.distance_duration(-46.630001, -23.550001, -46.64, -23.56)
-    client.distance_duration(-46.630002, -23.550002, -46.64, -23.56)
-
-    assert calls["count"] == 1
-
-
-def test_osrm_distinct_coordinates_fetch_separately(cpu_config, monkeypatch):
-    calls  = {"count": 0}
-    client = OsrmClient(cpu_config.service)
-
-    monkeypatch.setattr(client, "_fetch_distance_duration", lambda *args: (calls.__setitem__("count", calls["count"] + 1), (0.0, 0.0))[1])
-
-    client.distance_duration(-46.63, -23.55, -46.64, -23.56)
-    client.distance_duration(-46.60, -23.50, -46.64, -23.56)
-
-    assert calls["count"] == 2
-
-
-def test_osrm_cache_clears_when_bound_exceeded(cpu_config, monkeypatch):
-    client = OsrmClient(cpu_config.service)
-    client._distance_cache = {(float(i), 0.0, 0.0, 0.0): (0.0, 0.0) for i in range(100_001)}
-
-    monkeypatch.setattr(client, "_fetch_distance_duration", lambda *args: (9.0, 9.0))
-
-    client.distance_duration(-46.63, -23.55, -46.64, -23.56)
-
-    assert len(client._distance_cache) == 1
-
-
-def test_osrm_enrich_polylines_skips_routes_with_geometry_and_path(cpu_config, monkeypatch):
-    calls  = {"count": 0}
-    client = OsrmClient(cpu_config.service)
-
-    monkeypatch.setattr(client, "_fetch_geometry", lambda points: (calls.__setitem__("count", calls["count"] + 1), "xxx")[1])
-
-    route             = Route(vehicle_id=0, start=(-46.6, -23.5), end=(-46.5, -23.4))
-    route.geometry    = "already"
-    route.path_coords = [(-46.6, -23.5), (-46.5, -23.4)]
-
-    client.enrich_polylines([route])
-
-    assert calls["count"] == 0
-    assert route.geometry == "already"
-
-
-def test_osrm_enrich_polylines_fills_missing_geometry(cpu_config, monkeypatch):
-    encoded = polyline_module.encode([(-23.55, -46.63), (-23.56, -46.64)])
-    client  = OsrmClient(cpu_config.service)
-
-    monkeypatch.setattr(client, "_fetch_geometry", lambda points: encoded)
-
-    route = Route(vehicle_id=0, start=(-46.63, -23.55), end=(-46.64, -23.56))
-
-    client.enrich_polylines([route])
-
-    assert route.geometry == encoded
-    assert route.path_coords == polyline_module.decode(encoded)
-
-
-def test_osrm_enrich_polylines_skips_routes_without_points(cpu_config, monkeypatch):
-    calls  = {"count": 0}
-    client = OsrmClient(cpu_config.service)
-
-    monkeypatch.setattr(client, "_fetch_geometry", lambda points: (calls.__setitem__("count", calls["count"] + 1), "xxx")[1])
-
-    client.enrich_polylines([Route(vehicle_id=0)])
-
-    assert calls["count"] == 0

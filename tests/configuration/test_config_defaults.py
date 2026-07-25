@@ -154,7 +154,8 @@ def test_service_config_defaults():
 
     assert config.vroom_url == "http://localhost:3000"
     assert config.osrm_url == "http://localhost:5000"
-    assert config.options == {"g": True, "geometry": True, "threads": 8}
+    assert config.options == {"g": False}
+    assert config.solve_cache_limit == 20_000
     assert config._http_session is None
 
 

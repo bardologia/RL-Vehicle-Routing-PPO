@@ -7,10 +7,11 @@ from requests.adapters import HTTPAdapter
 
 @dataclass
 class ServiceConfig:
-    vroom_url: str = "http://localhost:3000"
-    osrm_url: str = "http://localhost:5000"
-    options: Dict[str, Any] = field(default_factory=lambda: {"g": True, "geometry": True, "threads": 8})
-    _http_session: Optional[requests.Session] = field(init=False, default=None)
+    vroom_url         : str = "http://localhost:3000"
+    osrm_url          : str = "http://localhost:5000"
+    solve_cache_limit : int = 20_000
+    options           : Dict[str, Any] = field(default_factory=lambda: {"g": False})
+    _http_session     : Optional[requests.Session] = field(init=False, default=None)
 
     @property
     def http_session(self) -> requests.Session:

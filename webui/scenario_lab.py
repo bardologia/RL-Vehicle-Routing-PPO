@@ -6,6 +6,9 @@ import requests
 from scenario_templates import ScenarioTemplates
 
 
+MAP_OPTIONS = {"g": True}
+
+
 class ScenarioLab:
     OPERATOR_NAMES = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING"}
     AGENTS         = ("model", "teacher", "insertion_only", "do_nothing")
@@ -83,11 +86,7 @@ class ScenarioLab:
     def _decode_path(self, route):
         import polyline
 
-        if route.geometry:
-            return polyline.decode(route.geometry)
-        if route.path_coords:
-            return [list(point) for point in route.path_coords]
-        return None
+        return polyline.decode(route.geometry) if route.geometry else None
 
     def _render_state(self, state):
         routes = []
@@ -138,7 +137,7 @@ class ScenarioLab:
                 return None, f"assignment repeats jobs {sorted(duplicated)}"
 
             vehicle  = vehicles_pool.by_id(vehicle_id)
-            solution = vroom.solve([jobs_pool.by_id(job_id) for job_id in job_ids], [vehicle], depot=depot, clock=clock)
+            solution = vroom.solve([jobs_pool.by_id(job_id) for job_id in job_ids], [vehicle], depot=depot, clock=clock, options=MAP_OPTIONS)
             if solution is None or not solution.routes:
                 return None, f"VROOM returned no route for vehicle {vehicle_id}"
             if solution.unassigned_ids:
@@ -159,7 +158,7 @@ class ScenarioLab:
         if assignment:
             return self._assigned_state(jobs_pool, vehicles_pool, assignment, depot, clock)
 
-        state = vroom.solve(list(jobs_pool), list(vehicles_pool), depot=depot, clock=clock)
+        state = vroom.solve(list(jobs_pool), list(vehicles_pool), depot=depot, clock=clock, options=MAP_OPTIONS)
         if state is None:
             return None, "VROOM returned no solution for this scenario"
 

@@ -2,7 +2,8 @@ import socket
 
 import pytest
 
-from core.shared import RoutingState, osrm, vroom
+from core.shared import RoutingState, vroom
+from core.shared.state import DELIVERY_ID_OFFSET, DROP_JOB_ID_OFFSET
 from tests.conftest import make_jobs, make_vehicles
 
 
@@ -27,22 +28,37 @@ def test_vroom_solve_returns_routing_state():
     assert state.assigned_job_ids | state.unassigned_ids == {0, 1, 2, 3, 4}
 
 
-def test_osrm_distance_duration_is_positive_and_cached():
-    first  = osrm.distance_duration(-46.63, -23.55, -46.64, -23.56)
-    second = osrm.distance_duration(-46.63, -23.55, -46.64, -23.56)
+def test_vroom_returns_geometry_only_when_asked():
+    plain = vroom.solve(make_jobs(4), make_vehicles(1))
+    drawn = vroom.solve(make_jobs(4), make_vehicles(1), options={"g": True})
 
-    assert first[0] > 0.0
-    assert first[1] > 0.0
-    assert first == second
+    assert all(route.geometry is None for route in plain.routes)
+    assert all(route.geometry is not None for route in drawn.routes)
 
 
-def test_osrm_enrich_polylines_fills_geometry():
-    state = vroom.solve(make_jobs(4), make_vehicles(1))
+def test_repossession_round_trips_as_a_shipment_with_a_depot_delivery():
+    depot    = (-46.63, -23.55)
+    jobs     = make_jobs(2, kind="repossession")
+    vehicles = make_vehicles(1)
+
+    state = vroom.solve(jobs, vehicles, depot=depot, clock=28800)
+
     assert state is not None
 
-    osrm.enrich_polylines(state.routes)
+    kinds = [stop.kind for stop in state.routes[0].stops]
+    assert "pickup" in kinds
+    assert "delivery" in kinds
+    assert all(stop.job_id < DELIVERY_ID_OFFSET for stop in state.routes[0].stops)
 
-    for route in state.routes:
-        assert route.geometry is not None
-        assert route.path_coords is not None
-        assert len(route.path_coords) >= 2
+
+def test_onboard_load_becomes_a_skill_bound_drop_job():
+    depot    = (-46.63, -23.55)
+    vehicles = make_vehicles(1)
+    vehicles[0].onboard = 2
+
+    state = vroom.solve(make_jobs(2), vehicles, depot=depot, clock=28800)
+
+    assert state is not None
+
+    drop_ids = [stop.job_id for stop in state.routes[0].stops if stop.job_id >= DROP_JOB_ID_OFFSET]
+    assert drop_ids == [DROP_JOB_ID_OFFSET + vehicles[0].id]

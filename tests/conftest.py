@@ -26,6 +26,9 @@ class FakeVroom:
     def __init__(self):
         self.calls = 0
 
+    def clear_cache(self):
+        pass
+
     def _vehicle_route(self, vehicle, taken, depot, clock):
         stops = []
         load  = vehicle.onboard
@@ -67,7 +70,7 @@ class FakeVroom:
             service    = sum(stop.service for stop in stops),
         )
 
-    def solve(self, jobs, vehicles, depot=None, clock=None):
+    def solve(self, jobs, vehicles, depot=None, clock=None, options=None):
         self.calls += 1
         jobs     = list(jobs)
         vehicles = list(vehicles)
