@@ -1,7 +1,7 @@
 import torch
 from torch_geometric.data import Batch
 
-from core.shared import EntityPool, Graph, RoutingState
+from core.shared import EntityPool, Graph, Job, RoutingState, Vehicle
 from model.gnn_model import GNN
 from tests.conftest import make_jobs, make_route, make_vehicles
 
@@ -41,6 +41,38 @@ def test_forward_emits_embeddings_and_context(cpu_config, seeded):
     assert embeddings["vehicle"].shape == (3, embedding_dim)
     assert context.shape == (1, 2 * embedding_dim)
     assert torch.isfinite(context).all()
+
+
+def test_job_embedding_responds_to_own_features(cpu_config, seeded):
+    location = (-46.63, -23.55)
+    jobs     = [
+        Job(id=0, location=location, kind="support", amount=0, priority=1, service=900),
+        Job(id=1, location=location, kind="support", amount=0, priority=5, service=900),
+    ]
+    vehicles = make_vehicles(2)
+    state    = RoutingState(routes=[], unassigned_ids={job.id for job in jobs})
+    graph    = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, location, 28800)
+
+    embeddings, _ = GNN(cpu_config.model)(graph)
+    separation    = (embeddings["job"][0] - embeddings["job"][1]).abs().max()
+
+    assert separation > 1e-3
+
+
+def test_vehicle_embedding_responds_to_own_features(cpu_config, seeded):
+    location = (-46.63, -23.55)
+    vehicles = [
+        Vehicle(id=0, start=location, capacity=5, onboard=0),
+        Vehicle(id=1, start=location, capacity=3, onboard=3),
+    ]
+    jobs  = make_jobs(2)
+    state = RoutingState(routes=[], unassigned_ids={job.id for job in jobs})
+    graph = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, location, 28800)
+
+    embeddings, _ = GNN(cpu_config.model)(graph)
+    separation    = (embeddings["vehicle"][0] - embeddings["vehicle"][1]).abs().max()
+
+    assert separation > 1e-3
 
 
 def test_forward_context_pools_over_batch(cpu_config, seeded):

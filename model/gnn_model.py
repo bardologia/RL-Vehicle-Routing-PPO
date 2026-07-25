@@ -14,10 +14,13 @@ class GNN(nn.Module):
             "vehicle" : nn.Linear(model.vehicle_input_dim, hidden),
         })
 
-        self.convs = nn.ModuleList()
+        self.convs     = nn.ModuleList()
+        self.residuals = nn.ModuleList()
+
         for layer_idx in range(model.gnn_num_layers):
             out_dim = out if layer_idx == model.gnn_num_layers - 1 else hidden
             self.convs.append(self._build_conv(hidden, out_dim, model.edge_attr_dim))
+            self.residuals.append(self._build_residual(hidden, out_dim))
 
         self.activation = nn.LeakyReLU(0.01)
 
@@ -36,15 +39,34 @@ class GNN(nn.Module):
             aggr="sum",
         )
 
+    def _build_residual(self, in_dim, out_dim):
+        if in_dim == out_dim:
+            return nn.ModuleDict({"job": nn.Identity(), "vehicle": nn.Identity()})
+
+        return nn.ModuleDict({"job": nn.Linear(in_dim, out_dim), "vehicle": nn.Linear(in_dim, out_dim)})
+
+    def _combine(self, embeddings, messages, residual):
+        combined = {}
+
+        for node_type, features in embeddings.items():
+            updated = residual[node_type](features)
+
+            if node_type in messages:
+                updated = updated + messages[node_type]
+
+            combined[node_type] = self.activation(updated)
+
+        return combined
+
     def forward(self, graph):
         edge_index_dict = graph.edge_index_dict
         edge_attr_dict  = {relation: graph[relation].edge_attr for relation in graph.edge_types}
 
         embeddings = {node_type: self.activation(encoder(graph.x_dict[node_type])) for node_type, encoder in self.encoders.items()}
 
-        for conv in self.convs:
-            embeddings = conv(embeddings, edge_index_dict, edge_attr_dict=edge_attr_dict)
-            embeddings = {node_type: self.activation(features) for node_type, features in embeddings.items()}
+        for conv, residual in zip(self.convs, self.residuals):
+            messages   = conv(embeddings, edge_index_dict, edge_attr_dict=edge_attr_dict)
+            embeddings = self._combine(embeddings, messages, residual)
 
         job_embedding     = embeddings["job"]
         vehicle_embedding = embeddings["vehicle"]
