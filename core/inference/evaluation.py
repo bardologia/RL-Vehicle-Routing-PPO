@@ -92,6 +92,21 @@ class EvaluationPipeline:
         if not os.path.isdir(self.run_dir):
             raise FileNotFoundError(f"Run directory not found: {self.run_dir}")
 
+    def _validate_held_out_seeds(self):
+        training   = self.config.training
+        evaluation = self.config.evaluation
+
+        train_episodes = max(self.config.pretrain.episodes, training.num_updates * training.episodes_per_update)
+        train_band     = range(self.config.env.scenario_seed, self.config.env.scenario_seed + train_episodes)
+        eval_band      = range(evaluation.seed, evaluation.seed + evaluation.episodes)
+
+        overlap = range(max(train_band.start, eval_band.start), min(train_band.stop, eval_band.stop))
+        if len(overlap) > 0:
+            raise ValueError(
+                f"evaluation seeds [{eval_band.start}, {eval_band.stop}) overlap the training seeds "
+                f"[{train_band.start}, {train_band.stop}) on {len(overlap)} episodes; the evaluation set is not held out"
+            )
+
     def _build_environment(self):
         vroom.logger     = self.logger
         self.environment = Environment(self.config, logger=self.logger)
@@ -159,6 +174,7 @@ class EvaluationPipeline:
 
     def run(self):
         self._resolve_run()
+        self._validate_held_out_seeds()
         self._build_environment()
         self._load_model()
         self._build_agents()

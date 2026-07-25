@@ -9,6 +9,7 @@ class TrainingConfig:
     num_updates                 : int = 16
     episodes_per_update         : int = 1024
     minibatch_size              : int = 128
+    expected_edits_per_round    : float = 2.0
     num_epochs                  : int = 5
     print_frequency             : int = 5
     log_episode_frequency       : int = 5

@@ -35,7 +35,7 @@ def test_environment_config_defaults():
     assert config.job_insert_max == 3
     assert config.vehicle_remove_min == 1
     assert config.disruption_gap_mean == 1800
-    assert config.disruption_gap_min == 300
+    assert config.disruption_gap_min == 600
     assert config.disruption_gap_max == 5400
 
 
@@ -58,9 +58,9 @@ def test_learning_rate_defaults():
     assert config.lr_critic == 5e-4
     assert config.lr_embedding == 2e-4
     assert config.lr_job_actor == 3e-4
-    assert config.lr_warmup_steps == 1000
+    assert config.lr_warmup_fraction == 0.05
     assert config.lr_min == 1e-5
-    assert config.lr_decay_steps == 100000
+    assert config.lr_decay_fraction == 1.0
 
 
 def test_entropy_defaults():
@@ -69,7 +69,7 @@ def test_entropy_defaults():
     assert config.entropy_coef == 0.02
     assert config.entropy_start == 0.02
     assert config.entropy_end == 0.001
-    assert config.entropy_anneal_steps == 50000
+    assert config.entropy_anneal_fraction == 0.6
 
 
 def test_model_config_defaults():
@@ -114,14 +114,14 @@ def test_ppo_config_defaults():
     assert config.kl_divergence_threshold == 0.015
     assert config.anchor_kl_start == 0.5
     assert config.anchor_kl_end == 0.0
-    assert config.anchor_anneal_steps == 20000
+    assert config.anchor_anneal_fraction == 0.5
 
 
 def test_evaluation_config_defaults():
     config = EvaluationConfig()
 
     assert config.episodes == 200
-    assert config.seed == 123
+    assert config.seed == 1_000_000
 
 
 def test_pretrain_config_defaults():

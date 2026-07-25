@@ -1,5 +1,3 @@
-import random
-
 from .sampling import ScenarioSampler
 from .state import RoutingState
 
@@ -15,30 +13,30 @@ class EventGenerator:
 
     def sample_new_job(self, env):
         cfg = env.config.env
-        return random.randint(cfg.job_insert_min, cfg.job_insert_max)
+        return env.event_rng.randint(cfg.job_insert_min, cfg.job_insert_max)
 
     def sample_new_vehicle(self, env):
         cfg = env.config.env
-        return random.randint(cfg.vehicle_insert_min, cfg.vehicle_insert_max)
+        return env.event_rng.randint(cfg.vehicle_insert_min, cfg.vehicle_insert_max)
 
     def sample_remove_job(self, env):
         cfg = env.config.env
-        return self._sample_removal(len(env.jobs), cfg.job_remove_min, cfg.job_remove_max)
+        return self._sample_removal(env, len(env.jobs), cfg.job_remove_min, cfg.job_remove_max)
 
     def sample_remove_vehicle(self, env):
         cfg = env.config.env
-        return self._sample_removal(len(env.vehicles) - 1, cfg.vehicle_remove_min, cfg.vehicle_remove_max)
+        return self._sample_removal(env, len(env.vehicles) - 1, cfg.vehicle_remove_min, cfg.vehicle_remove_max)
 
-    def _sample_removal(self, capacity, remove_min, remove_max):
+    def _sample_removal(self, env, capacity, remove_min, remove_max):
         max_items = min(remove_max, capacity)
         if max_items <= 0:
             return 0
 
         min_items = min(remove_min, max_items)
-        return random.randint(min_items, max_items)
+        return env.event_rng.randint(min_items, max_items)
 
     def generate(self, env):
-        event_type = random.choice(list(self.samplers))
+        event_type = env.event_rng.choice(list(self.samplers))
         return event_type, self.samplers[event_type](env)
 
 
@@ -69,7 +67,7 @@ class EventHandler:
             return state.copy()
 
         num_items    = min(num_items, len(env.jobs))
-        removed_ids  = set(env.jobs.sample_ids(num_items))
+        removed_ids  = set(env.jobs.sample_ids(num_items, env.event_rng))
         affected_ids = [route.vehicle_id for route in state.routes if set(route.job_ids) & removed_ids]
 
         env.jobs.remove(removed_ids)
@@ -109,7 +107,7 @@ class EventHandler:
         if num_items <= 0:
             return state.copy()
 
-        removed_ids = set(env.vehicles.sample_ids(num_items))
+        removed_ids = set(env.vehicles.sample_ids(num_items, env.event_rng))
         env.vehicles.remove(removed_ids)
 
         new_state = state.copy()

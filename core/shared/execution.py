@@ -1,5 +1,3 @@
-import random
-
 from .services import vroom
 from .state import RoutingState
 
@@ -42,7 +40,7 @@ class ExecutionAdvancer:
             return
 
         if stop.kind == "pickup":
-            if random.random() < env.config.env.repossession_success_probability:
+            if env.execution_rng.random() < env.config.env.repossession_success_probability:
                 vehicle.onboard += 1
                 summary["served"].append(stop.job_id)
             else:

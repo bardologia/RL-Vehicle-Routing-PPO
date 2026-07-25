@@ -17,7 +17,7 @@ class EnvironmentConfig:
     repossession_service_max         : int = 900
 
     disruption_gap_mean : int = 1800
-    disruption_gap_min  : int = 300
+    disruption_gap_min  : int = 600
     disruption_gap_max  : int = 5400
 
     min_vehicles : int = 2

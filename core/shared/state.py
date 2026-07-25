@@ -1,4 +1,3 @@
-import random
 from dataclasses import dataclass, field
 from typing import Dict, Iterator, List, Optional, Set, Tuple
 
@@ -450,8 +449,8 @@ class EntityPool:
     def _reindex(self) -> None:
         self._index_by_id = {item.id: index for index, item in enumerate(self._items)}
 
-    def sample_ids(self, count: int) -> List[int]:
-        return random.sample(self.ids, count)
+    def sample_ids(self, count: int, rng) -> List[int]:
+        return rng.sample(self.ids, count)
 
     def __len__(self) -> int:
         return len(self._items)

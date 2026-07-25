@@ -54,7 +54,7 @@ def retry_api_call(max_retries=3, backoff_factor=0.5):
     return decorator
 
 
-def generate_coords_batch(center, radius_km, num_coords, p=0.1, m=5.0, bounds=((-46.75, -46.45), (-23.7, -23.4))):
+def generate_coords_batch(center, radius_km, num_coords, p=0.1, m=5.0):
     lon_center, lat_center = center
     lat_rad = np.radians(lat_center)
     cos_lat = np.maximum(1e-6, np.abs(np.cos(lat_rad)))
@@ -75,10 +75,5 @@ def generate_coords_batch(center, radius_km, num_coords, p=0.1, m=5.0, bounds=((
 
     lons = np.round(lon_center + dlon, 6)
     lats = np.round(lat_center + dlat, 6)
-
-    if bounds is not None:
-        (min_lon, max_lon), (min_lat, max_lat) = bounds
-        lons = np.clip(lons, min_lon, max_lon)
-        lats = np.clip(lats, min_lat, max_lat)
 
     return np.column_stack([lons, lats])

@@ -1,4 +1,5 @@
 import gc
+import math
 import os
 
 import torch
@@ -219,28 +220,34 @@ class Trainer:
         optimizer = optim.Adam(param_groups, eps=1e-5)
         ppo.optimizer = optimizer
         
+        projected     = self.projected_optimizer_steps()
+        warmup_steps  = max(int(projected * lr_config.lr_warmup_fraction), 1)
+        decay_steps   = max(int(projected * lr_config.lr_decay_fraction), 1)
+        anneal_steps  = max(int(projected * entropy_config.entropy_anneal_fraction), 1)
+
         ppo.lr_scheduler = LRScheduler(
             optimizer    = optimizer,
-            warmup_steps = lr_config.lr_warmup_steps,
-            decay_steps  = lr_config.lr_decay_steps,
+            warmup_steps = warmup_steps,
+            decay_steps  = decay_steps,
             lr_min       = lr_config.lr_min,
         )
 
         ppo.entropy_scheduler = EntropyScheduler(
             start_coef   = entropy_config.entropy_start,
             end_coef     = entropy_config.entropy_end,
-            anneal_steps = entropy_config.entropy_anneal_steps,
-            warmup_steps = lr_config.lr_warmup_steps,
+            anneal_steps = anneal_steps,
+            warmup_steps = warmup_steps,
         )
 
         ppo.early_stopping = EpochEarlyStopping(self.config.ppo.kl_divergence_threshold)
 
         self.logger.section("[Schedulers]")
-        self.logger.subsection(f"LR Warmup Steps  = {lr_config.lr_warmup_steps}")
-        self.logger.subsection(f"LR Decay Steps   = {lr_config.lr_decay_steps}")
-        self.logger.subsection(f"LR Min           = {lr_config.lr_min}")
-        self.logger.subsection(f"Entropy Schedule = {entropy_config.entropy_start} -> {entropy_config.entropy_end} over {entropy_config.entropy_anneal_steps} steps")
-        self.logger.subsection(f"KL Threshold     = {self.config.ppo.kl_divergence_threshold} \n")
+        self.logger.subsection(f"Projected Optimizer Steps = {projected}")
+        self.logger.subsection(f"LR Warmup Steps           = {warmup_steps}")
+        self.logger.subsection(f"LR Decay Steps            = {decay_steps}")
+        self.logger.subsection(f"LR Min                    = {lr_config.lr_min}")
+        self.logger.subsection(f"Entropy Schedule          = {entropy_config.entropy_start} -> {entropy_config.entropy_end} over {anneal_steps} steps")
+        self.logger.subsection(f"KL Threshold              = {self.config.ppo.kl_divergence_threshold} \n")
 
         ppo.current_entropy_coef = entropy_config.entropy_start
 
@@ -258,6 +265,14 @@ class Trainer:
         self.logger.subsection("PPO initialization complete \n")
         return ppo
 
+    def projected_optimizer_steps(self):
+        training = self.config.training
+
+        samples     = training.episodes_per_update * training.max_disruptions_per_episode * training.expected_edits_per_round
+        minibatches = max(int(math.ceil(samples / training.minibatch_size)), 1)
+
+        return max(training.num_updates * training.num_epochs * minibatches, 1)
+
     def _validate_parameter_coverage(self, policy, param_groups):
         covered = {id(parameter) for group in param_groups for parameter in group["params"]}
         missing = [name for name, parameter in policy.named_parameters() if id(parameter) not in covered]
@@ -274,11 +289,13 @@ class Trainer:
         for parameter in reference.parameters():
             parameter.requires_grad_(False)
 
+        anneal_steps = max(int(self.projected_optimizer_steps() * ppo_config.anchor_anneal_fraction), 1)
+
         ppo.reference_policy    = reference
-        ppo.anchor_scheduler    = EntropyScheduler(start_coef=ppo_config.anchor_kl_start, end_coef=ppo_config.anchor_kl_end, anneal_steps=ppo_config.anchor_anneal_steps, warmup_steps=0)
+        ppo.anchor_scheduler    = EntropyScheduler(start_coef=ppo_config.anchor_kl_start, end_coef=ppo_config.anchor_kl_end, anneal_steps=anneal_steps, warmup_steps=0)
         ppo.current_anchor_coef = ppo_config.anchor_kl_start
 
-        self.logger.subsection(f"Anchor KL enabled: {ppo_config.anchor_kl_start} -> {ppo_config.anchor_kl_end} over {ppo_config.anchor_anneal_steps} steps")
+        self.logger.subsection(f"Anchor KL enabled: {ppo_config.anchor_kl_start} -> {ppo_config.anchor_kl_end} over {anneal_steps} steps")
 
     def _clear_memory(self):
         gc.collect()

@@ -1,4 +1,8 @@
 import pytest
+
+from core.training import Trainer
+from tools.logger import NullLogger
+from tools.tracker import NullTracker
 import torch
 
 from core.training import EntropyScheduler, EpochEarlyStopping, LRScheduler
@@ -104,6 +108,28 @@ def test_entropy_step_advances_and_returns_coef():
 
     assert scheduler.current_step == 1
     assert coef == scheduler.get_coef()
+
+
+def test_schedule_horizons_fit_inside_the_projected_budget(cpu_config, seeded, fake_vroom, tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    cpu_config.io.logdir           = str(run_dir)
+    cpu_config.ppo.anchor_kl_start = 0.5
+
+    trainer = Trainer(config=cpu_config, logger=NullLogger(), tracker=NullTracker())
+    trainer.attach_anchor(trainer.ppo, trainer.ppo.policy.state_dict())
+
+    projected = trainer.projected_optimizer_steps()
+
+    assert 0 < trainer.ppo.lr_scheduler.decay_steps <= projected
+    assert 0 < trainer.ppo.entropy_scheduler.anneal_steps <= projected
+    assert 0 < trainer.ppo.anchor_scheduler.anneal_steps <= projected
+
+    trainer.ppo.entropy_scheduler.set_step(projected)
+    trainer.ppo.anchor_scheduler.set_step(projected)
+
+    assert trainer.ppo.entropy_scheduler.get_coef() == pytest.approx(cpu_config.entropy.entropy_end)
+    assert trainer.ppo.anchor_scheduler.get_coef() == pytest.approx(cpu_config.ppo.anchor_kl_end)
 
 
 def test_early_stopping_triggers_strictly_above_threshold():

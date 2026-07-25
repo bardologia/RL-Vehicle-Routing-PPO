@@ -60,6 +60,44 @@ def test_remove_job_event_purges_pool_routes_and_unassigned(environment):
     assert removed.isdisjoint(new_state.unassigned_ids)
 
 
+def test_sampled_coordinates_cover_the_configured_radius(cpu_config):
+    from tools.auxiliary import generate_coords_batch, haversine_distance
+
+    center = cpu_config.env.center
+    coords = generate_coords_batch(center, cpu_config.env.radius, 4000, 0.0, 1.0)
+
+    distances = [haversine_distance(center[0], center[1], lon, lat)[0] / 1000.0 for lon, lat in coords]
+    longitudes = {round(float(lon), 6) for lon, _ in coords}
+
+    assert max(distances) <= 1.02 * cpu_config.env.radius
+    assert max(distances) > 0.9 * cpu_config.env.radius
+    assert len(longitudes) > 3500
+
+
+def test_disruption_gaps_stay_inside_the_bounds_without_an_atom(environment):
+    environment.seed_streams(7)
+
+    gaps = [environment.sample_disruption_gap() for _ in range(3000)]
+    env  = environment.config.env
+
+    assert all(env.disruption_gap_min <= gap <= env.disruption_gap_max for gap in gaps)
+    assert gaps.count(env.disruption_gap_min) <= 3
+    assert gaps.count(env.disruption_gap_max) <= 3
+
+
+def test_event_stream_is_independent_of_execution_draws(cpu_config, seeded, fake_vroom):
+    first  = Environment(cpu_config)
+    second = Environment(cpu_config)
+
+    first.seed_streams(11)
+    second.seed_streams(11)
+
+    for _ in range(25):
+        second.execution_rng.random()
+
+    assert [first.generate_event()[0] for _ in range(6)] == [second.generate_event()[0] for _ in range(6)]
+
+
 def test_remove_job_event_resolves_the_affected_routes(environment):
     state = environment.current_state
 
@@ -140,7 +178,7 @@ def test_new_vehicle_event_grows_fleet_only(environment):
 
 
 def test_generate_event_new_job_count_in_config_range(environment, monkeypatch):
-    monkeypatch.setattr(environment_module.random, "choice", lambda seq: "new_job")
+    monkeypatch.setattr(environment.event_rng, "choice", lambda seq: "new_job")
 
     event_type, num_items = environment.generate_event()
 
@@ -149,7 +187,7 @@ def test_generate_event_new_job_count_in_config_range(environment, monkeypatch):
 
 
 def test_generate_event_new_vehicle_count_in_config_range(environment, monkeypatch):
-    monkeypatch.setattr(environment_module.random, "choice", lambda seq: "new_vehicle")
+    monkeypatch.setattr(environment.event_rng, "choice", lambda seq: "new_vehicle")
 
     event_type, num_items = environment.generate_event()
 
@@ -158,7 +196,7 @@ def test_generate_event_new_vehicle_count_in_config_range(environment, monkeypat
 
 
 def test_generate_event_remove_job_capped_by_pool(environment, monkeypatch):
-    monkeypatch.setattr(environment_module.random, "choice", lambda seq: "remove_job")
+    monkeypatch.setattr(environment.event_rng, "choice", lambda seq: "remove_job")
 
     event_type, num_items = environment.generate_event()
 
@@ -167,7 +205,7 @@ def test_generate_event_remove_job_capped_by_pool(environment, monkeypatch):
 
 
 def test_generate_event_remove_vehicle_capped_by_fleet(environment, monkeypatch):
-    monkeypatch.setattr(environment_module.random, "choice", lambda seq: "remove_vehicle")
+    monkeypatch.setattr(environment.event_rng, "choice", lambda seq: "remove_vehicle")
 
     event_type, num_items = environment.generate_event()
 

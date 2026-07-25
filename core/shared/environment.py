@@ -1,3 +1,4 @@
+import math
 import random
 
 import numpy as np
@@ -37,6 +38,7 @@ class Environment:
         self.execution_advancer = ExecutionAdvancer(self.logger)
         self.reward_calculator  = RewardCalculator()
 
+        self.seed_streams(config.env.scenario_seed)
         self.reset()
 
     def reset(self):
@@ -59,10 +61,16 @@ class Environment:
 
         raise RuntimeError(f"Environment.reset exhausted {env.reset_max_attempts} attempts without a VROOM solution (mean_jobs={env.mean_jobs}, mean_vehicles={env.mean_vehicles})")
 
+    def seed_streams(self, seed):
+        self.event_rng     = random.Random(seed)
+        self.execution_rng = random.Random(seed + 1)
+        self.gap_rng       = np.random.default_rng(seed + 2)
+
     def sample_episode(self, seed):
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
+        self.seed_streams(seed)
 
         self.reset()
         self.apply_disruption(self.initial_state)
@@ -102,9 +110,14 @@ class Environment:
         return {"type": "new_job", "count": num_items}
 
     def sample_disruption_gap(self):
-        env = self.config.env
-        gap = np.random.exponential(env.disruption_gap_mean)
-        return int(min(max(gap, env.disruption_gap_min), env.disruption_gap_max))
+        env  = self.config.env
+        mean = float(env.disruption_gap_mean)
+
+        low     = math.exp(-float(env.disruption_gap_min) / mean)
+        high    = math.exp(-float(env.disruption_gap_max) / mean)
+        uniform = float(self.gap_rng.random())
+
+        return int(-mean * math.log(low - uniform * (low - high)))
 
     def advance_execution(self, gap_seconds):
         if gap_seconds <= 0:
