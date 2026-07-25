@@ -58,6 +58,10 @@ class GNN(nn.Module):
 
         return combined
 
+    def _batch_size(self, graph):
+        store = graph["job"]
+        return int(store.ptr.numel()) - 1 if "ptr" in store else 1
+
     def forward(self, graph):
         edge_index_dict = graph.edge_index_dict
         edge_attr_dict  = {relation: graph[relation].edge_attr for relation in graph.edge_types}
@@ -74,5 +78,13 @@ class GNN(nn.Module):
         job_batch     = graph["job"].batch if "batch" in graph["job"] else torch.zeros(job_embedding.size(0), dtype=torch.long, device=job_embedding.device)
         vehicle_batch = graph["vehicle"].batch if "batch" in graph["vehicle"] else torch.zeros(vehicle_embedding.size(0), dtype=torch.long, device=vehicle_embedding.device)
 
-        context = torch.cat([global_mean_pool(job_embedding, job_batch), global_mean_pool(vehicle_embedding, vehicle_batch)], dim=-1)
+        batch_size = self._batch_size(graph)
+        context    = torch.cat(
+            [
+                global_mean_pool(job_embedding, job_batch, size=batch_size),
+                global_mean_pool(vehicle_embedding, vehicle_batch, size=batch_size),
+            ],
+            dim=-1,
+        )
+
         return embeddings, context

@@ -21,6 +21,22 @@ def haversine_distance(lon1, lat1, lon2, lat2):
     return distance, duration
 
 
+def haversine_matrix(lons_a, lats_a, lons_b, lats_b):
+    R = 6371000
+
+    lat_a = np.radians(np.asarray(lats_a, dtype=float)).reshape(-1, 1)
+    lon_a = np.radians(np.asarray(lons_a, dtype=float)).reshape(-1, 1)
+    lat_b = np.radians(np.asarray(lats_b, dtype=float)).reshape(1, -1)
+    lon_b = np.radians(np.asarray(lons_b, dtype=float)).reshape(1, -1)
+
+    a = np.sin((lat_b - lat_a) / 2) ** 2 + np.cos(lat_a) * np.cos(lat_b) * np.sin((lon_b - lon_a) / 2) ** 2
+    c = 2 * np.arcsin(np.sqrt(a))
+
+    distance = R * c
+    duration = distance / (40000 / 3600)
+    return distance, duration
+
+
 def retry_api_call(max_retries=3, backoff_factor=0.5):
     def decorator(func):
         @wraps(func)

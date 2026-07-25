@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from core.shared import EntityPool, Graph, RelationCompleter, RoutingState
+from core.shared import EntityPool, Graph, RelationCompleter, RoutingState, Stop
 from tests.conftest import make_jobs, make_route, make_vehicles
 
 
@@ -20,8 +20,8 @@ def build_graph(cpu_config, num_jobs=4, num_vehicles=2, stops=2, unassigned=2):
 def test_node_feature_shapes(cpu_config):
     data, jobs, vehicles, _ = build_graph(cpu_config)
 
-    assert data["job"].x.shape == (len(jobs), 9)
-    assert data["vehicle"].x.shape == (len(vehicles), 9)
+    assert data["job"].x.shape == (len(jobs), cpu_config.model.job_input_dim)
+    assert data["vehicle"].x.shape == (len(vehicles), cpu_config.model.vehicle_input_dim)
 
 
 def test_all_model_relations_exist(cpu_config):
@@ -79,11 +79,26 @@ def test_vehicle_capacity_and_load_features(cpu_config):
 
     features = data["vehicle"].x
     loaded   = state.routes[0]
+    pickups  = sum(1 for stop in loaded.stops if stop.kind == "pickup")
 
     assert features[0, 5].item() == pytest.approx(vehicles[0].capacity / 10.0)
     assert features[0, 6].item() == pytest.approx(vehicles[0].onboard / vehicles[0].capacity)
-    assert features[0, 7].item() == pytest.approx(len(loaded.job_ids) / vehicles[0].capacity)
+    assert features[0, 7].item() == pytest.approx(len(loaded.job_ids) / 10.0)
+    assert features[0, 8].item() == pytest.approx((vehicles[0].onboard + pickups) / vehicles[0].capacity)
     assert features[1, 7].item() == 0.0
+
+
+def test_vehicle_capacity_feature_counts_planned_pickups(cpu_config):
+    jobs     = make_jobs(2, kind="repossession")
+    vehicles = make_vehicles(1)
+    route    = make_route(vehicles[0], jobs)
+    for stop in route.stops:
+        stop.kind = "pickup"
+
+    state = RoutingState(routes=[route], unassigned_ids=set())
+    data  = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
+
+    assert data["vehicle"].x[0, 8].item() == pytest.approx(2 / vehicles[0].capacity)
 
 
 def test_graph_is_fully_on_cpu(cpu_config):
@@ -117,9 +132,34 @@ def test_single_job_single_vehicle_graph(cpu_config):
 
     data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
 
-    assert data["job"].x.shape == (1, 9)
-    assert data["vehicle"].x.shape == (1, 9)
+    assert data["job"].x.shape == (1, cpu_config.model.job_input_dim)
+    assert data["vehicle"].x.shape == (1, cpu_config.model.vehicle_input_dim)
     assert data[("job", "job_vehicle_proximity", "vehicle")].edge_index.shape[1] == 1
+
+
+def test_empty_job_pool_produces_typed_empty_features(cpu_config):
+    vehicles = make_vehicles(2)
+    state    = RoutingState(routes=[], unassigned_ids=set())
+
+    data = Graph(cpu_config).build(EntityPool([]), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
+
+    assert data["job"].x.shape == (0, cpu_config.model.job_input_dim)
+    assert data["vehicle"].x.shape == (len(vehicles), cpu_config.model.vehicle_input_dim)
+
+
+def test_depot_delivery_stops_are_not_treated_as_job_stops(cpu_config):
+    jobs     = make_jobs(2, kind="repossession")
+    vehicles = make_vehicles(1)
+    route    = make_route(vehicles[0], jobs)
+    route.stops[0].kind = "pickup"
+    route.stops[1].kind = "pickup"
+    route.stops.insert(1, Stop(job_id=jobs[0].id, location=(-46.63, -23.55), kind="delivery", service=120))
+
+    state = RoutingState(routes=[route], unassigned_ids=set())
+    data  = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
+
+    assert data[("job", "job_sequence", "job")].edge_index.shape[1] == 2
+    assert data[("vehicle", "vehicle_assigned", "job")].edge_index.shape[1] == 2
 
 
 def test_edge_attributes_are_finite_and_flagged(cpu_config):
@@ -144,10 +184,14 @@ def test_assigned_proximity_edge_flags_owner_vehicle(cpu_config):
 
 
 def test_mappings_expose_nodes_and_edge_type_ids(cpu_config):
-    graph_builder = Graph(cpu_config)
-    data          = build_graph(cpu_config)[0]
+    jobs     = make_jobs(4)
+    vehicles = make_vehicles(2)
+    state    = RoutingState(routes=[make_route(vehicles[0], jobs[:2])], unassigned_ids={job.id for job in jobs[2:]})
 
-    mappings = data.mappings
+    graph_builder = Graph(cpu_config)
+    graph_builder.build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
+
+    mappings = graph_builder.mappings()
 
     assert set(mappings.keys()) == {"index_to_node", "edge_type_ids"}
     assert mappings["edge_type_ids"] == graph_builder.edge_names
@@ -158,11 +202,11 @@ def test_relation_completer_fills_absent_relations_with_empty_tensors(cpu_config
     from torch_geometric.data import HeteroData
 
     data      = HeteroData()
-    data["job"].x     = torch.zeros((2, 9))
-    data["vehicle"].x = torch.zeros((1, 9))
+    data["job"].x     = torch.zeros((2, cpu_config.model.job_input_dim))
+    data["vehicle"].x = torch.zeros((1, cpu_config.model.vehicle_input_dim))
 
     completed = RelationCompleter(cpu_config).build(data)
 
     for relation in RelationCompleter.required_relations:
         assert completed[relation].edge_index.shape == (2, 0)
-        assert completed[relation].edge_attr.shape == (0, 4)
+        assert completed[relation].edge_attr.shape == (0, cpu_config.model.edge_attr_dim)

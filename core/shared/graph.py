@@ -4,7 +4,7 @@ from collections import defaultdict
 import torch
 from torch_geometric.data import HeteroData # type: ignore
 
-from tools.auxiliary import haversine_distance
+from tools.auxiliary import haversine_distance, haversine_matrix
 
 
 class NodeBuilder:
@@ -12,7 +12,8 @@ class NodeBuilder:
         self.graph = graph
 
     def _vehicle_nodes(self):
-        load_by_vehicle_id = {route.vehicle_id: len(route.job_ids) for route in self.graph.state.routes}
+        planned_jobs_by_vehicle_id    = {route.vehicle_id: len(route.job_ids) for route in self.graph.state.routes}
+        planned_pickups_by_vehicle_id = {route.vehicle_id: sum(1 for stop in route.stops if stop.kind == "pickup") for route in self.graph.state.routes}
 
         for vehicle in self.graph.vehicles:
             depot_m, _ = haversine_distance(vehicle.start[0], vehicle.start[1], self.graph.depot[0], self.graph.depot[1])
@@ -24,7 +25,8 @@ class NodeBuilder:
                 "return_to_depot" : bool(vehicle.return_to_depot),
                 "capacity"        : int(vehicle.capacity),
                 "onboard"         : int(vehicle.onboard),
-                "load"            : int(load_by_vehicle_id.get(vehicle.id, 0)),
+                "planned_jobs"    : int(planned_jobs_by_vehicle_id.get(vehicle.id, 0)),
+                "planned_pickups" : int(planned_pickups_by_vehicle_id.get(vehicle.id, 0)),
                 "depot_distance"  : float(depot_m),
             }
 
@@ -81,9 +83,14 @@ class EdgeBuilder:
     def __init__(self, graph):
         self.graph = graph
 
+    def _visited_stops(self, route):
+        return [stop for stop in route.stops if stop.kind in ("job", "pickup")]
+
     def _job_sequence(self, routes):
         for route in routes:
-            for current_stop, next_stop in zip(route.stops, route.stops[1:]):
+            stops = self._visited_stops(route)
+
+            for current_stop, next_stop in zip(stops, stops[1:]):
                 current_index = self.graph.node_index_by_key.get(("job", f"job:{current_stop.job_id}"))
                 next_index    = self.graph.node_index_by_key.get(("job", f"job:{next_stop.job_id}"))
                 if current_index is None or next_index is None:
@@ -100,7 +107,7 @@ class EdgeBuilder:
 
             vehicle_node = self.graph.nodes[vehicle_index]
 
-            for stop in route.stops:
+            for stop in self._visited_stops(route):
                 job_index = self.graph.node_index_by_key.get(("job", f"job:{stop.job_id}"))
                 if job_index is None:
                     continue
@@ -109,18 +116,32 @@ class EdgeBuilder:
                 self._add_edge(vehicle_index, job_index, dist_m, dur_s, etype=1, is_same_route=1.0, is_assigned=1.0, is_bidirectional=True)
 
     def _job_vehicle_proximity(self, job_nodes, vehicle_nodes):
-        for job_node in job_nodes:
+        distances, durations = haversine_matrix(
+            [node["longitude"] for node in job_nodes],
+            [node["latitude"] for node in job_nodes],
+            [node["longitude"] for node in vehicle_nodes],
+            [node["latitude"] for node in vehicle_nodes],
+        )
+
+        for job_position, job_node in enumerate(job_nodes):
             assigned_vehicle_id = job_node["metadata"]["assigned_vehicle_id"]
 
-            for vehicle_node in vehicle_nodes:
-                dist_m, dur_s = haversine_distance(job_node["longitude"], job_node["latitude"], vehicle_node["longitude"], vehicle_node["latitude"])
-
+            for vehicle_position, vehicle_node in enumerate(vehicle_nodes):
                 is_assigned_flag = float(
                     assigned_vehicle_id is not None
                     and int(vehicle_node["metadata"]["vehicle_id"]) == int(assigned_vehicle_id)
                 )
 
-                self._add_edge(job_node["index"], vehicle_node["index"], dist_m, dur_s, etype=2, is_same_route=0.0, is_assigned=is_assigned_flag, is_bidirectional=True)
+                self._add_edge(
+                    job_node["index"],
+                    vehicle_node["index"],
+                    distances[job_position][vehicle_position],
+                    durations[job_position][vehicle_position],
+                    etype=2,
+                    is_same_route=0.0,
+                    is_assigned=is_assigned_flag,
+                    is_bidirectional=True,
+                )
 
     def _add_edge(self, src_idx, dst_idx, distance_meters, duration_seconds, *, etype, is_same_route, is_assigned, is_bidirectional=False):
         distance_km = max(float(distance_meters) / 1000.0, 0.0)
@@ -163,6 +184,9 @@ class Graph:
     }
 
     def __init__(self, config):
+        self.job_input_dim     = config.model.job_input_dim
+        self.vehicle_input_dim = config.model.vehicle_input_dim
+
         self.jobs     = []
         self.vehicles = []
         self.state    = None
@@ -240,7 +264,8 @@ class Graph:
                     float(metadata["return_to_depot"]),
                     float(metadata["capacity"]) / 10.0,
                     float(metadata["onboard"]) / max(float(metadata["capacity"]), 1.0),
-                    float(metadata["load"]) / max(float(metadata["capacity"]), 1.0),
+                    float(metadata["planned_jobs"]) / 10.0,
+                    float(metadata["onboard"] + metadata["planned_pickups"]) / max(float(metadata["capacity"]), 1.0),
                     float(metadata["depot_distance"]) / 50_000.0,
                 ]
             )
@@ -276,8 +301,8 @@ class Graph:
         job_features     = self._job_features(lon_mean, lon_std, lat_mean, lat_std, global_to_local)
         vehicle_features = self._vehicle_features(lon_mean, lon_std, lat_mean, lat_std, global_to_local)
 
-        data["job"].x     = torch.tensor(job_features, dtype=torch.float32) if job_features else torch.empty((0, 7), dtype=torch.float32)
-        data["vehicle"].x = torch.tensor(vehicle_features, dtype=torch.float32) if vehicle_features else torch.empty((0, 7), dtype=torch.float32)
+        data["job"].x     = torch.tensor(job_features, dtype=torch.float32) if job_features else torch.empty((0, self.job_input_dim), dtype=torch.float32)
+        data["vehicle"].x = torch.tensor(vehicle_features, dtype=torch.float32) if vehicle_features else torch.empty((0, self.vehicle_input_dim), dtype=torch.float32)
 
         for (src_type, relation_name, dst_type), buffer in self._edge_buffers(global_to_local).items():
             data[(src_type, relation_name, dst_type)].edge_index = torch.tensor([buffer["src"], buffer["dst"]], dtype=torch.long)
@@ -312,10 +337,7 @@ class Graph:
         self.node_builder.build()
         self.edge_builder.build()
 
-        data = self.relation_completer.build(self._pack_data())
-        data.mappings = self.mappings()
-
-        return data
+        return self.relation_completer.build(self._pack_data())
 
 
 class RelationCompleter:
@@ -336,7 +358,7 @@ class RelationCompleter:
             if "edge_index" not in store:
                 store.edge_index = torch.empty((2, 0), dtype=torch.long)
             if "edge_attr" not in store:
-                store.edge_attr = torch.empty((0, 4), dtype=torch.float32)
+                store.edge_attr = torch.empty((0, self.config.model.edge_attr_dim), dtype=torch.float32)
 
     def build(self, data: HeteroData) -> HeteroData:
         self._ensure_relations(data)

@@ -92,7 +92,6 @@ class EpisodeRollout:
         self.driver        = EpisodeDriver(environment, config)
 
     def _forward_action(self, graph, mask_info):
-        graph = graph.to(self.device)
         with torch.no_grad():
             ppo_output = self.policy.select_action(graph, mask_info)
         return graph, ppo_output
@@ -119,7 +118,7 @@ class EpisodeRollout:
 
         tail_graph, _ = self.environment.observe()
         with torch.no_grad():
-            _, _, _, tail_value = self.policy(tail_graph.to(self.device))
+            _, _, _, tail_value = self.policy(tail_graph)
         experiences[-1]["bootstrap_value"] = float(tail_value.item())
 
     def rollout(self, episode_index):
