@@ -108,7 +108,7 @@ def test_ppo_config_defaults():
     assert config.gamma == 0.99
     assert config.gae_lambda == 0.95
     assert config.clip_ratio == 0.2
-    assert config.value_clip_ratio == 0.2
+    assert not hasattr(config, "value_clip_ratio")
     assert config.value_loss_coef == 0.5
     assert config.gradient_clip_max_norm == 3.0
     assert config.kl_divergence_threshold == 0.015

@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from core.shared import EntityPool, Graph, RoutingState
@@ -71,14 +72,13 @@ def test_add_records_old_logits_when_present(cpu_config):
     assert len(memory.old_job_logits) == 1
 
 
-def test_add_skips_old_logits_when_absent(cpu_config):
+def test_add_rejects_missing_old_logits(cpu_config):
     memory = PPOMemory()
 
-    add_one(memory, build_graph(cpu_config), with_old_logits=False)
+    with pytest.raises(ValueError, match="old_operator_logits"):
+        add_one(memory, build_graph(cpu_config), with_old_logits=False)
 
-    assert memory.old_operator_logits == []
-    assert memory.old_vehicle_logits == []
-    assert memory.old_job_logits == []
+    assert memory.graphs == []
 
 
 def test_clear_resets_all_buffers(cpu_config):

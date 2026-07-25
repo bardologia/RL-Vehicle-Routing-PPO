@@ -7,7 +7,6 @@ class PPOConfig:
     gae_lambda : float = 0.95
 
     clip_ratio              : float = 0.2
-    value_clip_ratio        : float = 0.2
     value_loss_coef         : float = 0.5
     gradient_clip_max_norm  : float = 3.0
     kl_divergence_threshold : float = 0.015

@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from core.shared import ActionMasker
@@ -83,7 +84,7 @@ def test_compute_returns_zero_kl_for_unchanged_policy(cpu_config, seeded):
     assert entropy["total_entropy"].item() > 0.0
 
 
-def test_compute_mean_kl_is_total_over_three(cpu_config, seeded):
+def test_compute_reports_the_joint_kl_untouched(cpu_config, seeded):
     _, distribution = build_distribution(cpu_config)
 
     operator_logits = torch.randn(3)
@@ -92,7 +93,8 @@ def test_compute_mean_kl_is_total_over_three(cpu_config, seeded):
 
     _, kl = distribution.compute(operator_logits, vehicle_logits, job_logits, operator_logits + torch.randn(3), vehicle_logits + torch.randn(3, 6), job_logits + torch.randn(3, 6, 20), MASK_INFO)
 
-    assert kl["mean_kl"] == kl["total_kl"] / 3
+    assert kl["mean_kl"] == kl["total_kl"]
+    assert kl["total_kl"] == pytest.approx(kl["operator_kl"] + kl["vehicle_kl_exp"] + kl["job_kl_exp"])
 
 
 def test_compute_kl_grows_with_policy_change(cpu_config, seeded):

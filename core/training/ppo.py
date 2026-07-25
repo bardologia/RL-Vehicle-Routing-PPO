@@ -65,6 +65,10 @@ class ActionDistribution:
         log_probs = torch.log_softmax(logits, dim=-1)
         return -(log_probs.exp() * log_probs).sum(dim=-1)
 
+    def _normalized_entropy(self, masked_logits):
+        options = (masked_logits > self.large_negative_value / 2).sum(dim=-1).clamp(min=2).float()
+        return self._entropy(masked_logits) / torch.log(options)
+
     def kl_terms(
         self,
         old_operator_logits,
@@ -131,9 +135,9 @@ class ActionDistribution:
         new_vehicle_probs  = torch.softmax(new_vehicle_masked, dim=-1)
         joint_new          = new_operator_probs.unsqueeze(-1) * new_vehicle_probs
 
-        operator_entropy    = self._entropy(masked_new_operator_logits)
-        vehicle_entropy_exp = (new_operator_probs * self._entropy(new_vehicle_masked)).sum()
-        job_entropy_exp     = (joint_new * self._entropy(new_job_masked)).sum()
+        operator_entropy    = self._normalized_entropy(masked_new_operator_logits)
+        vehicle_entropy_exp = (new_operator_probs * self._normalized_entropy(new_vehicle_masked)).sum()
+        job_entropy_exp     = (joint_new * self._normalized_entropy(new_job_masked)).sum()
 
         total_entropy = operator_entropy + vehicle_entropy_exp + job_entropy_exp
         entropy = {
@@ -149,7 +153,7 @@ class ActionDistribution:
             "operator_kl"    : float(kl_tensors["operator_kl"].item()),
             "vehicle_kl_exp" : float(kl_tensors["vehicle_kl_exp"].item()),
             "job_kl_exp"     : float(kl_tensors["job_kl_exp"].item()),
-            "mean_kl"        : float(total_kl.item()) / 3
+            "mean_kl"        : float(total_kl.item()),
         }
 
         return entropy, kl
@@ -194,11 +198,15 @@ class PPOMemory:
         state_value,
         mask_info,
         done,
+        old_operator_logits,
+        old_vehicle_logits,
+        old_job_logits,
         bootstrap_value=0.0,
-        old_operator_logits=None,
-        old_vehicle_logits=None,
-        old_job_logits=None,
     ):
+        for name, logits in (("old_operator_logits", old_operator_logits), ("old_vehicle_logits", old_vehicle_logits), ("old_job_logits", old_job_logits)):
+            if logits is None:
+                raise ValueError(f"PPOMemory.add requires {name}; the sample buffers must stay aligned")
+
         self.graphs.append(self._clone_detached(graph))
         self.actions.append(action)
 
@@ -212,14 +220,9 @@ class PPOMemory:
         self.dones.append(done)
         self.bootstrap_values.append(float(bootstrap_value))
 
-        if old_operator_logits is not None:
-            self.old_operator_logits.append(old_operator_logits.detach().cpu().clone())
-
-        if old_vehicle_logits is not None:
-            self.old_vehicle_logits.append(old_vehicle_logits.detach().cpu().clone())
-
-        if old_job_logits is not None:
-            self.old_job_logits.append(old_job_logits.detach().cpu().clone())
+        self.old_operator_logits.append(old_operator_logits.detach().cpu().clone())
+        self.old_vehicle_logits.append(old_vehicle_logits.detach().cpu().clone())
+        self.old_job_logits.append(old_job_logits.detach().cpu().clone())
 
     def clear(self):
         self.__init__()
@@ -395,17 +398,11 @@ class PPO(nn.Module):
         return policy_loss_dict
 
     def _value_loss(self, old_value, pred_state_value, target_return):
-        clip_ratio         = self.config.ppo.value_clip_ratio
-        value_pred_clipped = old_value + torch.clamp(pred_state_value - old_value, -clip_ratio, clip_ratio)
-
-        val_loss_unclip = (target_return - pred_state_value).pow(2)
-        val_loss_clip   = (target_return - value_pred_clipped).pow(2)
-        value_loss      = 0.5 * torch.max(val_loss_unclip, val_loss_clip)
+        value_loss = 0.5 * (target_return - pred_state_value).pow(2)
 
         value_loss_dict = {
-            "value_loss_unclipped" : val_loss_unclip,
-            "value_loss_clipped"   : val_loss_clip,
-            "value_loss"           : value_loss,
+            "value_error" : target_return - pred_state_value,
+            "value_loss"  : value_loss,
         }
 
         return value_loss_dict
