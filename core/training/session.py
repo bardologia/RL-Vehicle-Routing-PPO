@@ -27,7 +27,15 @@ class RunDirectory:
             return path
 
         run_name = self.config.io.run_name or datetime.now().strftime("run_%Y%m%d-%H%M%S")
-        return os.path.join(self.runs_root, run_name)
+        path     = os.path.join(self.runs_root, run_name)
+
+        if run_name and run_name == self.config.io.init_from_run:
+            raise ValueError(f"io.run_name '{run_name}' is also io.init_from_run; the run would overwrite the checkpoint it starts from")
+
+        if os.path.isdir(path):
+            raise FileExistsError(f"Run directory already exists at {path}; choose another io.run_name or set io.resume_from_run to continue it")
+
+        return path
 
     def _open_writer(self):
         os.makedirs(self.path, exist_ok=True)
@@ -67,7 +75,7 @@ class TrainingPipeline:
         self.session = RunDirectory(self.config, self.runs_root).prepare()
 
     def _build_logger(self):
-        self.logger = Logger(log_dir=self.config.io.logdir, name="training", level="INFO")
+        self.logger = Logger(log_dir=self.config.io.logdir, name="training", level="INFO", append=bool(self.config.io.resume_from_run))
 
     def _build_trainer(self):
         self.trainer = Trainer(config=self.config, logger=self.logger, tracker=self.session.tracker)

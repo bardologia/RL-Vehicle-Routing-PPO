@@ -64,6 +64,7 @@ def test_trainer_state_snapshot_carries_all_counters(cpu_config, seeded, fake_vr
     assert state["ppo_update_index"] == 1
     assert "lr_scheduler_step" in state
     assert "entropy_scheduler_step" in state
+    assert set(state["telemetry_counters"]) == {"global_batch_step", "global_sample_step", "global_epoch_step", "global_update_step"}
 
 
 def test_trainer_resume_restores_counters_from_checkpoint(cpu_config, seeded, fake_vroom, tmp_path):
@@ -77,6 +78,8 @@ def test_trainer_resume_restores_counters_from_checkpoint(cpu_config, seeded, fa
     first.ppo_update_index    = 7
     first.ppo.lr_scheduler.set_step(11)
     first.ppo.entropy_scheduler.set_step(13)
+    first.ppo.global_batch_step  = 17
+    first.ppo.global_sample_step = 19
     first.checkpoint.save(first.ppo, first)
 
     cpu_config.io.resume_from_run = "run_x"
@@ -88,3 +91,25 @@ def test_trainer_resume_restores_counters_from_checkpoint(cpu_config, seeded, fa
     assert second.ppo_update_index == 7
     assert second.ppo.lr_scheduler.current_step == 11
     assert second.ppo.entropy_scheduler.current_step == 13
+    assert second.ppo.global_batch_step == 17
+    assert second.ppo.global_sample_step == 19
+
+
+def test_fresh_run_refuses_to_reuse_an_existing_directory(cpu_config, tmp_path):
+    from core.training.session import RunDirectory
+
+    (tmp_path / "taken").mkdir()
+    cpu_config.io.run_name = "taken"
+
+    with pytest.raises(FileExistsError):
+        RunDirectory(cpu_config, str(tmp_path)).prepare()
+
+
+def test_fresh_run_refuses_to_overwrite_its_own_starting_point(cpu_config, tmp_path):
+    from core.training.session import RunDirectory
+
+    cpu_config.io.run_name      = "bc"
+    cpu_config.io.init_from_run = "bc"
+
+    with pytest.raises(ValueError, match="init_from_run"):
+        RunDirectory(cpu_config, str(tmp_path)).prepare()

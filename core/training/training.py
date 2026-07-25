@@ -1,4 +1,5 @@
 import gc
+import itertools
 import math
 import os
 
@@ -46,6 +47,9 @@ class Checkpoint:
         trainer.global_step_counter = training_state["global_step_counter"]
         trainer.episode_index       = training_state["episode_index"]
         trainer.ppo_update_index    = training_state["ppo_update_index"]
+
+        for name, value in training_state["telemetry_counters"].items():
+            setattr(ppo, name, int(value))
 
         self.logger.subsection(f"Restored Global Step      : {trainer.global_step_counter}")
         self.logger.subsection(f"Restored Episode Index    : {trainer.episode_index}")
@@ -124,7 +128,8 @@ class EpisodeRollout:
 
     def rollout(self, episode_index):
         experiences    = []
-        operator_stats = {'count': {i: 0 for i in range(3)}, 'rewards': {i: [] for i in range(3)}}
+        operators      = range(self.config.model.num_operators)
+        operator_stats = {'count': {i: 0 for i in operators}, 'rewards': {i: [] for i in operators}}
         step_payloads  = []
 
         for step in self.driver.episode(self.scenario_seed + episode_index):
@@ -161,7 +166,8 @@ class Trainer:
         self.telemetry  = PPOTelemetry(self.tracker, config)
         self.checkpoint = Checkpoint(config, logger=self.logger)
 
-        self.resource_monitor = ResourceMonitor(config.monitor, logger=self.logger, tracker=self.tracker)
+        self.monitor_samples  = itertools.count()
+        self.resource_monitor = ResourceMonitor(config.monitor, logger=self.logger, tracker=self.tracker, step_getter=lambda: next(self.monitor_samples))
 
         vroom.logger = self.logger
 
@@ -297,10 +303,15 @@ class Trainer:
 
         self.logger.subsection(f"Anchor KL enabled: {ppo_config.anchor_kl_start} -> {ppo_config.anchor_kl_end} over {anneal_steps} steps")
 
+    def _using_cuda(self):
+        return self.device.startswith("cuda") and torch.cuda.is_available()
+
     def _clear_memory(self):
         gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
+
+        if self._using_cuda():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
     def state(self):
         state = {
@@ -309,6 +320,12 @@ class Trainer:
             "ppo_update_index"       : self.ppo_update_index,
             "lr_scheduler_step"      : self.ppo.lr_scheduler.current_step,
             "entropy_scheduler_step" : self.ppo.entropy_scheduler.current_step,
+            "telemetry_counters"     : {
+                "global_batch_step"  : self.ppo.global_batch_step,
+                "global_sample_step" : self.ppo.global_sample_step,
+                "global_epoch_step"  : self.ppo.global_epoch_step,
+                "global_update_step" : self.ppo.global_update_step,
+            },
         }
 
         if self.ppo.reference_policy is not None:
@@ -331,12 +348,10 @@ class Trainer:
         episodes_processed = 0
 
         for experiences, operator_stats, step_payloads, execution_totals in episodes:
-            for rewards, costs, value in step_payloads:
-                self.telemetry.step(rewards, costs, value, self.global_step_counter)
-
             episode_reward = sum(experience['reward'] for experience in experiences)
 
-            for experience in experiences:
+            for experience, (rewards, costs, value) in zip(experiences, step_payloads):
+                self.telemetry.step(rewards, costs, value, self.global_step_counter)
                 self.ppo.memory.add(**experience)
                 self.global_step_counter += 1
 
@@ -366,9 +381,11 @@ class Trainer:
     def train(self):
         self.ppo.train()
         self.logger.section("[Training Start]")
-        self.logger.subsection(f"Device Name: {torch.cuda.get_device_name(0)}")
-        self.logger.subsection(f"Total Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
-        self.logger.subsection(f"CUDA Version: {torch.version.cuda} \n")
+
+        if self._using_cuda():
+            self.logger.subsection(f"Device Name: {torch.cuda.get_device_name(0)}")
+            self.logger.subsection(f"Total Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+            self.logger.subsection(f"CUDA Version: {torch.version.cuda} \n")
 
         self.logger.section("[Output Directory]")
         self.logger.subsection(f"Log Directory: {self.config.io.logdir} \n")

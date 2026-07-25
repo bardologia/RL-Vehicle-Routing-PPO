@@ -15,9 +15,9 @@ class LearningRate:
     lr_warmup_fraction : float = 0.05
     lr_decay_fraction  : float = 1.0
 
+
 @dataclass
 class Entropy:
-    entropy_coef         : float = 0.02
     entropy_start           : float = 0.02
     entropy_end             : float = 0.001
     entropy_anneal_fraction : float = 0.6

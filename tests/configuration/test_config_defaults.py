@@ -1,4 +1,3 @@
-from configuration.device      import DeviceConfig
 from configuration.environment import EnvironmentConfig
 from configuration.evaluation  import EvaluationConfig
 from configuration.io          import IOConfig
@@ -11,12 +10,6 @@ from configuration.reward      import RewardConfig
 from configuration.service     import ServiceConfig
 from configuration.telemetry   import TelemetryConfig
 from configuration.training    import TrainingConfig
-
-
-def test_device_config_defaults():
-    config = DeviceConfig()
-
-    assert config.device == "cuda"
 
 
 def test_environment_config_defaults():
@@ -66,7 +59,6 @@ def test_learning_rate_defaults():
 def test_entropy_defaults():
     config = Entropy()
 
-    assert config.entropy_coef == 0.02
     assert config.entropy_start == 0.02
     assert config.entropy_end == 0.001
     assert config.entropy_anneal_fraction == 0.6
@@ -178,8 +170,6 @@ def test_training_config_defaults():
     assert config.episodes_per_update == 1024
     assert config.minibatch_size == 128
     assert config.num_epochs == 5
-    assert config.print_frequency == 5
-    assert config.log_episode_frequency == 5
+    assert config.expected_edits_per_round == 2.0
     assert config.use_mixed_precision is False
     assert config.large_negative_value == -1e8
-    assert config.verbose is False

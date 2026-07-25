@@ -54,7 +54,7 @@ class ScriptCatalog:
             "essentials" : ["io.run_name", "training.num_updates", "io.init_from_run"],
             "sections"   : [
                 {"title": "Run",            "fields": ["io.run_name", "io.runs_dir", "io.resume_from_run", "io.init_from_run", "io.checkpoint_filename"]},
-                {"title": "Training",       "fields": ["training.device", "training.num_updates", "training.episodes_per_update", "env.scenario_seed", "training.max_disruptions_per_episode", "training.max_edits_per_round", "training.minibatch_size", "training.num_epochs", "training.use_mixed_precision", "training.print_frequency", "training.log_episode_frequency", "training.verbose"]},
+                {"title": "Training",       "fields": ["training.device", "training.num_updates", "training.episodes_per_update", "env.scenario_seed", "training.max_disruptions_per_episode", "training.max_edits_per_round", "training.minibatch_size", "training.num_epochs", "training.expected_edits_per_round", "training.use_mixed_precision"]},
                 {"title": "Learning rates", "fields": ["lr.lr_operator_actor", "lr.lr_vehicle_actor", "lr.lr_job_actor", "lr.lr_critic", "lr.lr_embedding", "lr.lr_operator_embedding", "lr.lr_min", "lr.lr_warmup_fraction", "lr.lr_decay_fraction"]},
                 {"title": "Entropy",        "fields": ["entropy.entropy_start", "entropy.entropy_end", "entropy.entropy_anneal_fraction"]},
                 {"title": "PPO",            "fields": ["ppo.gamma", "ppo.gae_lambda", "ppo.clip_ratio", "ppo.value_loss_coef", "ppo.gradient_clip_max_norm", "ppo.kl_divergence_threshold", "ppo.anchor_kl_start", "ppo.anchor_kl_end", "ppo.anchor_anneal_fraction"]},

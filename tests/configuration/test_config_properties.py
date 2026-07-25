@@ -1,14 +1,7 @@
 import requests
-import torch
 
-from configuration.device      import DeviceConfig
 from configuration.environment import EnvironmentConfig
 from configuration.service     import ServiceConfig
-
-
-def test_device_torch_device_reflects_string():
-    assert DeviceConfig(device="cpu").torch_device == torch.device("cpu")
-    assert DeviceConfig(device="cuda").torch_device == torch.device("cuda")
 
 
 def test_outlier_probability_is_reciprocal_of_frequency():

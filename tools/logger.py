@@ -43,7 +43,7 @@ class Logger:
         'CRITICAL' : logging.CRITICAL,
     }
 
-    def __init__(self, log_dir: Optional[str] = None, name: str = "experiment", level: str = "INFO"):
+    def __init__(self, log_dir: Optional[str] = None, name: str = "experiment", level: str = "INFO", append: bool = False):
         self.log_dir    = log_dir
         self.name       = name
         self.start_time = datetime.now()
@@ -77,7 +77,7 @@ class Logger:
         self._file_handler: Optional[logging.FileHandler] = None
         if log_dir:
             file_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-            file_handler   = logging.FileHandler(os.path.join(log_dir, f'{name}.log'), mode='w', encoding='utf-8')
+            file_handler   = logging.FileHandler(os.path.join(log_dir, f'{name}.log'), mode='a' if append else 'w', encoding='utf-8')
             file_handler.setFormatter(file_formatter)
             file_handler.setLevel(log_level)
             self.logger.addHandler(file_handler)

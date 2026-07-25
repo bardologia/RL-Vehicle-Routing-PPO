@@ -1,7 +1,6 @@
 import configuration
 
 from configuration import Config
-from configuration.device      import DeviceConfig
 from configuration.environment import EnvironmentConfig
 from configuration.evaluation  import EvaluationConfig
 from configuration.io          import IOConfig
@@ -31,7 +30,6 @@ def test_config_assembles_every_section_with_correct_type():
     assert isinstance(config.pretrain, PretrainConfig)
     assert isinstance(config.evaluation, EvaluationConfig)
     assert isinstance(config.telemetry, TelemetryConfig)
-    assert isinstance(config.device, DeviceConfig)
     assert isinstance(config.monitor, MonitorConfig)
 
 
