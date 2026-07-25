@@ -82,6 +82,11 @@ class Policy(nn.Module):
 
         return embeddings, context, operator_logits, state_value
 
+    @staticmethod
+    def _split_by_graph(embedding, ptr):
+        sizes = (ptr[1:] - ptr[:-1]).tolist()
+        return torch.split(embedding, sizes)
+
     def forward_batch(self, batch_graph):
         batch_graph = batch_graph.to(self.device)
 
@@ -90,16 +95,16 @@ class Policy(nn.Module):
             operator_logits     = self.operator_actor(context)
             state_values        = self.critic(context).squeeze(-1)
 
-        job_batch     = batch_graph["job"].batch
-        vehicle_batch = batch_graph["vehicle"].batch
+        job_chunks     = self._split_by_graph(embeddings["job"], batch_graph["job"].ptr)
+        vehicle_chunks = self._split_by_graph(embeddings["vehicle"], batch_graph["vehicle"].ptr)
 
         per_sample = []
         for graph_index in range(batch_graph.num_graphs):
             per_sample.append(
                 {
                     "embeddings" : {
-                        "job"     : embeddings["job"][job_batch == graph_index],
-                        "vehicle" : embeddings["vehicle"][vehicle_batch == graph_index],
+                        "job"     : job_chunks[graph_index],
+                        "vehicle" : vehicle_chunks[graph_index],
                     },
                     "context"         : context[graph_index],
                     "operator_logits" : operator_logits[graph_index],

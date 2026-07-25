@@ -103,7 +103,7 @@ class EpisodeRollout:
 
     def _build_experience(self, graph, mask_info, reward, ppo_output):
         return {
-            "graph"               : graph,
+            "graph"               : graph.cpu(),
             "mask_info"           : mask_info,
             "reward"              : float(reward),
             "action"              : ppo_output["action"],

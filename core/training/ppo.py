@@ -147,13 +147,13 @@ class ActionDistribution:
             "job_entropy_exp"     : job_entropy_exp,
         }
 
-        total_kl = kl_tensors["total_kl"]
+        total_kl = float(kl_tensors["total_kl"].item())
         kl = {
-            "total_kl"       : float(total_kl.item()),
-            "operator_kl"    : float(kl_tensors["operator_kl"].item()),
-            "vehicle_kl_exp" : float(kl_tensors["vehicle_kl_exp"].item()),
-            "job_kl_exp"     : float(kl_tensors["job_kl_exp"].item()),
-            "mean_kl"        : float(total_kl.item()),
+            "total_kl"       : total_kl,
+            "operator_kl"    : kl_tensors["operator_kl"].detach(),
+            "vehicle_kl_exp" : kl_tensors["vehicle_kl_exp"].detach(),
+            "job_kl_exp"     : kl_tensors["job_kl_exp"].detach(),
+            "mean_kl"        : total_kl,
         }
 
         return entropy, kl
@@ -274,25 +274,31 @@ class PPO(nn.Module):
         }
 
     def _gae(self, rewards, values, dones, bootstrap_values):
-        advantages = torch.zeros_like(rewards)
         gamma   = self.config.ppo.gamma
         lambda_ = self.config.ppo.gae_lambda
 
+        host_rewards   = [float(value) for value in rewards]
+        host_values    = [float(value) for value in values]
+        host_dones     = [float(value) for value in dones]
+        host_bootstrap = [float(value) for value in bootstrap_values]
+
+        advantages     = [0.0] * len(host_rewards)
         last_advantage = 0.0
-        for t in reversed(range(len(rewards))):
-            if dones[t] > 0.5:
-                next_value     = bootstrap_values[t]
+
+        for t in reversed(range(len(host_rewards))):
+            if host_dones[t] > 0.5:
+                next_value     = host_bootstrap[t]
                 next_advantage = 0.0
             else:
-                next_value     = values[t + 1]
+                next_value     = host_values[t + 1]
                 next_advantage = last_advantage
 
-            delta          = rewards[t] + gamma * next_value - values[t]
+            delta          = host_rewards[t] + gamma * next_value - host_values[t]
             advantages[t]  = delta + gamma * lambda_ * next_advantage
             last_advantage = advantages[t]
 
-        returns = advantages + values
-        return advantages, returns
+        advantage_tensor = torch.tensor(advantages, dtype=rewards.dtype, device=rewards.device)
+        return advantage_tensor, advantage_tensor + values
 
     def _prepare_batch(self):
         device                = self.device
@@ -521,8 +527,8 @@ class PPO(nn.Module):
                 value_loss_dict  = value_loss_dict,
                 entropy_dict     = entropy_dict,
                 kl_dict          = kl_dict,
-                entropy_loss     = entropy_loss.item(),
-                total_loss       = total_loss.item(),
+                entropy_loss     = entropy_loss.detach(),
+                total_loss       = total_loss.detach(),
             )
             self.global_sample_step += 1
 
