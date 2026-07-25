@@ -45,7 +45,7 @@ def test_forward_contract_shapes(policy, cpu_config):
 
     assert embeddings["job"].shape == (5, embedding_dim)
     assert embeddings["vehicle"].shape == (3, embedding_dim)
-    assert context.shape == (2 * embedding_dim,)
+    assert context.shape == (2 * embedding_dim + cpu_config.model.context_embedding_dim,)
     assert operator_logits.shape == (cpu_config.model.num_operators,)
     assert state_value.ndim == 0
 

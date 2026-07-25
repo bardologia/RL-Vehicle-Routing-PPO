@@ -27,7 +27,7 @@ class Policy(nn.Module):
         self.num_operators = model.num_operators
 
         embedding_dim = model.policy_embedding_dim
-        context_dim   = 2 * embedding_dim
+        context_dim   = 2 * embedding_dim + model.context_embedding_dim
         operator_dim  = model.operator_embedding_dim
 
         self.graph_embedding    = GNN(model)

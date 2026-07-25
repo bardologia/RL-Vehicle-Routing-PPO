@@ -186,12 +186,16 @@ class Graph:
     def __init__(self, config):
         self.job_input_dim     = config.model.job_input_dim
         self.vehicle_input_dim = config.model.vehicle_input_dim
+        self.max_disruptions   = config.training.max_disruptions_per_episode
+        self.max_edits         = config.training.max_edits_per_round
 
-        self.jobs     = []
-        self.vehicles = []
-        self.state    = None
-        self.depot    = None
-        self.clock    = None
+        self.jobs            = []
+        self.vehicles        = []
+        self.state           = None
+        self.depot           = None
+        self.clock           = None
+        self.round_index     = 0
+        self.edits_remaining = 0
 
         self.nodes             = []
         self.node_index_by_key = {}
@@ -273,6 +277,24 @@ class Graph:
 
         return vehicle_features
 
+    def _context_features(self):
+        num_jobs     = len(self.nodes_by_type["job"])
+        num_vehicles = len(self.nodes_by_type["vehicle"])
+        num_busy     = len({route.vehicle_id for route in self.state.routes})
+
+        return [
+            [
+                float(num_jobs) / 20.0,
+                float(len(self.state.unassigned_ids)) / 20.0,
+                float(num_vehicles) / 5.0,
+                float(max(num_vehicles - num_busy, 0)) / 5.0,
+                float(self.state.cost) / 10_000.0,
+                float(self.clock) / 86_400.0,
+                float(self.round_index) / max(float(self.max_disruptions), 1.0),
+                float(self.edits_remaining) / max(float(self.max_edits), 1.0),
+            ]
+        ]
+
     def _edge_buffers(self, global_to_local):
         edge_buffers = defaultdict(lambda: {"src": [], "dst": [], "attr": []})
         for src_global, dst_global, edge_attr, edge_type in zip(
@@ -303,6 +325,7 @@ class Graph:
 
         data["job"].x     = torch.tensor(job_features, dtype=torch.float32) if job_features else torch.empty((0, self.job_input_dim), dtype=torch.float32)
         data["vehicle"].x = torch.tensor(vehicle_features, dtype=torch.float32) if vehicle_features else torch.empty((0, self.vehicle_input_dim), dtype=torch.float32)
+        data.context      = torch.tensor(self._context_features(), dtype=torch.float32)
 
         for (src_type, relation_name, dst_type), buffer in self._edge_buffers(global_to_local).items():
             data[(src_type, relation_name, dst_type)].edge_index = torch.tensor([buffer["src"], buffer["dst"]], dtype=torch.long)
@@ -326,13 +349,15 @@ class Graph:
             "edge_type_ids": dict(self.edge_names),
         }
 
-    def build(self, jobs, vehicles, state, depot, clock):
+    def build(self, jobs, vehicles, state, depot, clock, round_index=0, edits_remaining=None):
         self._reset()
-        self.jobs     = jobs
-        self.vehicles = vehicles
-        self.state    = state
-        self.depot    = depot
-        self.clock    = clock
+        self.jobs            = jobs
+        self.vehicles        = vehicles
+        self.state           = state
+        self.depot           = depot
+        self.clock           = clock
+        self.round_index     = round_index
+        self.edits_remaining = self.max_edits if edits_remaining is None else edits_remaining
 
         self.node_builder.build()
         self.edge_builder.build()

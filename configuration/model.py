@@ -6,9 +6,11 @@ class ModelConfig:
     job_input_dim     : int = 9
     vehicle_input_dim : int = 10
     edge_attr_dim     : int = 4
+    context_input_dim : int = 8
 
     num_operators          : int = 3
     operator_embedding_dim : int = 32
+    context_embedding_dim  : int = 32
 
     gnn_num_layers : int = 2
 

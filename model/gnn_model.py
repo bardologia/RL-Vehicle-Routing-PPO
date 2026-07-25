@@ -14,6 +14,8 @@ class GNN(nn.Module):
             "vehicle" : nn.Linear(model.vehicle_input_dim, hidden),
         })
 
+        self.context_encoder = nn.Linear(model.context_input_dim, model.context_embedding_dim)
+
         self.convs     = nn.ModuleList()
         self.residuals = nn.ModuleList()
 
@@ -83,6 +85,7 @@ class GNN(nn.Module):
             [
                 global_mean_pool(job_embedding, job_batch, size=batch_size),
                 global_mean_pool(vehicle_embedding, vehicle_batch, size=batch_size),
+                self.activation(self.context_encoder(graph.context)),
             ],
             dim=-1,
         )

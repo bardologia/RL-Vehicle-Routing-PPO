@@ -33,8 +33,9 @@ class EpisodeDriver:
                 self.environment.apply_disruption(self.environment.current_state)
 
             for edit_index in range(self.max_edits):
-                graph, mask_info = self.environment.observe()
-                step             = EpisodeStep(self.environment, round_index, edit_index, graph, mask_info, self.max_edits - edit_index)
+                remaining        = self.max_edits - edit_index
+                graph, mask_info = self.environment.observe(round_index=round_index, edits_remaining=remaining)
+                step             = EpisodeStep(self.environment, round_index, edit_index, graph, mask_info, remaining)
 
                 yield step
 

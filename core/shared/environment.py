@@ -74,11 +74,11 @@ class Environment:
         self.clock         = int(item["clock"])
         self.current_state = RoutingState.from_payload(item["state"])
 
-    def observe(self, state=None):
+    def observe(self, state=None, round_index=0, edits_remaining=None):
         if state is None:
             state = self.current_state
 
-        graph     = self.graph.build(self.jobs, self.vehicles, state, self.depot, self.clock)
+        graph     = self.graph.build(self.jobs, self.vehicles, state, self.depot, self.clock, round_index, edits_remaining)
         mask_info = self.mask_builder.build(self.jobs, self.vehicles, state)
         return graph, mask_info
 

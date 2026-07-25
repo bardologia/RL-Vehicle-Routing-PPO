@@ -101,6 +101,26 @@ def test_vehicle_capacity_feature_counts_planned_pickups(cpu_config):
     assert data["vehicle"].x[0, 8].item() == pytest.approx(2 / vehicles[0].capacity)
 
 
+def test_context_features_track_scale(cpu_config):
+    small, _, _, _ = build_graph(cpu_config, num_jobs=4, num_vehicles=2)
+    large, _, _, _ = build_graph(cpu_config, num_jobs=12, num_vehicles=4)
+
+    assert small.context.shape == (1, cpu_config.model.context_input_dim)
+    assert large.context[0, 0].item() > small.context[0, 0].item()
+    assert large.context[0, 2].item() > small.context[0, 2].item()
+
+
+def test_context_features_track_burst_budget(cpu_config):
+    jobs     = make_jobs(3)
+    vehicles = make_vehicles(2)
+    state    = RoutingState(routes=[], unassigned_ids={job.id for job in jobs})
+
+    data = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800, round_index=2, edits_remaining=3)
+
+    assert data.context[0, 6].item() == pytest.approx(2 / cpu_config.training.max_disruptions_per_episode)
+    assert data.context[0, 7].item() == pytest.approx(3 / cpu_config.training.max_edits_per_round)
+
+
 def test_graph_is_fully_on_cpu(cpu_config):
     data, _, _, _ = build_graph(cpu_config)
 

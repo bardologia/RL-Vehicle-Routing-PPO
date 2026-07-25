@@ -6,6 +6,10 @@ from model.gnn_model import GNN
 from tests.conftest import make_jobs, make_route, make_vehicles
 
 
+def context_dim(cpu_config):
+    return 2 * cpu_config.model.policy_embedding_dim + cpu_config.model.context_embedding_dim
+
+
 def build_graph(cpu_config, num_jobs, num_vehicles):
     jobs     = make_jobs(num_jobs)
     vehicles = make_vehicles(num_vehicles)
@@ -39,7 +43,7 @@ def test_forward_emits_embeddings_and_context(cpu_config, seeded):
 
     assert embeddings["job"].shape == (5, embedding_dim)
     assert embeddings["vehicle"].shape == (3, embedding_dim)
-    assert context.shape == (1, 2 * embedding_dim)
+    assert context.shape == (1, context_dim(cpu_config))
     assert torch.isfinite(context).all()
 
 
@@ -75,6 +79,15 @@ def test_vehicle_embedding_responds_to_own_features(cpu_config, seeded):
     assert separation > 1e-3
 
 
+def test_context_separates_scenarios_of_different_size(cpu_config, seeded):
+    gnn = GNN(cpu_config.model)
+
+    _, small = gnn(build_graph(cpu_config, num_jobs=4, num_vehicles=2))
+    _, large = gnn(build_graph(cpu_config, num_jobs=16, num_vehicles=4))
+
+    assert (small - large).abs().max() > 1e-3
+
+
 def test_forward_context_pools_over_batch(cpu_config, seeded):
     gnn    = GNN(cpu_config.model)
     graphs = [build_graph(cpu_config, num_jobs=4, num_vehicles=2), build_graph(cpu_config, num_jobs=6, num_vehicles=3)]
@@ -82,4 +95,4 @@ def test_forward_context_pools_over_batch(cpu_config, seeded):
 
     _, context = gnn(batch)
 
-    assert context.shape == (2, 2 * cpu_config.model.policy_embedding_dim)
+    assert context.shape == (2, context_dim(cpu_config))

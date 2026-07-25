@@ -180,6 +180,7 @@ class PPOMemory:
         for etype in graph.edge_types:
             out[etype].edge_index = graph[etype].edge_index.detach().cpu().clone()
             out[etype].edge_attr = graph[etype].edge_attr.detach().cpu().clone()
+        out.context = graph.context.detach().cpu().clone()
         return out
 
     def add(
