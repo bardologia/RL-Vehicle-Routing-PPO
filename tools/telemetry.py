@@ -42,11 +42,11 @@ class PPOTelemetry:
 
         self.tracker.log_metrics('episode/execution', totals, episode_index)
 
-    def episodes_processed(self, count, chunk_index):
-        self.tracker.log_scalar('batch/episodes_processed', count, chunk_index)
+    def episodes_processed(self, count, update_index):
+        self.tracker.log_scalar('batch/episodes_processed', count, update_index)
 
-    def chunk_progress(self, chunk_index, total_chunks):
-        self.tracker.log_scalar('batch/chunk_progress', chunk_index / total_chunks, chunk_index)
+    def update_progress(self, update_index, total_updates):
+        self.tracker.log_scalar('batch/update_progress', update_index / total_updates, update_index)
 
     def buffer_size(self, size, update_step):
         self.tracker.log_scalar('batch/buffer_size', size, update_step)

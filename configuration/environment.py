@@ -15,6 +15,8 @@ class EnvironmentConfig:
     support_service_max              : int = 1800
     repossession_service_min         : int = 300
     repossession_service_max         : int = 900
+    job_setup_min                    : int = 0
+    job_setup_max                    : int = 180
 
     disruption_gap_mean : int = 1800
     disruption_gap_min  : int = 600

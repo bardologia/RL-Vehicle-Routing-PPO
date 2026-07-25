@@ -17,6 +17,7 @@ class ScenarioSampler:
         coords     = generate_coords_batch(env.center, env.radius, count, env.outlier_probability, env.outlier_multiplier)
         priorities = np.random.choice([1, 2, 3, 4, 5], size=count)
         kinds      = np.random.random(count) < env.repossession_fraction
+        setups     = np.random.randint(env.job_setup_min, env.job_setup_max + 1, size=count)
         first_id   = pool.next_id()
 
         jobs = []
@@ -34,6 +35,7 @@ class ScenarioSampler:
                     location    = (float(coords[i][0]), float(coords[i][1])),
                     kind        = "repossession" if repossession else "support",
                     service     = int(service),
+                    setup       = int(setups[i]),
                     amount      = 1 if repossession else 0,
                     priority    = int(priorities[i]),
                     description = f"Job {first_id + i}",

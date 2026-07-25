@@ -420,7 +420,7 @@ class Trainer:
 
                 progress_pct = (self.ppo_update_index / num_updates) * 100
                 self.logger.subsection(f"Overall Progress: {progress_pct:.1f}% ({self.ppo_update_index}/{num_updates} updates)")
-                self.telemetry.chunk_progress(update_idx, num_updates)
+                self.telemetry.update_progress(update_idx, num_updates)
 
                 gc.collect()
         finally:

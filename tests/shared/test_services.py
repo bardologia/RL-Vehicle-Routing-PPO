@@ -43,7 +43,7 @@ def test_vroom_solve_posts_full_payload_shape(cpu_config, monkeypatch):
     assert len(payload["vehicles"]) == 2
     assert payload["options"] == cpu_config.service.options
     assert set(payload["jobs"][0].keys()) == {"id", "location", "setup", "service", "delivery", "priority", "description"}
-    assert set(payload["vehicles"][0].keys()) == {"id", "start", "capacity", "skills", "time_window", "speed_factor", "return_to_depot", "description"}
+    assert set(payload["vehicles"][0].keys()) == {"id", "start", "capacity", "skills", "time_window", "speed_factor", "description"}
 
 
 def test_vroom_solve_caches_identical_requests(cpu_config, monkeypatch):

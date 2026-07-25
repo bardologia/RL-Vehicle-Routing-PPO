@@ -124,7 +124,7 @@ class ScenarioView {
 
   _addVehicle(location) {
     const id = this._nextId(this.vehicles);
-    this.vehicles.push({ id, start: location, capacity: 4, onboard: 0, speed_factor: 1.0, time_window: [28800, 72000], return_to_depot: false, progress_credit: 0, description: `Vehicle ${id}` });
+    this.vehicles.push({ id, start: location, capacity: 4, onboard: 0, speed_factor: 1.0, time_window: [28800, 72000], progress_credit: 0, description: `Vehicle ${id}` });
     this.selected = { type: "vehicle", id };
     this._invalidate();
   }
@@ -428,7 +428,6 @@ class ScenarioView {
             <label class="field"><span class="field__label"><span>Shift start (h)</span></span><input type="number" data-k="tw0" value="${entity.time_window[0] / 3600}" min="0" max="24" step="0.5"></label>
             <label class="field"><span class="field__label"><span>Shift end (h)</span></span><input type="number" data-k="tw1" value="${entity.time_window[1] / 3600}" min="0" max="24" step="0.5"></label>
           </div>
-          <label class="switch" style="margin-top:8px"><input type="checkbox" data-k="return_to_depot" ${entity.return_to_depot ? "checked" : ""}><i></i><span>return to depot</span></label>
           <div style="margin-top:12px"><button class="btn btn--sm btn--danger" id="scn-del">Delete vehicle</button></div>
         </div>`;
     }
@@ -436,8 +435,7 @@ class ScenarioView {
     host.querySelectorAll("[data-k]").forEach((el) => {
       el.addEventListener("change", () => {
         const k = el.dataset.k;
-        if (k === "return_to_depot") entity.return_to_depot = el.checked;
-        else if (k === "kind") {
+        if (k === "kind") {
           entity.kind = el.value;
           entity.amount = el.value === "repossession" ? 1 : 0;
         }

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class ModelConfig:
     job_input_dim     : int = 9
-    vehicle_input_dim : int = 10
+    vehicle_input_dim : int = 9
     edge_attr_dim     : int = 4
     context_input_dim : int = 8
 

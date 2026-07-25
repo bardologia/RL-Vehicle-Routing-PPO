@@ -23,7 +23,7 @@ def test_job_vroom_payload_keys_and_types():
 
 
 def test_vehicle_dict_round_trip():
-    vehicle = Vehicle(id=7, start=(-46.7, -23.6), capacity=3, speed_factor=1.1, time_window=(0, 3600), return_to_depot=True, description="Vehicle 7")
+    vehicle = Vehicle(id=7, start=(-46.7, -23.6), capacity=3, speed_factor=1.1, time_window=(0, 3600), description="Vehicle 7")
 
     restored = Vehicle.from_dict(vehicle.to_dict())
 

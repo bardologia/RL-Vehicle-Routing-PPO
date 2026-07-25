@@ -81,11 +81,11 @@ def test_vehicle_capacity_and_load_features(cpu_config):
     loaded   = state.routes[0]
     pickups  = sum(1 for stop in loaded.stops if stop.kind == "pickup")
 
-    assert features[0, 5].item() == pytest.approx(vehicles[0].capacity / 10.0)
-    assert features[0, 6].item() == pytest.approx(vehicles[0].onboard / vehicles[0].capacity)
-    assert features[0, 7].item() == pytest.approx(len(loaded.job_ids) / 10.0)
-    assert features[0, 8].item() == pytest.approx((vehicles[0].onboard + pickups) / vehicles[0].capacity)
-    assert features[1, 7].item() == 0.0
+    assert features[0, 4].item() == pytest.approx(vehicles[0].capacity / 10.0)
+    assert features[0, 5].item() == pytest.approx(vehicles[0].onboard / vehicles[0].capacity)
+    assert features[0, 6].item() == pytest.approx(len(loaded.job_ids) / 10.0)
+    assert features[0, 7].item() == pytest.approx((vehicles[0].onboard + pickups) / vehicles[0].capacity)
+    assert features[1, 6].item() == 0.0
 
 
 def test_vehicle_capacity_feature_counts_planned_pickups(cpu_config):
@@ -98,7 +98,7 @@ def test_vehicle_capacity_feature_counts_planned_pickups(cpu_config):
     state = RoutingState(routes=[route], unassigned_ids=set())
     data  = Graph(cpu_config).build(EntityPool(jobs), EntityPool(vehicles), state, (-46.63, -23.55), 28800)
 
-    assert data["vehicle"].x[0, 8].item() == pytest.approx(2 / vehicles[0].capacity)
+    assert data["vehicle"].x[0, 7].item() == pytest.approx(2 / vehicles[0].capacity)
 
 
 def test_context_features_track_scale(cpu_config):

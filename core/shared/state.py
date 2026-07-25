@@ -79,7 +79,6 @@ class Vehicle:
     onboard         : int = 0
     speed_factor    : float = 1.0
     time_window     : Tuple[int, int] = (8 * 3600, 20 * 3600)
-    return_to_depot : bool = False
     progress_credit : int = 0
     description     : str = ""
 
@@ -98,7 +97,6 @@ class Vehicle:
             "skills"          : [int(self.id) + 1],
             "time_window"     : [window_start, window_end],
             "speed_factor"    : float(self.speed_factor),
-            "return_to_depot" : bool(self.return_to_depot),
             "description"     : self.description,
         }
 
@@ -120,7 +118,6 @@ class Vehicle:
             "onboard"         : int(self.onboard),
             "speed_factor"    : float(self.speed_factor),
             "time_window"     : [int(self.time_window[0]), int(self.time_window[1])],
-            "return_to_depot" : bool(self.return_to_depot),
             "progress_credit" : int(self.progress_credit),
             "description"     : self.description,
         }
@@ -134,7 +131,6 @@ class Vehicle:
             onboard         = int(data["onboard"]),
             speed_factor    = float(data["speed_factor"]),
             time_window     = (int(data["time_window"][0]), int(data["time_window"][1])),
-            return_to_depot = bool(data["return_to_depot"]),
             progress_credit = int(data["progress_credit"]),
             description     = data["description"],
         )
