@@ -1,6 +1,7 @@
 import pytest
 
 from core.shared import EntityPool, Job, Route, RoutingState, Stop, Vehicle
+from core.shared.state import DROP_JOB_ID_OFFSET
 from tests.conftest import load_fixture, make_jobs, make_route, make_stops, make_vehicles
 
 
@@ -83,27 +84,24 @@ def test_route_job_ids_orders_by_stop_sequence():
     assert route.job_ids == [0, 1, 2]
 
 
-def test_route_remove_jobs_adjusts_service_and_end():
-    jobs  = make_jobs(3)
-    route = make_route(make_vehicles(1)[0], jobs)
+def test_drop_stops_keep_a_distinct_identifier_per_vehicle():
+    solution = {
+        "routes": [
+            {
+                "vehicle": 3,
+                "steps": [
+                    {"type": "start", "location": [-46.66, -23.57]},
+                    {"type": "job", "id": 5, "location": [-46.63, -23.55], "arrival": 100, "load": [1]},
+                    {"type": "job", "id": DROP_JOB_ID_OFFSET + 3, "location": [-46.60, -23.50], "arrival": 400, "load": [0]},
+                ],
+            }
+        ]
+    }
 
-    route.remove_jobs({jobs[2].id})
+    route = Route.from_vroom(solution["routes"][0])
 
-    assert route.job_ids == [jobs[0].id, jobs[1].id]
-    assert route.service == jobs[0].service + jobs[1].service
-    assert route.end == jobs[1].location
-
-
-def test_route_remove_all_jobs_leaves_end_untouched():
-    jobs     = make_jobs(2)
-    route    = make_route(make_vehicles(1)[0], jobs)
-    prev_end = route.end
-
-    route.remove_jobs({jobs[0].id, jobs[1].id})
-
-    assert route.stops == []
-    assert route.service == 0
-    assert route.end == prev_end
+    assert [stop.job_id for stop in route.stops] == [5, DROP_JOB_ID_OFFSET + 3]
+    assert route.job_ids == [5]
 
 
 def test_route_locations_orders_start_stops_end():
@@ -127,13 +125,17 @@ def test_route_locations_omit_missing_start_and_end():
     assert points[0] == make_jobs(2)[0].location
 
 
-def test_route_copy_is_independent():
-    route = make_route(make_vehicles(1)[0], make_jobs(2))
-    clone = route.copy()
+def test_two_vehicles_carrying_bikes_get_distinct_drop_stops():
+    vehicles = make_vehicles(2)
+    routes   = [
+        Route(vehicle_id=vehicles[0].id, stops=[Stop(job_id=DROP_JOB_ID_OFFSET + vehicles[0].id, location=(-46.6, -23.5), kind="delivery")]),
+        Route(vehicle_id=vehicles[1].id, stops=[Stop(job_id=DROP_JOB_ID_OFFSET + vehicles[1].id, location=(-46.6, -23.5), kind="delivery")]),
+    ]
 
-    clone.stops.pop()
+    state    = RoutingState(routes=routes, unassigned_ids=set())
+    stop_ids = {stop.job_id for route in state.routes for stop in route.stops}
 
-    assert len(route.stops) == 2
+    assert len(stop_ids) == 2
 
 
 def test_empty_routing_state_totals_are_zero():
@@ -215,19 +217,14 @@ def test_replace_route_prunes_empty_route():
     assert state.unassigned_ids == {jobs[0].id, jobs[1].id}
 
 
-def test_remove_jobs_prunes_emptied_routes_and_unassigned():
-    vehicles = make_vehicles(2)
+def test_discard_unassigned_drops_only_the_given_ids():
+    vehicles = make_vehicles(1)
     jobs     = make_jobs(4)
-    state    = RoutingState(
-        routes         = [make_route(vehicles[0], jobs[:1]), make_route(vehicles[1], jobs[1:3])],
-        unassigned_ids = {jobs[3].id},
-    )
+    state    = RoutingState(routes=[make_route(vehicles[0], jobs[:1])], unassigned_ids={jobs[2].id, jobs[3].id})
 
-    state.remove_jobs({jobs[0].id, jobs[3].id})
+    state.discard_unassigned({jobs[3].id, 999})
 
-    assert state.num_routes == 1
-    assert state.route_of_vehicle(vehicles[1].id) is not None
-    assert state.unassigned_ids == set()
+    assert state.unassigned_ids == {jobs[2].id}
 
 
 def test_remove_vehicles_returns_orphaned_job_ids():
@@ -252,17 +249,18 @@ def test_remove_vehicles_absent_id_orphans_nothing():
     assert state.num_routes == 1
 
 
-def test_copy_is_deep():
-    vehicles = make_vehicles(1)
+def test_copy_isolates_the_route_list_and_the_unassigned_set():
+    vehicles = make_vehicles(2)
     jobs     = make_jobs(2)
     state    = RoutingState(routes=[make_route(vehicles[0], jobs)], unassigned_ids={99})
 
     clone = state.copy()
-    clone.routes[0].stops.pop()
+    clone.replace_route(make_route(vehicles[1], jobs))
     clone.unassigned_ids.add(100)
 
-    assert len(state.routes[0].stops) == 2
+    assert state.num_routes == 1
     assert state.unassigned_ids == {99}
+    assert clone.num_routes == 2
 
 
 def test_payload_round_trip():

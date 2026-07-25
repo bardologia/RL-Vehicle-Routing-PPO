@@ -22,9 +22,12 @@ class RewardCalculator:
 
         return distance_cost, unassigned_cost, idle_cost, priority_cost
 
+    def _vehicle_by_job(self, state: RoutingState):
+        return {stop.job_id: route.vehicle_id for route in state.routes for stop in route.stops if stop.kind in ("job", "pickup")}
+
     def _evaluate_disruption(self, old_state: RoutingState, new_state: RoutingState):
-        old_vehicle_by_job = {stop.job_id: route.vehicle_id for route in old_state.routes for stop in route.stops}
-        new_vehicle_by_job = {stop.job_id: route.vehicle_id for route in new_state.routes for stop in route.stops}
+        old_vehicle_by_job = self._vehicle_by_job(old_state)
+        new_vehicle_by_job = self._vehicle_by_job(new_state)
 
         return sum(1 for job_id, vehicle_id in old_vehicle_by_job.items() if new_vehicle_by_job.get(job_id) != vehicle_id)
 

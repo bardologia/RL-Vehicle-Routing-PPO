@@ -1,4 +1,3 @@
-import copy
 import random
 from dataclasses import dataclass, field
 from typing import Dict, Iterator, List, Optional, Set, Tuple
@@ -204,18 +203,6 @@ class Route:
             points.append(self.end)
         return points
 
-    def remove_jobs(self, job_ids: Set[int]) -> None:
-        removed_service = sum(stop.service for stop in self.stops if stop.job_id in job_ids)
-
-        self.stops   = [stop for stop in self.stops if stop.job_id not in job_ids]
-        self.service = max(0, self.service - removed_service)
-
-        if self.stops:
-            self.end = self.stops[-1].location
-
-    def copy(self) -> "Route":
-        return copy.deepcopy(self)
-
     def to_dict(self) -> Dict:
         return {
             "vehicle_id"   : int(self.vehicle_id),
@@ -270,7 +257,7 @@ class Route:
                 elif step_type == "delivery":
                     kind, job_id = "delivery", step_id - DELIVERY_ID_OFFSET
                 elif step_id >= DROP_JOB_ID_OFFSET:
-                    kind, job_id = "delivery", -1
+                    kind, job_id = "delivery", step_id
                 else:
                     kind, job_id = "job", step_id
 
@@ -369,11 +356,7 @@ class RoutingState:
         self.unassigned_ids -= new_job_ids
         self.unassigned_ids |= displaced
 
-    def remove_jobs(self, job_ids: Set[int]) -> None:
-        for route in self.routes:
-            route.remove_jobs(job_ids)
-
-        self.routes          = [route for route in self.routes if route.stops]
+    def discard_unassigned(self, job_ids: Set[int]) -> None:
         self.unassigned_ids -= set(job_ids)
 
     def remove_vehicles(self, vehicle_ids: Set[int]) -> Set[int]:
@@ -384,7 +367,7 @@ class RoutingState:
 
     def copy(self) -> "RoutingState":
         return RoutingState(
-            routes         = [route.copy() for route in self.routes],
+            routes         = list(self.routes),
             unassigned_ids = set(self.unassigned_ids),
         )
 

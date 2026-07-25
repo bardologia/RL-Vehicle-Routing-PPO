@@ -19,7 +19,7 @@ class ActionHandler:
         candidate_jobs = [env.jobs.by_id(jid) for jid in candidate_ids if env.jobs.contains(jid)]
         vehicle        = env.vehicles.by_id(vehicle_id)
 
-        new_route = self._solve_vehicle_route(env, candidate_jobs, vehicle)
+        new_route = self.solve_vehicle_route(env, candidate_jobs, vehicle)
         if new_route is None:
             self.logger.warning(f"Job insertion failed for vehicle_id={vehicle_id} job_id={job_id}")
             return state
@@ -43,7 +43,7 @@ class ActionHandler:
             new_state.add_unassigned(orphaned)
             return new_state
 
-        new_route = self._solve_vehicle_route(env, remaining_jobs, vehicle)
+        new_route = self.solve_vehicle_route(env, remaining_jobs, vehicle)
         if new_route is None:
             self.logger.warning(f"Job removal failed for vehicle_id={vehicle_id} job_id={job_id}")
             return state
@@ -52,7 +52,7 @@ class ActionHandler:
         new_state.add_unassigned({job_id})
         return new_state
 
-    def _solve_vehicle_route(self, env, jobs, vehicle: Vehicle):
+    def solve_vehicle_route(self, env, jobs, vehicle: Vehicle):
         solution = vroom.solve(jobs, [vehicle], depot=env.depot, clock=env.clock)
         if solution is None or not solution.routes:
             return None

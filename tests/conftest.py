@@ -14,6 +14,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from configuration import Config
 from core.shared import Job, Route, RoutingState, Stop, Vehicle
+from core.shared.state import DROP_JOB_ID_OFFSET
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -32,7 +33,7 @@ class FakeVroom:
 
         if load > 0:
             t += 300
-            stops.append(Stop(job_id=-1, location=depot, kind="delivery", arrival=t, service=120, load=0))
+            stops.append(Stop(job_id=DROP_JOB_ID_OFFSET + vehicle.id, location=depot, kind="delivery", arrival=t, service=120, load=0))
             t   += 120
             load = 0
 
@@ -53,7 +54,7 @@ class FakeVroom:
 
         if load > 0:
             t += 300
-            stops.append(Stop(job_id=-1, location=depot, kind="delivery", arrival=t, service=120, load=0))
+            stops.append(Stop(job_id=DROP_JOB_ID_OFFSET + vehicle.id, location=depot, kind="delivery", arrival=t, service=120, load=0))
             t += 120
 
         return Route(

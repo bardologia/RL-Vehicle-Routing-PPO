@@ -2,7 +2,7 @@ import pytest
 
 import core.shared.environment as environment_module
 
-from core.shared import Environment, RoutingState
+from core.shared import Environment, Route, RoutingState, Stop
 from model.policy_model import Action
 from tests.conftest import make_jobs, make_route, make_vehicles
 
@@ -58,6 +58,42 @@ def test_remove_job_event_purges_pool_routes_and_unassigned(environment):
     assert len(removed) == 2
     assert removed.isdisjoint(new_state.assigned_job_ids)
     assert removed.isdisjoint(new_state.unassigned_ids)
+
+
+def test_remove_job_event_resolves_the_affected_routes(environment):
+    state = environment.current_state
+
+    assert state.routes
+
+    new_state = environment.apply_event(state, "remove_job", 2)
+
+    for route in new_state.routes:
+        assert route.cost == 100 * len(route.stops)
+
+
+def test_route_reordering_alone_is_not_a_disruption(environment):
+    vehicles = list(environment.vehicles)[:2]
+    routes   = [
+        Route(
+            vehicle_id = vehicle.id,
+            stops      = [
+                Stop(job_id=job_id, location=(-46.6, -23.5), kind="pickup", load=1),
+                Stop(job_id=-1, location=(-46.63, -23.55), kind="delivery", load=0),
+            ],
+            start = vehicle.start,
+            cost  = 500,
+        )
+        for vehicle, job_id in zip(vehicles, environment.jobs.ids[:2])
+    ]
+
+    old_state = RoutingState(routes=routes, unassigned_ids=set())
+    new_state = old_state.copy()
+    new_state.replace_route(routes[0])
+
+    _, costs = environment.step(old_state, new_state, operator_index=0)
+
+    assert [route.vehicle_id for route in new_state.routes] != [route.vehicle_id for route in old_state.routes]
+    assert costs["disruption"] == 0
 
 
 def test_remove_job_event_on_empty_pool_returns_copy(environment):
@@ -285,9 +321,11 @@ def test_step_disruption_counts_reassigned_and_dropped_jobs(environment):
     moved_route = old_state.routes[0]
     moved_job   = moved_route.job_ids[0]
 
-    new_state = old_state.copy()
-    new_state.remove_jobs({moved_job})
-    new_state.add_unassigned({moved_job})
+    kept_stops = [stop for stop in moved_route.stops if stop.job_id != moved_job]
+    new_state  = RoutingState(
+        routes         = [Route(vehicle_id=moved_route.vehicle_id, stops=kept_stops, start=moved_route.start, cost=moved_route.cost)] + list(old_state.routes[1:]),
+        unassigned_ids = set(old_state.unassigned_ids) | {moved_job},
+    )
 
     rewards, costs = environment.step(old_state, new_state, operator_index=1)
 

@@ -68,13 +68,41 @@ class EventHandler:
         if len(env.jobs) == 0:
             return state.copy()
 
-        num_items   = min(num_items, len(env.jobs))
-        removed_ids = set(env.jobs.sample_ids(num_items))
+        num_items    = min(num_items, len(env.jobs))
+        removed_ids  = set(env.jobs.sample_ids(num_items))
+        affected_ids = [route.vehicle_id for route in state.routes if set(route.job_ids) & removed_ids]
+
         env.jobs.remove(removed_ids)
 
         new_state = state.copy()
-        new_state.remove_jobs(removed_ids)
+
+        for vehicle_id in affected_ids:
+            self._resolve_vehicle(env, new_state, vehicle_id)
+
+        new_state.discard_unassigned(removed_ids)
         return new_state
+
+    def _resolve_vehicle(self, env, state: RoutingState, vehicle_id: int) -> None:
+        if not env.vehicles.contains(vehicle_id):
+            return
+
+        vehicle        = env.vehicles.by_id(vehicle_id)
+        route          = state.route_of_vehicle(vehicle_id)
+        remaining_jobs = [env.jobs.by_id(job_id) for job_id in (route.job_ids if route is not None else []) if env.jobs.contains(job_id)]
+
+        if not remaining_jobs and vehicle.onboard == 0:
+            orphaned = state.remove_vehicles({vehicle_id})
+            state.add_unassigned({job_id for job_id in orphaned if env.jobs.contains(job_id)})
+            return
+
+        new_route = env.action_handler.solve_vehicle_route(env, remaining_jobs, vehicle)
+        if new_route is None:
+            env.logger.warning(f"Cancellation re-solve failed for vehicle {vehicle_id}")
+            state.remove_vehicles({vehicle_id})
+            state.add_unassigned({job.id for job in remaining_jobs})
+            return
+
+        state.replace_route(new_route)
 
     def apply_remove_vehicle(self, env, state: RoutingState, num_items: int) -> RoutingState:
         num_items = min(num_items, len(env.vehicles) - 1)
