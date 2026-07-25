@@ -3,11 +3,12 @@ from dataclasses import dataclass
 
 @dataclass
 class LearningRate:
-    lr_operator_actor : float = 3e-4
-    lr_vehicle_actor  : float = 3e-4
-    lr_critic         : float = 5e-4
-    lr_embedding      : float = 2e-4
-    lr_job_actor      : float = 3e-4
+    lr_operator_actor     : float = 3e-4
+    lr_vehicle_actor      : float = 3e-4
+    lr_critic             : float = 5e-4
+    lr_embedding          : float = 2e-4
+    lr_job_actor          : float = 3e-4
+    lr_operator_embedding : float = 3e-4
 
     lr_warmup_steps: int = 1000
     lr_min: float = 1e-5

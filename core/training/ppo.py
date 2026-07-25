@@ -261,11 +261,12 @@ class PPO(nn.Module):
         self.global_sample_step = 0
 
         self._modules_dict = {
-            "operator_actor" : self.policy.operator_actor,
-            "vehicle_actor"  : self.policy.vehicle_actor,
-            "critic"         : self.policy.critic,
-            "embedder_actor" : self.policy.graph_embedding,
-            "job_actor"      : self.policy.job_actor,
+            "operator_actor"     : self.policy.operator_actor,
+            "vehicle_actor"      : self.policy.vehicle_actor,
+            "critic"             : self.policy.critic,
+            "embedder_actor"     : self.policy.graph_embedding,
+            "job_actor"          : self.policy.job_actor,
+            "operator_embedding" : self.policy.operator_embedding,
         }
 
     def _gae(self, rewards, values, dones, bootstrap_values):

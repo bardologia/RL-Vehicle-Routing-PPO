@@ -199,19 +199,23 @@ class Trainer:
         ppo.distribution = distribution
       
         param_groups = [
-            {'params': ppo.policy.operator_actor.parameters(),       'lr': lr_config.lr_operator_actor,  'name': 'operator_actor'},
-            {'params': ppo.policy.vehicle_actor.parameters(),        'lr': lr_config.lr_vehicle_actor,   'name': 'vehicle_actor'},
-            {'params': ppo.policy.critic.parameters(),               'lr': lr_config.lr_critic,          'name': 'critic'},
-            {'params': ppo.policy.graph_embedding.parameters(),      'lr': lr_config.lr_embedding,       'name': 'graph_embedding'},
-            {'params': ppo.policy.job_actor.parameters(),            'lr': lr_config.lr_job_actor,       'name': 'job_actor'},
+            {'params': list(ppo.policy.operator_actor.parameters()),     'lr': lr_config.lr_operator_actor,     'name': 'operator_actor'},
+            {'params': list(ppo.policy.vehicle_actor.parameters()),      'lr': lr_config.lr_vehicle_actor,      'name': 'vehicle_actor'},
+            {'params': list(ppo.policy.critic.parameters()),             'lr': lr_config.lr_critic,             'name': 'critic'},
+            {'params': list(ppo.policy.graph_embedding.parameters()),    'lr': lr_config.lr_embedding,          'name': 'graph_embedding'},
+            {'params': list(ppo.policy.job_actor.parameters()),          'lr': lr_config.lr_job_actor,          'name': 'job_actor'},
+            {'params': list(ppo.policy.operator_embedding.parameters()), 'lr': lr_config.lr_operator_embedding, 'name': 'operator_embedding'},
         ]
-                       
+
+        self._validate_parameter_coverage(ppo.policy, param_groups)
+
         self.logger.section("[Optimizer]")
-        self.logger.subsection(f"Operator Actor  = {lr_config.lr_operator_actor}")
-        self.logger.subsection(f"Vehicle Actor   = {lr_config.lr_vehicle_actor}")
-        self.logger.subsection(f"Critic          = {lr_config.lr_critic}")
-        self.logger.subsection(f"Graph Embedding = {lr_config.lr_embedding}")
-        self.logger.subsection(f"Job Actor       = {lr_config.lr_job_actor} \n")
+        self.logger.subsection(f"Operator Actor     = {lr_config.lr_operator_actor}")
+        self.logger.subsection(f"Vehicle Actor      = {lr_config.lr_vehicle_actor}")
+        self.logger.subsection(f"Critic             = {lr_config.lr_critic}")
+        self.logger.subsection(f"Graph Embedding    = {lr_config.lr_embedding}")
+        self.logger.subsection(f"Job Actor          = {lr_config.lr_job_actor}")
+        self.logger.subsection(f"Operator Embedding = {lr_config.lr_operator_embedding} \n")
 
         optimizer = optim.Adam(param_groups, eps=1e-5)
         ppo.optimizer = optimizer
@@ -254,6 +258,13 @@ class Trainer:
                
         self.logger.subsection("PPO initialization complete \n")
         return ppo
+
+    def _validate_parameter_coverage(self, policy, param_groups):
+        covered = {id(parameter) for group in param_groups for parameter in group["params"]}
+        missing = [name for name, parameter in policy.named_parameters() if id(parameter) not in covered]
+
+        if missing:
+            raise ValueError(f"Policy parameters absent from every optimizer param group: {missing}")
 
     def attach_anchor(self, ppo, reference_state_dict):
         ppo_config = self.config.ppo

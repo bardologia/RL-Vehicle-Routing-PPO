@@ -28,6 +28,25 @@ def populate_memory(trainer):
     trainer._run_update([0, 1, 2])
 
 
+def test_optimizer_covers_every_policy_parameter(cpu_config, seeded, fake_vroom, tmp_path):
+    trainer = build_trainer(cpu_config, tmp_path, Tracker(writer=FakeWriter()))
+
+    covered   = {id(parameter) for group in trainer.ppo.optimizer.param_groups for parameter in group["params"]}
+    parameters = {id(parameter) for parameter in trainer.ppo.policy.parameters()}
+
+    assert covered == parameters
+
+
+def test_operator_embedding_moves_during_an_update(cpu_config, seeded, fake_vroom, tmp_path):
+    trainer = build_trainer(cpu_config, tmp_path, Tracker(writer=FakeWriter()))
+    before  = trainer.ppo.policy.operator_embedding.weight.detach().clone()
+
+    populate_memory(trainer)
+    trainer.ppo.update()
+
+    assert not torch.equal(before, trainer.ppo.policy.operator_embedding.weight.detach())
+
+
 def test_real_update_fills_then_clears_memory(cpu_config, seeded, fake_vroom, tmp_path):
     trainer = build_trainer(cpu_config, tmp_path, Tracker(writer=FakeWriter()))
 
