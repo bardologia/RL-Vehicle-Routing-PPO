@@ -174,11 +174,12 @@ class TeacherRolloutCollector:
         self.scenario_seed = config.env.scenario_seed
         self.driver        = EpisodeDriver(environment, config)
 
-    def _attach_returns(self, records):
-        running = 0.0
-        for record in reversed(records):
-            running          = record["reward"] + self.gamma * running
-            record["return"] = running
+    def _attach_tail(self, records):
+        if not records:
+            return records
+
+        tail_graph, _            = self.environment.observe()
+        records[-1]["tail_graph"] = PPOMemory._clone_detached(tail_graph)
 
         return records
 
@@ -190,13 +191,14 @@ class TeacherRolloutCollector:
             _, _, rewards, _ = step.commit(action)
 
             records.append({
-                "graph"     : PPOMemory._clone_detached(step.graph),
-                "mask_info" : step.mask_info,
-                "action"    : action,
-                "reward"    : float(sum(rewards.values())),
+                "graph"      : PPOMemory._clone_detached(step.graph),
+                "mask_info"  : step.mask_info,
+                "action"     : action,
+                "reward"     : float(sum(rewards.values())),
+                "tail_graph" : None,
             })
 
-        return self._attach_returns(records)
+        return self._attach_tail(records)
 
 
 _TEACHER_WORKER = {}
@@ -233,6 +235,7 @@ class BCTrainer:
         self.masker    = masker
         self.config    = config
         self.telemetry = telemetry
+        self.gamma     = config.ppo.gamma
         self.logger    = logger or NullLogger()
 
         pretrain = config.pretrain
@@ -272,10 +275,12 @@ class BCTrainer:
         target_return = torch.tensor(record["return"], dtype=torch.float32, device=self.device)
         value_loss    = (sample["state_value"] - target_return).pow(2)
 
+        parameterised = action.operator in (0, 1)
         hits = {
-            "operator" : float(int(masked_operator.argmax().item()) == action.operator),
-            "vehicle"  : float(int(masked_vehicle.argmax().item()) == action.vehicle_index),
-            "job"      : float(int(masked_job.argmax().item()) == action.job_index),
+            "operator"       : float(int(masked_operator.argmax().item()) == action.operator),
+            "vehicle"        : float(parameterised and int(masked_vehicle.argmax().item()) == action.vehicle_index),
+            "job"            : float(parameterised and int(masked_job.argmax().item()) == action.job_index),
+            "parameterised"  : float(parameterised),
         }
 
         return {"operator": operator_loss, "vehicle": vehicle_loss, "job": job_loss, "value": value_loss}, hits
@@ -285,7 +290,7 @@ class BCTrainer:
         per_sample  = self.policy.forward_batch(batch_graph)
 
         losses = {head: torch.tensor(0.0, device=self.device) for head in ("operator", "vehicle", "job", "value")}
-        hits   = {head: 0.0 for head in ("operator", "vehicle", "job")}
+        hits   = {head: 0.0 for head in ("operator", "vehicle", "job", "parameterised")}
 
         for sample, record in zip(per_sample, batch_records):
             sample_loss, sample_hits = self._sample_losses(sample, record)
@@ -311,16 +316,31 @@ class BCTrainer:
 
         return loss_values, hits
 
+    def _attach_returns(self, records):
+        running = 0.0
+
+        with torch.no_grad():
+            for record in reversed(records):
+                if record["tail_graph"] is not None:
+                    _, _, _, tail_value = self.policy(record["tail_graph"])
+                    running = self.gamma * float(tail_value.item())
+
+                running          = record["reward"] + self.gamma * running
+                record["return"] = running
+
+        return records
+
     def train(self, records):
         self.policy.train()
         indices = np.arange(len(records))
 
         metrics = None
         for epoch in tqdm(range(self.epochs), desc="BC pretraining", unit="epoch"):
+            self._attach_returns(records)
             np.random.shuffle(indices)
 
             epoch_loss    = 0.0
-            epoch_hits    = {head: 0.0 for head in ("operator", "vehicle", "job")}
+            epoch_hits    = {head: 0.0 for head in ("operator", "vehicle", "job", "parameterised")}
             epoch_batches = 0
 
             for start_index in range(0, len(records), self.minibatch_size):
@@ -333,11 +353,17 @@ class BCTrainer:
                 for head in epoch_hits:
                     epoch_hits[head] += hits[head]
 
-            mean_loss = epoch_loss / epoch_batches
-            accuracy  = {head: epoch_hits[head] / len(records) for head in epoch_hits}
+            mean_loss     = epoch_loss / epoch_batches
+            parameterised = max(epoch_hits["parameterised"], 1.0)
+            accuracy      = {
+                "operator"           : epoch_hits["operator"] / len(records),
+                "vehicle"            : epoch_hits["vehicle"] / parameterised,
+                "job"                : epoch_hits["job"] / parameterised,
+                "parameterised_share": epoch_hits["parameterised"] / len(records),
+            }
 
             self.telemetry.pretrain_epoch(mean_loss, accuracy, epoch)
-            self.logger.subsection(f"BC epoch {epoch}: loss={mean_loss:.4f} accuracy operator={accuracy['operator']:.3f} vehicle={accuracy['vehicle']:.3f} job={accuracy['job']:.3f}")
+            self.logger.subsection(f"BC epoch {epoch}: loss={mean_loss:.4f} accuracy operator={accuracy['operator']:.3f} vehicle={accuracy['vehicle']:.3f} job={accuracy['job']:.3f} over {int(epoch_hits['parameterised'])} insert/remove labels")
 
             metrics = {"loss": mean_loss, "accuracy": accuracy}
 

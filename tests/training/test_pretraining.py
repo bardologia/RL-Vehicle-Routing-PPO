@@ -208,34 +208,59 @@ def test_collector_records_have_discounted_returns(cpu_config, seeded, fake_vroo
     collector   = TeacherRolloutCollector(environment, teacher, cpu_config)
 
     records = collector.rollout(0)
-    gamma   = cpu_config.ppo.gamma
 
     assert len(records) == 2
-    assert set(records[0].keys()) == {"graph", "mask_info", "action", "reward", "return"}
-    assert records[1]["return"] == pytest.approx(records[1]["reward"])
-    assert records[0]["return"] == pytest.approx(records[0]["reward"] + gamma * records[1]["reward"])
+    assert set(records[0].keys()) == {"graph", "mask_info", "action", "reward", "tail_graph"}
+    assert records[0]["tail_graph"] is None
+    assert records[1]["tail_graph"] is not None
 
 
-def test_bc_trainer_reaches_full_accuracy_on_fixed_teacher_action(environment, fake_vroom, cpu_config):
-    jobs     = make_jobs(2)
-    vehicles = make_vehicles(1)
-    state    = RoutingState(routes=[make_route(vehicles[0], jobs, cost=200)], unassigned_ids=set())
+def test_bc_returns_bootstrap_the_tail_with_the_current_critic(cpu_config, seeded, fake_vroom):
+    from core.shared import ActionMasker, Environment
+    from tools.telemetry import PPOTelemetry
+    from tools.tracker import NullTracker
+
+    cpu_config.training.max_disruptions_per_episode = 2
+    cpu_config.training.max_edits_per_round         = 1
+
+    environment = Environment(cpu_config)
+    collector   = TeacherRolloutCollector(environment, RegretInsertionTeacher(cpu_config), cpu_config)
+    records     = collector.rollout(0)
+
+    policy  = Policy(cpu_config)
+    trainer = BCTrainer(policy, ActionMasker(cpu_config), cpu_config, PPOTelemetry(NullTracker(), cpu_config))
+
+    trainer._attach_returns(records)
+
+    gamma = cpu_config.ppo.gamma
+    with torch.no_grad():
+        _, _, _, tail_value = policy(records[-1]["tail_graph"])
+
+    assert records[1]["return"] == pytest.approx(records[1]["reward"] + gamma * gamma * float(tail_value.item()), rel=1e-5)
+    assert records[0]["return"] == pytest.approx(records[0]["reward"] + gamma * records[1]["return"], rel=1e-5)
+
+
+def test_bc_trainer_reaches_full_accuracy_on_a_parameterised_action(environment, fake_vroom, cpu_config):
+    jobs     = make_jobs(3)
+    vehicles = make_vehicles(2)
+    state    = RoutingState(routes=[make_route(vehicles[0], jobs[:1], cost=200)], unassigned_ids={jobs[2].id})
 
     load_scenario(environment, jobs, vehicles, state)
     graph, mask_info = environment.observe()
 
     records = [
         {
-            "graph"     : PPOMemory._clone_detached(graph),
-            "mask_info" : mask_info,
-            "action"    : Action(operator=2, vehicle_index=0, job_index=0),
-            "reward"    : 0.0,
-            "return"    : 0.0,
+            "graph"      : PPOMemory._clone_detached(graph),
+            "mask_info"  : mask_info,
+            "action"     : Action(operator=0, vehicle_index=1, job_index=2),
+            "reward"     : 0.0,
+            "return"     : 0.0,
+            "tail_graph" : None,
         }
         for _ in range(8)
     ]
 
-    cpu_config.pretrain.bc_epochs      = 30
+    cpu_config.pretrain.bc_epochs      = 40
     cpu_config.pretrain.minibatch_size = 8
     cpu_config.pretrain.lr             = 0.01
 
@@ -246,7 +271,41 @@ def test_bc_trainer_reaches_full_accuracy_on_fixed_teacher_action(environment, f
     assert metrics["accuracy"]["operator"] == 1.0
     assert metrics["accuracy"]["vehicle"] == 1.0
     assert metrics["accuracy"]["job"] == 1.0
+    assert metrics["accuracy"]["parameterised_share"] == 1.0
     assert torch.isfinite(torch.tensor(metrics["loss"]))
+
+
+def test_do_nothing_labels_do_not_inflate_head_accuracy(environment, fake_vroom, cpu_config):
+    jobs     = make_jobs(3)
+    vehicles = make_vehicles(2)
+    state    = RoutingState(routes=[make_route(vehicles[0], jobs[:1], cost=200)], unassigned_ids={jobs[2].id})
+
+    load_scenario(environment, jobs, vehicles, state)
+    graph, mask_info = environment.observe()
+
+    records = [
+        {
+            "graph"      : PPOMemory._clone_detached(graph),
+            "mask_info"  : mask_info,
+            "action"     : Action(operator=2, vehicle_index=0, job_index=0),
+            "reward"     : 0.0,
+            "return"     : 0.0,
+            "tail_graph" : None,
+        }
+        for _ in range(8)
+    ]
+
+    cpu_config.pretrain.bc_epochs      = 2
+    cpu_config.pretrain.minibatch_size = 8
+    cpu_config.pretrain.lr             = 0.0
+
+    policy  = Policy(cpu_config)
+    trainer = BCTrainer(policy, ActionMasker(cpu_config), cpu_config, PPOTelemetry(NullTracker(), cpu_config))
+    metrics = trainer.train(records)
+
+    assert metrics["accuracy"]["parameterised_share"] == 0.0
+    assert metrics["accuracy"]["vehicle"] == 0.0
+    assert metrics["accuracy"]["job"] == 0.0
 
 
 def test_pretraining_pipeline_saves_policy_checkpoint(cpu_config, seeded, fake_vroom, tmp_path):

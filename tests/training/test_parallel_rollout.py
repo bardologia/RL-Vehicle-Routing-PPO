@@ -34,4 +34,5 @@ def test_teacher_worker_task_returns_episode_records(cpu_config, seeded, fake_vr
         assert len(episode["records"]) == 2
         assert set(episode["operator_counts"].keys()) == {0, 1, 2}
         assert isinstance(episode["episode_reward"], float)
-        assert all("return" in record for record in episode["records"])
+        assert all("reward" in record for record in episode["records"])
+        assert episode["records"][-1]["tail_graph"] is not None
