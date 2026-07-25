@@ -56,8 +56,12 @@ def test_evaluation_pipeline_reports_all_baselines(cpu_config, seeded, fake_vroo
     assert results["insertion_only"]["operator_frequency"]["op1"] == 0.0
     assert results["do_nothing"]["operator_frequency"]["op2"] == 1.0
 
-    report_path = os.path.join(str(tmp_path / "runs" / "eval_run"), "evaluation.json")
+    report_path = os.path.join(str(tmp_path / "runs" / "eval_run"), f"evaluation_seed{cpu_config.evaluation.seed}.json")
     with open(report_path) as handle:
         saved = json.load(handle)
 
-    assert set(saved.keys()) == set(results.keys())
+    assert set(saved["agents"].keys()) == set(results.keys())
+    assert saved["meta"]["seed"] == cpu_config.evaluation.seed
+    assert saved["meta"]["greedy"] is True
+    assert saved["meta"]["episodes"] == cpu_config.evaluation.episodes
+    assert len(saved["agents"]["model"]["per_episode"]["reward"]) == 2

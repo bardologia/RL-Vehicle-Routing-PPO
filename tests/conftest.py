@@ -166,7 +166,7 @@ class ScriptedPolicy:
     def to(self, device):
         return self
 
-    def select_action(self, graph, mask_info=None):
+    def select_action(self, graph, mask_info=None, greedy=False):
         action      = self.actions[min(self.calls, len(self.actions) - 1)]
         self.calls += 1
         return {"action": action}

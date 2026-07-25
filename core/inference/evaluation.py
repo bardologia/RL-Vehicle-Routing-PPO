@@ -1,5 +1,6 @@
 import json
 import os
+from dataclasses import asdict
 
 import numpy as np
 import torch
@@ -119,7 +120,7 @@ class EvaluationPipeline:
 
     def _build_agents(self):
         self.agents = {
-            "model"          : ModelAgent(self.model),
+            "model"          : ModelAgent(self.model, greedy=self.config.evaluation.greedy),
             "teacher"        : TeacherAgent(RegretInsertionTeacher(self.config)),
             "insertion_only" : TeacherAgent(RegretInsertionTeacher(self.config, allow_removal=False)),
             "do_nothing"     : FixedOperatorAgent(2),
@@ -133,16 +134,27 @@ class EvaluationPipeline:
         total_actions   = sum(sum(episode["operator_counts"].values()) for episode in episodes)
         operator_totals = {operator: sum(episode["operator_counts"][operator] for episode in episodes) for operator in range(3)}
 
+        served = [episode["served"] for episode in episodes]
+
         return {
             "episodes"              : len(episodes),
             "mean_reward"           : float(np.mean(rewards)),
             "std_reward"            : float(np.std(rewards)),
+            "sem_reward"            : float(np.std(rewards) / max(np.sqrt(len(rewards)), 1.0)),
             "mean_final_cost"       : float(np.mean(costs)),
+            "std_final_cost"        : float(np.std(costs)),
             "mean_final_unassigned" : float(np.mean(unassigned)),
-            "mean_served"           : float(np.mean([episode["served"] for episode in episodes])),
+            "mean_served"           : float(np.mean(served)),
             "mean_failed"           : float(np.mean([episode["failed"] for episode in episodes])),
             "mean_dropped"          : float(np.mean([episode["dropped"] for episode in episodes])),
+            "cost_per_served"       : float(np.sum(costs) / max(np.sum(served), 1.0)),
             "operator_frequency"    : {f"op{operator}": count / total_actions for operator, count in operator_totals.items()},
+            "per_episode"           : {
+                "reward"     : [float(value) for value in rewards],
+                "final_cost" : [float(value) for value in costs],
+                "unassigned" : [int(value) for value in unassigned],
+                "served"     : [int(value) for value in served],
+            },
         }
 
     def _evaluate(self):
@@ -157,20 +169,40 @@ class EvaluationPipeline:
                 episodes.append(evaluator.run(agent, seed + index))
 
             self.results[name] = self._aggregate(episodes)
+            self._write_report()
 
         return self.results
 
+    def _meta(self):
+        return {
+            "run_name"            : self.config.io.run_name,
+            "checkpoint_filename" : self.config.io.checkpoint_filename,
+            "seed"                : self.config.evaluation.seed,
+            "episodes"            : self.config.evaluation.episodes,
+            "greedy"              : self.config.evaluation.greedy,
+            "scenario_seed"       : self.config.env.scenario_seed,
+            "reward"              : asdict(self.config.reward),
+            "environment"         : asdict(self.config.env),
+            "caps"                : {
+                "max_disruptions_per_episode" : self.config.training.max_disruptions_per_episode,
+                "max_edits_per_round"         : self.config.training.max_edits_per_round,
+            },
+        }
+
+    def _write_report(self):
+        report_path = os.path.join(self.run_dir, f"evaluation_seed{self.config.evaluation.seed}.json")
+        with open(report_path, "w") as handle:
+            json.dump({"meta": self._meta(), "agents": self.results}, handle, indent=2)
+
+        return report_path
+
     def _report(self):
         for name, metrics in self.results.items():
-            flat = {key: value for key, value in metrics.items() if key != "operator_frequency"}
+            flat = {key: value for key, value in metrics.items() if key not in ("operator_frequency", "per_episode")}
             flat.update(metrics["operator_frequency"])
             self.logger.kv_table(flat, title=f"Evaluation: {name}")
 
-        report_path = os.path.join(self.run_dir, "evaluation.json")
-        with open(report_path, "w") as handle:
-            json.dump(self.results, handle, indent=2)
-
-        self.logger.info(f"Evaluation report saved to {report_path}")
+        self.logger.info(f"Evaluation report saved to {self._write_report()}")
 
     def run(self):
         self._resolve_run()

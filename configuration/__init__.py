@@ -11,6 +11,7 @@ from configuration.pretraining import PretrainConfig
 from configuration.training    import TrainingConfig
 from configuration.reward      import RewardConfig
 from configuration.telemetry   import TelemetryConfig
+from configuration.inference   import InferenceConfig
 from configuration.monitor     import MonitorConfig
 
 
@@ -28,6 +29,7 @@ class Config:
     pretrain   : PretrainConfig    = field(default_factory=PretrainConfig)
     evaluation : EvaluationConfig  = field(default_factory=EvaluationConfig)
     telemetry  : TelemetryConfig   = field(default_factory=TelemetryConfig)
+    inference  : InferenceConfig   = field(default_factory=InferenceConfig)
     monitor    : MonitorConfig     = field(default_factory=MonitorConfig)
 
 
@@ -47,6 +49,7 @@ __all__ = [
     "TrainingConfig",
     "RewardConfig",
     "TelemetryConfig",
+    "InferenceConfig",
     "MonitorConfig",
     "Config",
     "config",

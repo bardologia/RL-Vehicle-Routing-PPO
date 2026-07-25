@@ -80,6 +80,9 @@ def test_summary_exposes_full_key_set():
         "final_routes",
         "initial_unassigned",
         "final_unassigned",
+        "served",
+        "failed",
+        "dropped",
     }
     assert summary["initial_unassigned"] == 1
     assert summary["stopped_reason"] == "max_steps_reached"

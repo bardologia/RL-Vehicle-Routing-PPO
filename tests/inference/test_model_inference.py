@@ -4,86 +4,40 @@ from model.policy_model import Action, Policy
 from tests.conftest import ScriptedPolicy
 
 
-def test_model_inference_runs_without_mutating_environment_state(cpu_config, seeded, fake_vroom):
-    environment   = Environment(cpu_config)
-    model         = Policy(cpu_config)
-    baseline      = environment.current_state
-    initial_state = environment.current_state.copy()
+def build_inference(cpu_config, policy, disruptions=2, edits=1):
+    cpu_config.training.max_disruptions_per_episode = disruptions
+    cpu_config.training.max_edits_per_round         = edits
 
-    inference = ModelInference(model, environment, max_steps=5, device="cpu", verbose=False)
-    result    = inference.run(initial_state)
+    return ModelInference(policy, Environment(cpu_config), cpu_config, device="cpu")
+
+
+def test_inference_walks_the_disruption_rounds(cpu_config, seeded, fake_vroom):
+    inference = build_inference(cpu_config, Policy(cpu_config), disruptions=3, edits=1)
+
+    result = inference.run(seed=5)
 
     assert isinstance(result, InferenceResult)
-    assert result.total_steps >= 1
-    assert result.steps[0].step_number == 0
-    assert environment.current_state is baseline
-    assert {"total_steps", "stopped_reason", "initial_cost", "final_cost"} <= set(result.summary().keys())
-
-
-def test_model_inference_trajectory_tracks_steps(cpu_config, seeded, fake_vroom):
-    environment   = Environment(cpu_config)
-    model         = Policy(cpu_config)
-    initial_state = environment.current_state.copy()
-
-    inference  = ModelInference(model, environment, max_steps=4, device="cpu", verbose=False)
-    result     = inference.run(initial_state)
-    trajectory = result.get_trajectory()
-
-    assert trajectory[0]["step_number"] == 0
-    assert len(trajectory) == len(result.steps)
-
-
-def test_do_nothing_operator_stops_the_loop(cpu_config, seeded, fake_vroom):
-    environment   = Environment(cpu_config)
-    initial_state = environment.current_state.copy()
-
-    scripted  = ScriptedPolicy([Action(1, 0, 0), Action(1, 0, 0), Action(2, 0, 0), Action(1, 0, 0)])
-    inference = ModelInference(scripted, environment, max_steps=10, device="cpu", verbose=False)
-
-    result = inference.run(initial_state)
-
-    assert result.stopped_reason == "model_do_nothing"
+    assert result.stopped_reason == "episode_complete"
+    assert [step.round_index for step in result.steps] == [0, 1, 2]
     assert result.total_steps == 3
-    assert len(result.steps) == 3
 
 
-def test_max_steps_cap_stops_the_loop(cpu_config, seeded, fake_vroom):
-    environment   = Environment(cpu_config)
-    initial_state = environment.current_state.copy()
+def test_inference_ends_a_round_on_do_nothing(cpu_config, seeded, fake_vroom):
+    scripted  = ScriptedPolicy([Action(1, 0, 0), Action(2, 0, 0)])
+    inference = build_inference(cpu_config, scripted, disruptions=1, edits=5)
 
-    scripted  = ScriptedPolicy([Action(1, 0, 0)])
-    inference = ModelInference(scripted, environment, max_steps=4, device="cpu", verbose=False)
+    result = inference.run(seed=5)
 
-    result = inference.run(initial_state)
-
-    assert result.stopped_reason == "max_steps_reached"
-    assert result.total_steps == 4
-    assert len(result.steps) == 5
-
-
-def test_first_do_nothing_stops_before_any_apply(cpu_config, seeded, fake_vroom):
-    environment   = Environment(cpu_config)
-    initial_state = environment.current_state.copy()
-
-    scripted  = ScriptedPolicy([Action(2, 0, 0)])
-    inference = ModelInference(scripted, environment, max_steps=5, device="cpu", verbose=False)
-
-    result = inference.run(initial_state)
-
-    assert result.stopped_reason == "model_do_nothing"
-    assert result.total_steps == 1
-    assert len(result.steps) == 1
+    assert result.total_steps == 2
+    assert [step.action.operator for step in result.steps] == [1, 2]
 
 
 def test_applied_steps_record_action_info_and_costs(cpu_config, seeded, fake_vroom):
-    environment   = Environment(cpu_config)
-    initial_state = environment.current_state.copy()
-
     scripted  = ScriptedPolicy([Action(1, 0, 0), Action(2, 0, 0)])
-    inference = ModelInference(scripted, environment, max_steps=5, device="cpu", verbose=False)
+    inference = build_inference(cpu_config, scripted, disruptions=1, edits=5)
 
-    result = inference.run(initial_state)
-    applied = result.steps[1]
+    result  = inference.run(seed=5)
+    applied = result.steps[0]
 
     assert applied.action.operator == 1
     assert applied.action_info["operator_name"] == "REMOVE"
@@ -92,15 +46,22 @@ def test_applied_steps_record_action_info_and_costs(cpu_config, seeded, fake_vro
 
 
 def test_summary_cost_accounting_matches_states(cpu_config, seeded, fake_vroom):
-    environment   = Environment(cpu_config)
-    initial_state = environment.current_state.copy()
+    scripted  = ScriptedPolicy([Action(2, 0, 0)])
+    inference = build_inference(cpu_config, scripted, disruptions=2, edits=2)
 
-    scripted  = ScriptedPolicy([Action(1, 0, 0), Action(2, 0, 0)])
-    inference = ModelInference(scripted, environment, max_steps=5, device="cpu", verbose=False)
-
-    result  = inference.run(initial_state)
+    result  = inference.run(seed=5)
     summary = result.summary()
 
-    assert summary["initial_cost"] == initial_state.cost
+    assert summary["initial_cost"] == result.initial_state.cost
     assert summary["final_cost"] == result.final_state.cost
     assert summary["cost_improvement"] == result.get_initial_cost() - result.get_final_cost()
+
+
+def test_summary_carries_execution_totals(cpu_config, seeded, fake_vroom):
+    scripted  = ScriptedPolicy([Action(2, 0, 0)])
+    inference = build_inference(cpu_config, scripted, disruptions=3, edits=1)
+
+    summary = inference.run(seed=5).summary()
+
+    assert {"served", "failed", "dropped"} <= set(summary)
+    assert summary["served"] >= 0

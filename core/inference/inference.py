@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 
 import torch
 
-from core.shared import Environment, RoutingState
+from core.shared import Environment, EpisodeDriver, RoutingState
 from model.policy_model import Action, Policy, PolicyCheckpoint
 
 
@@ -12,16 +12,18 @@ from model.policy_model import Action, Policy, PolicyCheckpoint
 class InferenceStep:
     step_number    : int
     state          : RoutingState
+    round_index    : int = 0
     action         : Optional[Action] = None
     action_info    : Optional[Dict] = None
     reward_info    : Optional[Dict] = None
     cost           : int = 0
     num_routes     : int = 0
     num_unassigned : int = 0
-    
+
     def to_dict(self) -> Dict:
         return {
             "step_number"    : self.step_number,
+            "round_index"    : self.round_index,
             "cost"           : self.cost,
             "num_routes"     : self.num_routes,
             "num_unassigned" : self.num_unassigned,
@@ -38,22 +40,23 @@ class InferenceResult:
     final_state    : Optional[RoutingState] = None
     stopped_reason : str = ""
     total_steps    : int = 0
-    
+    execution      : Dict = field(default_factory=dict)
+
     def get_initial_cost(self) -> int:
         return self.initial_state.cost if self.initial_state else 0
-    
+
     def get_final_cost(self) -> int:
         return self.final_state.cost if self.final_state else 0
-    
+
     def get_cost_improvement(self) -> int:
         return self.get_initial_cost() - self.get_final_cost()
-    
+
     def get_cost_improvement_percentage(self) -> float:
         initial = self.get_initial_cost()
         if initial == 0:
             return 0.0
         return (self.get_cost_improvement() / initial) * 100.0
-    
+
     def summary(self) -> Dict:
         return {
             "total_steps"          : self.total_steps,
@@ -66,123 +69,83 @@ class InferenceResult:
             "final_routes"         : self.final_state.num_routes if self.final_state else 0,
             "initial_unassigned"   : self.initial_state.num_unassigned if self.initial_state else 0,
             "final_unassigned"     : self.final_state.num_unassigned if self.final_state else 0,
+            "served"               : self.execution.get("served", 0),
+            "failed"               : self.execution.get("failed", 0),
+            "dropped"              : self.execution.get("dropped", 0),
         }
-    
+
     def get_trajectory(self) -> List[Dict]:
         return [step.to_dict() for step in self.steps]
 
 
 class ModelInference:
-    def __init__(
-        self,
-        model       : Policy,
-        environment : Environment,
-        max_steps   : int = 10,
-        device      : str = "cuda",
-        verbose     : bool = True
-    ):
+    OPERATOR_NAMES = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING"}
 
+    def __init__(self, model: Policy, environment: Environment, config, device: str = "cuda", greedy: bool = True):
         self.model       = model
         self.environment = environment
-        self.max_steps   = max_steps
+        self.driver      = EpisodeDriver(environment, config)
         self.device      = device
-        self.verbose     = verbose
-        
+        self.greedy      = greedy
+
         self.model.eval()
         self.model.to(self.device)
 
-    def run(self, initial_state: RoutingState):
-        result               = InferenceResult()
-        result.initial_state = initial_state.copy()
-        
-        current_state = initial_state.copy()
-        step          = 0
-        
-        initial_step = InferenceStep(
-            step_number    = 0,
-            state          = current_state.copy(),
-            action         = None,
-            cost           = current_state.cost,
-            num_routes     = current_state.num_routes,
-            num_unassigned = current_state.num_unassigned
-        )
-        
-        result.steps.append(initial_step)
-        
-        while step < self.max_steps:
-            step += 1
-            
-            graph, mask_info = self.environment.observe(current_state)
-            graph = graph.to(self.device)
+    def _select(self, graph, mask_info):
+        with torch.no_grad():
+            return self.model.select_action(graph, mask_info=mask_info, greedy=self.greedy)["action"]
 
-            with torch.no_grad():
-                action_result = self.model.select_action(graph, mask_info=mask_info)
-            
-            action = action_result["action"]
-            
-            if action.operator == 2:
-                result.stopped_reason = "model_do_nothing"
-                break
-            
-            old_state, new_state = self.environment.apply_action_to(current_state, action)
-            
-            reward_info = None
-           
-            rewards, costs = self.environment.step(
-                old_state, new_state, action.operator
-            )
-            reward_info = {**rewards, **costs}
-            
-            operator_names = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING"}
-            operator_name  = operator_names.get(action.operator, f"UNKNOWN({action.operator})")
-            
-            vehicle_id = self.environment.vehicles[action.vehicle_index].id
-            job_id     = self.environment.jobs[action.job_index].id
-            
-
-            inference_step = InferenceStep(
-                step_number    = step,
-                state          = new_state.copy(),
+    def _record(self, result, step, action, state, rewards, costs):
+        result.steps.append(
+            InferenceStep(
+                step_number    = len(result.steps),
+                round_index    = step.round_index,
+                state          = state.copy(),
                 action         = action,
                 action_info    = {
                     "operator"      : action.operator,
-                    "operator_name" : operator_name,
+                    "operator_name" : self.OPERATOR_NAMES.get(action.operator, f"UNKNOWN({action.operator})"),
                     "vehicle_index" : action.vehicle_index,
                     "job_index"     : action.job_index,
-                    "vehicle_id"    : vehicle_id,
-                    "job_id"        : job_id,
                 },
-                reward_info    = reward_info,
-                cost           = new_state.cost,
-                num_routes     = new_state.num_routes,
-                num_unassigned = new_state.num_unassigned
+                reward_info    = {**rewards, **costs},
+                cost           = state.cost,
+                num_routes     = state.num_routes,
+                num_unassigned = state.num_unassigned,
             )
-            result.steps.append(inference_step)
-            
-            current_state = new_state
-        
-        if step >= self.max_steps:
-            result.stopped_reason = "max_steps_reached"
-        
-        result.final_state = current_state.copy()
-        result.total_steps = step
+        )
+
+    def run(self, seed: int):
+        result = InferenceResult()
+
+        for step in self.driver.episode(seed):
+            if result.initial_state is None:
+                result.initial_state = self.environment.current_state.copy()
+
+            action                    = self._select(step.graph, step.mask_info)
+            _, new_state, rewards, costs = step.commit(action)
+
+            self._record(result, step, action, new_state, rewards, costs)
+
+        result.final_state    = self.environment.current_state.copy()
+        result.total_steps    = len(result.steps)
+        result.execution      = dict(self.driver.totals)
+        result.stopped_reason = "episode_complete"
 
         return result
 
 
 class InferencePipeline:
-    def __init__(self, config, repo_root, logger, max_steps=50):
+    def __init__(self, config, repo_root, logger):
         self.config    = config
         self.repo_root = repo_root
         self.logger    = logger
-        self.max_steps = max_steps
 
-        self.device        = config.training.device
-        self.run_dir       = None
-        self.environment   = None
-        self.initial_state = None
-        self.model         = None
-        self.result        = None
+        self.device      = config.training.device
+        self.run_dir     = None
+        self.environment = None
+        self.model       = None
+        self.result      = None
 
     def _resolve_run(self):
         run_name = self.config.io.run_name
@@ -198,17 +161,15 @@ class InferencePipeline:
             raise FileNotFoundError(f"Run directory not found: {self.run_dir}")
 
     def _build_environment(self):
-        self.environment = Environment(self.config)
-        self.environment.reset()
-        self.initial_state = self.environment.current_state.copy()
+        self.environment = Environment(self.config, logger=self.logger)
 
     def _load_model(self):
         self.model = Policy(self.config)
         PolicyCheckpoint().load(self.model, self.config.io.checkpoint_filename, self.run_dir, map_location=self.device)
 
     def _infer(self):
-        inference   = ModelInference(self.model, self.environment, max_steps=self.max_steps, device=self.device, verbose=False)
-        self.result = inference.run(self.initial_state)
+        inference   = ModelInference(self.model, self.environment, self.config, device=self.device, greedy=self.config.inference.greedy)
+        self.result = inference.run(self.config.inference.seed)
 
     def _report(self):
         self.logger.kv_table(self.result.summary(), title="Inference Summary")
@@ -220,4 +181,3 @@ class InferencePipeline:
         self._infer()
         self._report()
         return self.result
-    
