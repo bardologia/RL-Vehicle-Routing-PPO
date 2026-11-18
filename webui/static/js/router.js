@@ -1,49 +1,46 @@
-"use strict";
-
-class Router {
-  constructor(onChange) {
-    this.onChange = onChange;
-    this.pages = {};
-    document.querySelectorAll(".page").forEach((p) => {
-      this.pages[p.dataset.page] = p;
-    });
-    this.links = [...document.querySelectorAll("[data-route]")];
+export class Router {
+  constructor(tabs, onRoute) {
+    this.tabs = tabs;
+    this.onRoute = onRoute;
     this.current = null;
-
-    window.addEventListener("hashchange", () => this._sync());
+    window.addEventListener("hashchange", () => this.sync());
   }
 
-  start() {
-    this._sync();
+  static build(parts, query) {
+    const path = parts.filter((part) => part !== null && part !== undefined && part !== "").map((part) => encodeURIComponent(part)).join("/");
+    const pairs = Object.entries(query || {}).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+    return `#/${path}${pairs.length ? "?" + pairs.join("&") : ""}`;
   }
 
-  go(route) {
-    window.location.hash = `#/${route}`;
+  parse() {
+    const raw = (window.location.hash || "").replace(/^#\/?/, "");
+    const [path, search] = raw.split("?");
+    const parts = path.split("/").filter((part) => part.length).map((part) => decodeURIComponent(part));
+    const query = {};
+    for (const [key, value] of new URLSearchParams(search || "")) query[key] = value;
+    const tab = this.tabs.includes(parts[0]) ? parts[0] : this.tabs[0];
+    return { tab, parts: parts.slice(1), query };
   }
 
-  _parse() {
-    const raw = (window.location.hash || "").replace(/^#\/?/, "").trim();
-    const [page, ...rest] = raw.split("/");
-    if (this.pages[page]) return { page, param: rest.join("/") || null };
-    return { page: "home", param: null };
+  go(hash) {
+    if (window.location.hash === hash) this.sync(true);
+    else window.location.hash = hash;
   }
 
-  _sync() {
-    const { page, param } = this._parse();
-    const key = `${page}/${param || ""}`;
-    if (key === this.current) return;
-    this.current = key;
+  replace(hash) {
+    history.replaceState(null, "", hash);
+    this.sync();
+  }
 
-    Object.entries(this.pages).forEach(([id, el]) => {
-      el.classList.toggle("is-active", id === page);
-    });
+  silent(hash) {
+    history.replaceState(null, "", hash);
+    this.current = hash;
+  }
 
-    this.links.forEach((a) => a.classList.toggle("is-current", a.dataset.route === page));
-
-    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
-
-    if (this.onChange) this.onChange(page, param);
+  sync(force) {
+    const hash = window.location.hash;
+    if (!force && hash === this.current) return;
+    this.current = hash;
+    this.onRoute(this.parse());
   }
 }
-
-window.Router = Router;

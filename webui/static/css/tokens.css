@@ -1,0 +1,113 @@
+@font-face {
+  font-family: "Archivo";
+  src: url("/static/vendor/fonts/archivo-variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  color-scheme: light;
+
+  --page: #f3f5f7;
+  --panel: #ffffff;
+  --raised: #ffffff;
+  --sunken: #e9edf1;
+  --line: #d9dee4;
+  --ink: #16202b;
+  --ink-2: #55616e;
+  --ink-3: #7d8996;
+  --on-ink: #ffffff;
+
+  --veh-1: #2a78d6;
+  --veh-2: #b0387c;
+  --veh-3: #18b0b0;
+  --veh-4: #b97a1c;
+
+  --pass: #0ca30c;
+  --warn: #fab219;
+  --fail: #d03b3b;
+  --pass-ink: #0a7a0a;
+  --warn-ink: #8a5d00;
+  --fail-ink: #b52a2a;
+
+  --gain: #2563b0;
+  --loss: #c2622a;
+
+  --ramp-0: #eef2f6;
+  --ramp-1: #c9d6e6;
+  --ramp-2: #94b0d2;
+  --ramp-3: #5584bd;
+  --ramp-4: #1f4f8f;
+
+  --bld-wall: rgba(201, 207, 214, 0.7);
+  --bld-roof: #dfe3e8;
+
+  --tile-filter: grayscale(1) contrast(0.85) brightness(1.05);
+  --overlay-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+
+  --font-text: "Archivo", system-ui, sans-serif;
+  --font-mono: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", monospace;
+
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-15: 15px;
+  --fs-18: 18px;
+  --fs-24: 24px;
+
+  --sp-2: 2px;
+  --sp-4: 4px;
+  --sp-8: 8px;
+  --sp-12: 12px;
+  --sp-16: 16px;
+  --sp-24: 24px;
+  --sp-32: 32px;
+
+  --radius: 4px;
+  --bar-h: 44px;
+  --row-dense: 28px;
+  --row: 32px;
+  --ease: 120ms ease-out;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --page: #0f1318;
+  --panel: #171c22;
+  --raised: #1e252d;
+  --sunken: #12161b;
+  --line: #2a323b;
+  --ink: #e8ecf0;
+  --ink-2: #a3aebb;
+  --ink-3: #73808d;
+  --on-ink: #0f1318;
+
+  --veh-1: #3670e2;
+  --veh-2: #cc3380;
+  --veh-3: #20a7b6;
+  --veh-4: #c77b23;
+
+  --pass: #2fbf2f;
+  --warn: #fab219;
+  --fail: #e25c5c;
+  --pass-ink: #55d455;
+  --warn-ink: #fab219;
+  --fail-ink: #ef7d7d;
+
+  --gain: #5b9be6;
+  --loss: #e08a52;
+
+  --ramp-0: #1b232c;
+  --ramp-1: #26405e;
+  --ramp-2: #2f5f95;
+  --ramp-3: #4a86cc;
+  --ramp-4: #8dbcf2;
+
+  --bld-wall: rgba(42, 50, 59, 0.8);
+  --bld-roof: #343d47;
+
+  --tile-filter: grayscale(1) contrast(0.85) brightness(1.05) invert(1) hue-rotate(180deg);
+  --overlay-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
