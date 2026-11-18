@@ -14,12 +14,15 @@ from model.policy_model import Action, Policy, PolicyCheckpoint
 
 class ModelAgent:
     def __init__(self, policy, greedy=False):
-        self.policy = policy
-        self.greedy = greedy
+        self.policy      = policy
+        self.greedy      = greedy
+        self.last_output = None
 
     def act(self, environment, graph, mask_info, remaining_steps):
         with torch.no_grad():
-            return self.policy.select_action(graph, mask_info=mask_info, greedy=self.greedy)["action"]
+            self.last_output = self.policy.select_action(graph, mask_info=mask_info, greedy=self.greedy)
+
+        return self.last_output["action"]
 
 
 class TeacherAgent:
