@@ -114,7 +114,7 @@ export class ConsoleView {
     tile.querySelector("[data-action=stop]").classList.toggle("hidden", !stoppable);
     const runName = job.overrides["io.run_name"];
     const openRun = tile.querySelector("[data-role=open-run]");
-    const showRun = !stoppable && Boolean(runName) && this.runNames.has(runName);
+    const showRun = job.status === "finished" && Boolean(runName) && this.runNames.has(runName);
     openRun.classList.toggle("hidden", !showRun);
     if (showRun) openRun.href = `#/runs/${encodeURIComponent(runName)}/summary`;
   }
