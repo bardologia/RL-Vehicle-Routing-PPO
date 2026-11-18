@@ -8,4 +8,4 @@ from .events import EventGenerator, EventHandler
 from .execution import ExecutionAdvancer
 from .rewards import RewardCalculator
 from .environment import Environment
-from .episode import EpisodeStep, EpisodeDriver
+from .episode import EpisodeStep, EpisodeDriver, RoundRecord

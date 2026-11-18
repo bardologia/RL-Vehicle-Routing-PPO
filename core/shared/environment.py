@@ -6,6 +6,7 @@ import torch
 
 from tools.logger import NullLogger
 from .actions import ActionHandler
+from .episode import RoundRecord
 from .events import EventGenerator, EventHandler
 from .execution import ExecutionAdvancer
 from .graph import Graph
@@ -28,6 +29,7 @@ class Environment:
 
         self.current_state: RoutingState = None
         self.initial_state: RoutingState = None
+        self.opening_record              = None
 
         self.graph              = Graph(config)
         self.mask_builder       = ActionMaskBuilder()
@@ -73,7 +75,23 @@ class Environment:
         self.seed_streams(seed)
 
         self.reset()
-        self.apply_disruption(self.initial_state)
+        self.open_episode()
+
+    def open_episode(self, disrupt=True):
+        """Open round 0 on the plan the environment holds and keep its RoundRecord in `opening_record`.
+
+        Args:
+            disrupt : Apply the round-0 disruption to the initial plan; False leaves the plan as loaded.
+        """
+        record = RoundRecord(0)
+        record.capture_before(self)
+        record.capture_advanced(self)
+
+        if disrupt:
+            record.event = self.apply_disruption(self.initial_state)
+
+        record.capture_disrupted(self)
+        self.opening_record = record
 
     def load_scenario(self, item):
         self.jobs          = EntityPool([Job.from_dict(job) for job in item["jobs"]])
