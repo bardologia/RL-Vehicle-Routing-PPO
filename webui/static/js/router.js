@@ -18,8 +18,8 @@ export class Router {
     const parts = path.split("/").filter((part) => part.length).map((part) => decodeURIComponent(part));
     const query = {};
     for (const [key, value] of new URLSearchParams(search || "")) query[key] = value;
-    const tab = this.tabs.includes(parts[0]) ? parts[0] : this.tabs[0];
-    return { tab, parts: parts.slice(1), query };
+    const known = this.tabs.includes(parts[0]);
+    return { known, tab: known ? parts[0] : this.tabs[0], parts: known ? parts.slice(1) : [], query: known ? query : {} };
   }
 
   go(hash) {
@@ -38,9 +38,11 @@ export class Router {
   }
 
   sync(force) {
+    const route = this.parse();
+    if (!route.known) history.replaceState(null, "", `#/${route.tab}`);
     const hash = window.location.hash;
     if (!force && hash === this.current) return;
     this.current = hash;
-    this.onRoute(this.parse());
+    this.onRoute(route);
   }
 }
