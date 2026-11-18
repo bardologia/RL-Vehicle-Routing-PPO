@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { el, plural, Store } from "./format.js";
 import { keys } from "./keys.js";
+import { KeySheet } from "./ui/keysheet.js";
 import { Router } from "./router.js";
 import { Theme } from "./theme.js";
 import { statusChip, Toast } from "./ui/status.js";
@@ -17,7 +18,7 @@ const TABS = [
   { key: "diagnose", label: "Diagnose", view: DiagnoseView },
   { key: "episode", label: "Episode", view: EpisodeView, fixed: true },
   { key: "lab", label: "Lab", view: LabView, fixed: true },
-  { key: "runs", label: "Runs", view: RunsView },
+  { key: "runs", label: "Runs", view: RunsView, fixed: true },
   { key: "launch", label: "Launch", view: LaunchView },
   { key: "console", label: "Console", view: ConsoleView },
 ];
@@ -57,6 +58,21 @@ class App {
 
     const lightbox = document.getElementById("lightbox");
     lightbox.addEventListener("click", () => lightbox.classList.remove("is-open"));
+
+    this.keySheet = new KeySheet(document.getElementById("keysheet"), keys, () => TABS.find((tab) => tab.key === this.active).label);
+    document.getElementById("keys-toggle").addEventListener("click", () => this.keySheet.toggle());
+    keys.bindGlobal("?", "Show this key list", () => this.keySheet.toggle());
+    keys.bindGlobal("/", "Focus the search of the current view", () => {
+      const view = this.views[this.active];
+      if (!view.focusSearch) return false;
+      view.focusSearch();
+      return true;
+    });
+    keys.bindGlobal("Escape", "Leave a search box, close the key list", () => {
+      if (!(document.activeElement instanceof HTMLElement) || !document.activeElement.matches("input[type=search]")) return false;
+      document.activeElement.blur();
+      return true;
+    });
   }
 
   openLightbox(source, caption) {

@@ -66,6 +66,7 @@
     <span id="svc-osrm"></span>
     <span id="svc-vroom"></span>
     <a class="topbar__jobs" id="jobs-link" href="#/console"></a>
+    <button type="button" class="btn btn--quiet" id="keys-toggle" title="Keys (?)" aria-haspopup="dialog">Keys</button>
     <button type="button" class="btn btn--quiet" id="theme-toggle"></button>
   </div>
 </header>
@@ -73,6 +74,7 @@
 <main class="views" id="views"></main>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="keysheet" class="keysheet" role="dialog" aria-modal="true" aria-label="Keys" hidden></div>
 <div id="lightbox" class="lightbox"><img alt=""><div class="lightbox__cap"></div></div>
 
 <script src="/static/vendor/leaflet.js"></script>
