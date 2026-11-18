@@ -100,7 +100,9 @@ export class EpisodeView {
   showStart() {
     this.stopPolling();
     this.stopPlay();
+    this.token += 1;
     this.ref = null;
+    this.status = null;
     this.recordNode.classList.add("hidden");
     this.startNode.classList.remove("hidden");
     this.start.show();
@@ -384,7 +386,7 @@ export class EpisodeView {
   }
 
   renderBar() {
-    if (!this.status) {
+    if (!this.status || !this.ref) {
       this.barNode.innerHTML = `<span class="muted">Opening the recording.</span>`;
       return;
     }
@@ -637,10 +639,11 @@ export class EpisodeView {
   }
 
   stopPlay() {
+    const wasPlaying = Boolean(this.playTimer);
     clearInterval(this.playTimer);
     this.playTimer = null;
     if (this.map) this.map.playing = false;
-    if (this.built && this.status) this.renderBar();
+    if (wasPlaying && this.built && this.ref && this.status) this.renderBar();
   }
 
   isolate(vehicleId) {

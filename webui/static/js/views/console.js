@@ -50,7 +50,7 @@ export class ConsoleView {
     }
     if (this.list.querySelector(".emptyblock")) this.list.innerHTML = "";
 
-    for (const job of jobs) {
+    for (const job of [...jobs].reverse()) {
       if (!this.tiles[job.job_id]) this.addTile(job);
       this.updateTile(job);
     }

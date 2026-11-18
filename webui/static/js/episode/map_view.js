@@ -441,7 +441,7 @@ export class MapView {
     if (!routes || !this.toggles.ghost) return;
     for (const route of routes) {
       const path = pathOf(route);
-      if (path.length > 1) L.polyline(path, { pane: "routes", className: "route-ghost", weight: 2, interactive: false }).addTo(this.groups.ghost);
+      if (path.length > 1) L.polyline(path, { pane: "routes", className: "route-ghost", weight: 3, interactive: false }).addTo(this.groups.ghost);
     }
   }
 

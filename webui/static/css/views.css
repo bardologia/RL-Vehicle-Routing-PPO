@@ -147,7 +147,7 @@
 .route-line.is-hot { stroke-width: 5px; }
 .route-casing { stroke: var(--panel); stroke-opacity: 0.85; fill: none; stroke-linecap: round; stroke-linejoin: round; cursor: pointer; transition: opacity var(--ease); }
 .route-line.is-dim, .route-casing.is-dim { opacity: 0.2; }
-.route-ghost { stroke: var(--ink-3); stroke-opacity: 0.9; stroke-dasharray: 2 5; fill: none; }
+.route-ghost { stroke: var(--ink-2); stroke-opacity: 0.9; stroke-dasharray: 2 6; stroke-linecap: round; fill: none; }
 .route-removed { stroke: var(--veh); stroke-opacity: 0.75; stroke-dasharray: 3 7; fill: none; }
 .route-teacher { stroke: var(--ink); stroke-dasharray: 7 6; fill: none; }
 .mk-chevron { width: 12px; height: 12px; }
