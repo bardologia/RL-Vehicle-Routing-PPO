@@ -262,7 +262,7 @@ class BCTrainer:
 
         masked_operator = self.masker.mask_operator(logits["operator_logits"], mask_info).float()
         masked_vehicle  = self.masker.mask_vehicle(logits["vehicle_logits"][action.operator], mask_info, action.operator).float()
-        masked_job      = self.masker.mask_job(logits["job_logits"][action.operator, action.vehicle_index], mask_info, action.operator, action.vehicle_index).float()
+        masked_job      = self.policy.job_head_logits(self.masker.mask_job(logits["job_logits"][action.operator, action.vehicle_index], mask_info, action.operator, action.vehicle_index)).float()
 
         operator_target = torch.tensor(action.operator, device=self.device)
         vehicle_target  = torch.tensor(action.vehicle_index, device=self.device)

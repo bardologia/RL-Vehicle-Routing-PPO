@@ -136,7 +136,7 @@ class Policy(nn.Module):
         with torch.amp.autocast(self.device, enabled=self.config.training.use_mixed_precision):
             vehicle_logits = self.vehicle_actor(torch.cat([vehicle_expanded, context_expanded, operator_expanded], dim=-1)).squeeze(-1)
 
-            job_expanded      = job_embedding.view(1, 1, num_jobs, -1).expand(num_scored_operators, num_vehicles, -1, -1)
+            job_expanded      = job_embedding.unsqueeze(0).unsqueeze(0).expand(num_scored_operators, num_vehicles, -1, -1)
             vehicle_for_job   = vehicle_expanded.unsqueeze(2).expand(-1, -1, num_jobs, -1)
             context_for_job   = context_expanded.unsqueeze(2).expand(-1, -1, num_jobs, -1)
             operator_for_job  = operator_expanded.unsqueeze(2).expand(-1, -1, num_jobs, -1)
@@ -153,10 +153,28 @@ class Policy(nn.Module):
             "job_logits"      : job_logits,
         }
 
+    @staticmethod
+    def job_head_logits(masked_job_logits):
+        """Return the job-head logits, or one neutral logit when the job pool is empty.
+
+        Args:
+            masked_job_logits : Masked job logits of one operator and vehicle, shape (J,); J is 0 when the pool holds no job.
+
+        Returns:
+            The input when J > 0, otherwise a zero tensor of shape (1,) whose only option has probability 1 and log-probability 0.
+        """
+        if masked_job_logits.numel() == 0:
+            return masked_job_logits.new_zeros(1)
+
+        return masked_job_logits
+
     def select_action(self, graph, mask_info=None, greedy=False):
         self.eval()
         with torch.no_grad():
             actor_embeddings, global_context, operator_logits, state_value = self.forward(graph)
+
+            if actor_embeddings["job"].size(0) == 0:
+                mask_info = {"unassigned_job_indices": [], "vehicles_with_jobs_indices": [], "vehicle_to_job_indices": {}}
 
             masked_operator_logits = self.masker.mask_operator(operator_logits, mask_info)
             operator_distribution  = torch.distributions.Categorical(logits=masked_operator_logits.float())
@@ -191,8 +209,9 @@ class Policy(nn.Module):
                 selected_operator_index = operator_index,
                 selected_vehicle_index  = vehicle_index,
             )
-            job_distribution = torch.distributions.Categorical(logits=masked_job_logits.float())
-            selected_job     = masked_job_logits.argmax(dim=-1) if greedy else job_distribution.sample()
+            masked_job_logits = self.job_head_logits(masked_job_logits)
+            job_distribution  = torch.distributions.Categorical(logits=masked_job_logits.float())
+            selected_job      = masked_job_logits.argmax(dim=-1) if greedy else job_distribution.sample()
             job_index        = int(selected_job.item())
             job_log_prob     = job_distribution.log_prob(selected_job)
 

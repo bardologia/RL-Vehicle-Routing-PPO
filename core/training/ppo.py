@@ -365,8 +365,9 @@ class PPO(nn.Module):
             selected_vehicle_index  = vehicle_index,
         )
 
-        job_distribution = torch.distributions.Categorical(logits=masked_job_logits.float())
-        job_log_prob     = job_distribution.log_prob(actions_tensor[sample_index, 2])
+        masked_job_logits = self.policy.job_head_logits(masked_job_logits)
+        job_distribution  = torch.distributions.Categorical(logits=masked_job_logits.float())
+        job_log_prob      = job_distribution.log_prob(actions_tensor[sample_index, 2])
 
         new_log_probs = {
             "op"    : operator_log_prob,
