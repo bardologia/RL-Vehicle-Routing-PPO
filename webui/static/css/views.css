@@ -248,6 +248,11 @@
 .lab__sampler .input--num { width: 60px; }
 .lab__fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-8); }
 .lab__fields .input, .lab__fields .select { width: 100%; }
+.lab__fields { align-items: end; }
+.lab__fields .fieldlabel > span { white-space: normal; }
+.lab__fields--vehicle { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.lab__fields--vehicle > .fieldlabel { grid-column: span 2; }
+.lab__fields--vehicle > .fieldlabel.lab__half { grid-column: span 3; }
 .lab__assign { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-8); margin: 0; display: flex; flex-wrap: wrap; gap: var(--sp-8) var(--sp-12); }
 .lab__assign legend { font-size: var(--fs-12); color: var(--ink-2); padding: 0 var(--sp-4); }
 .lab__runrow { display: flex; align-items: center; gap: var(--sp-12); }

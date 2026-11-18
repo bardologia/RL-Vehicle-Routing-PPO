@@ -374,7 +374,7 @@ export class LabView {
       this.editorNode.innerHTML = `<header class="lab__blockhead"><h3>Editor</h3></header><p class="muted">Select a job or a vehicle on the map or in the lists to edit every field.</p>`;
       return;
     }
-    const number = (field, label, value, unit) => `<label class="fieldlabel"><span>${label}${unit ? ` (${unit})` : ""}</span><input class="input input--num" data-field="${field}" inputmode="decimal" value="${esc(value)}"></label>`;
+    const number = (field, label, value, unit, half) => `<label class="fieldlabel${half ? " lab__half" : ""}"><span>${label}${unit ? ` (${unit})` : ""}</span><input class="input input--num" data-field="${field}" inputmode="decimal" value="${esc(value)}"></label>`;
 
     if (this.selected.kind === "job") {
       this.editorNode.innerHTML = `
@@ -394,12 +394,12 @@ export class LabView {
     const assigned = new Set(this.assignmentOfPlan()[entity.id] || []);
     this.editorNode.innerHTML = `
       <header class="lab__blockhead"><h3>Vehicle ${Vehicles.swatch(entity.id)}</h3><button type="button" class="btn btn--sm" data-action="delete">${icon("trash")}<span>Delete</span></button></header>
-      <div class="lab__fields">
+      <div class="lab__fields lab__fields--vehicle">
         ${number("capacity", "Capacity", entity.capacity, "bikes")}
         ${number("onboard", "Onboard", entity.onboard, "bikes")}
         ${number("speed_factor", "Speed factor", entity.speed_factor, "")}
-        ${number("shift_start", "Shift start", entity.time_window[0], "s of day")}
-        ${number("shift_end", "Shift end", entity.time_window[1], "s of day")}
+        ${number("shift_start", "Shift start", entity.time_window[0], "s of day", true)}
+        ${number("shift_end", "Shift end", entity.time_window[1], "s of day", true)}
       </div>
       <fieldset class="lab__assign"><legend>Assigned jobs (changing this pins the assignment)</legend>
         ${this.scenario.jobs.length ? this.scenario.jobs.map((job) => `<label class="check"><input type="checkbox" data-assign="${job.id}"${assigned.has(job.id) ? " checked" : ""}><span>${job.id}</span></label>`).join("") : `<span class="muted">no jobs</span>`}
