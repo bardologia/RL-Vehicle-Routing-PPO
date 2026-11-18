@@ -36,6 +36,12 @@ class ScriptCatalog:
         "env.repossession_fraction"  : {"label": "Repossession share"},
         "env.depot_radius"           : {"label": "Depot radius (km)"},
         "env.depot_service"          : {"label": "Depot unload (s)"},
+        "diagnostics.seed"           : {"label": "Seed", "help": "Base seed of the episode band. When the run holds an evaluation report for this seed, environment, reward and caps are taken from it."},
+        "diagnostics.episodes"       : {"label": "Episodes"},
+        "diagnostics.agents"         : {"label": "Agents", "help": "Comma-separated subset of model, teacher, insertion_only, do_nothing. A teacher trace takes 30 to 150 s per episode."},
+        "diagnostics.greedy"         : {"label": "Greedy policy"},
+        "diagnostics.sampled_twin"   : {"label": "Sampled twin", "help": "Also record the model sampling from its distribution, as agent model_sampled."},
+        "diagnostics.teacher_verdict": {"label": "Teacher verdict", "choices": ["none", "insertions", "full"], "help": "Teacher table computed on every model decision. insertions costs 0.5 to 3 s per decision, full up to 17 s."},
     }
 
     SCRIPTS = {
@@ -99,6 +105,20 @@ class ScriptCatalog:
                 {"title": "Sampler",   "fields": ["env.mean_jobs", "env.std_jobs", "env.mean_vehicles", "env.std_vehicles", "env.radius", "env.repossession_fraction"]},
                 {"title": "Compute",   "fields": ["training.device"]},
                 {"title": "Services",  "fields": ["service.vroom_url", "service.solve_cache_limit"]},
+            ],
+        },
+        "diagnose": {
+            "title"      : "Diagnose (record traces)",
+            "group"      : "Analysis",
+            "summary"    : "Record a full trace of every agent on held-out episodes, with policy distributions and teacher verdicts, and index them for the Diagnose tab.",
+            "essentials" : ["io.run_name", "diagnostics.seed", "diagnostics.episodes"],
+            "sections"   : [
+                {"title": "Run",         "fields": ["io.run_name", "io.runs_dir", "io.checkpoint_filename"]},
+                {"title": "Diagnostics", "fields": ["diagnostics.seed", "diagnostics.episodes", "diagnostics.agents", "diagnostics.greedy", "diagnostics.sampled_twin", "diagnostics.teacher_verdict"]},
+                {"title": "Episode",     "fields": ["training.max_disruptions_per_episode", "training.max_edits_per_round", "env.disruption_gap_mean", "env.disruption_gap_min", "env.disruption_gap_max", "env.repossession_success_probability"]},
+                {"title": "Sampler",     "fields": ["env.mean_jobs", "env.std_jobs", "env.min_jobs", "env.mean_vehicles", "env.std_vehicles", "env.radius", "env.repossession_fraction"]},
+                {"title": "Compute",     "fields": ["training.device"]},
+                {"title": "Services",    "fields": ["service.vroom_url", "service.solve_cache_limit"]},
             ],
         },
     }

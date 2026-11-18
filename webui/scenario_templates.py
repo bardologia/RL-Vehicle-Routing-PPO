@@ -1,4 +1,15 @@
+"""Hand-built Scenario Lab templates with the behaviour a rational agent should show on each."""
+
+
 class ScenarioTemplates:
+    """Catalog of the scenario templates.
+
+    Each template carries prose (`description`, `expected`) and a structured `expectation`: a list of checks judged on the plan an agent leaves at the end of the first round.
+    """
+
+    def _check(self, kind, job_id=None, vehicle_id=None, count=None):
+        return {"kind": kind, "job_id": job_id, "vehicle_id": vehicle_id, "count": count}
+
     def _job(self, job_id, lon, lat, priority, kind="support"):
         return {
             "id"          : job_id,
@@ -29,6 +40,7 @@ class ScenarioTemplates:
             "title"       : "Cheap detour insert",
             "description" : "One vehicle drives a short support route through Pinheiros. A new client-support call sits directly between its two stops, so serving it costs almost nothing extra.",
             "expected"    : "INSERT the middle job into the existing route with a small distance penalty.",
+            "expectation" : [self._check("job_on_vehicle", 2, 0)],
             "depot"       : [-46.640, -23.545],
             "jobs"        : [
                 self._job(0, -46.685, -23.560, 3),
@@ -45,6 +57,7 @@ class ScenarioTemplates:
             "title"       : "Far low-priority job",
             "description" : "The same short Pinheiros route, but the new support call is priority 1 and sits on the far east side of the city. The detour costs more than the job is worth.",
             "expected"    : "DO_NOTHING: a rational agent refuses the insertion and leaves the job unassigned.",
+            "expectation" : [self._check("job_unassigned", 2), self._check("max_edits", count=0)],
             "depot"       : [-46.640, -23.545],
             "jobs"        : [
                 self._job(0, -46.685, -23.560, 3),
@@ -61,6 +74,7 @@ class ScenarioTemplates:
             "title"       : "Priority overrides distance",
             "description" : "Same route, but the distant call is priority 5. The detour is identical to a refusal case at low priority; the value of the job flips the decision. Lower its priority in the editor and rerun to see the refusal.",
             "expected"    : "INSERT the priority-5 job despite the long detour.",
+            "expectation" : [self._check("job_on_vehicle", 2, 0)],
             "depot"       : [-46.640, -23.545],
             "jobs"        : [
                 self._job(0, -46.685, -23.560, 3),
@@ -77,6 +91,7 @@ class ScenarioTemplates:
             "title"       : "Job on the wrong vehicle",
             "description" : "Vehicle 0 works Santana in the north but carries one support call in Mooca, right where vehicle 1 is working. Removing it costs unassigned and priority penalties for one step, which pays off when it lands on the right vehicle.",
             "expected"    : "REMOVE the Mooca job from vehicle 0, then INSERT it into vehicle 1.",
+            "expectation" : [self._check("job_on_vehicle", 2, 1)],
             "depot"       : [-46.625, -23.535],
             "jobs"        : [
                 self._job(0, -46.635, -23.485, 3),
@@ -98,6 +113,7 @@ class ScenarioTemplates:
             "title"       : "Multi-trip repossessions",
             "description" : "One truck with capacity 2 faces four motorcycle repossessions around Pinheiros. The planner must interleave depot drops: collect two, unload at the central, collect two more. Watch the route pass through the depot mid-plan and the onboard load reset as drops execute.",
             "expected"    : "INSERT all four repossessions; the route includes depot deliveries between pickups.",
+            "expectation" : [self._check("job_assigned", job_id) for job_id in range(4)],
             "depot"       : [-46.640, -23.545],
             "jobs"        : [
                 self._job(0, -46.690, -23.560, 3, kind="repossession"),
@@ -115,6 +131,7 @@ class ScenarioTemplates:
             "title"       : "Abandon the outlier",
             "description" : "A city vehicle is stuck with one support call out in Jundiai, an hour away. No other vehicle can take it. Dropping it entirely saves more driving than the unassigned penalties cost.",
             "expected"    : "REMOVE the Jundiai job and leave it unassigned.",
+            "expectation" : [self._check("job_unassigned", 2)],
             "depot"       : [-46.640, -23.545],
             "jobs"        : [
                 self._job(0, -46.690, -23.560, 3),
@@ -131,6 +148,7 @@ class ScenarioTemplates:
             "title"       : "Wake the idle vehicle",
             "description" : "Vehicle 0 is busy in Mooca. Vehicle 1 sits idle in Santo Amaro with two unassigned support calls next to it. Activating an idle vehicle earns the idle bonus on top of the assignments.",
             "expected"    : "INSERT the nearby jobs into idle vehicle 1, one per step.",
+            "expectation" : [self._check("job_on_vehicle", 3, 1), self._check("job_on_vehicle", 4, 1)],
             "depot"       : [-46.625, -23.560],
             "jobs"        : [
                 self._job(0, -46.600, -23.550, 3),
@@ -152,6 +170,7 @@ class ScenarioTemplates:
             "title"       : "Tangled routes",
             "description" : "Vehicle 0 starts in Santana but serves a Santo Amaro call; vehicle 1 does the opposite. Both cross the whole city for one job. There is no global re-solve operator, so untangling means migrating the jobs one at a time.",
             "expected"    : "REMOVE and INSERT pairs swap the jobs onto the vehicles in their own neighbourhoods.",
+            "expectation" : [self._check("job_on_vehicle", 0, 1), self._check("job_on_vehicle", 1, 0)],
             "depot"       : [-46.660, -23.570],
             "jobs"        : [
                 self._job(0, -46.705, -23.650, 3),
@@ -170,6 +189,7 @@ class ScenarioTemplates:
             "title"       : "Nothing to do",
             "description" : "Two compact support clusters, each served by its own vehicle, nothing unassigned. Any action costs more than it gains; with time moving, the right play is to let the routes execute.",
             "expected"    : "DO_NOTHING while the vehicles work through their stops.",
+            "expectation" : [self._check("max_edits", count=0)],
             "depot"       : [-46.640, -23.550],
             "jobs"        : [
                 self._job(0, -46.690, -23.558, 3),
@@ -185,6 +205,7 @@ class ScenarioTemplates:
         }
 
     def catalog(self):
+        """Return the nine templates as dicts with key, title, description, expected, expectation, depot, jobs, vehicles and assignment."""
         return [
             self._cheap_detour(),
             self._far_low_priority(),
