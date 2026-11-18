@@ -82,6 +82,10 @@ export class DiagnoseView {
     try {
       this.runs = (await api.get("/api/runs")).runs;
     } catch (error) {
+      if (token !== this.token) return;
+      this.runs = [];
+      this.clearReport();
+      this.renderSelectors(null, null);
       this.content.innerHTML = "";
       this.errorNode.innerHTML = errorBlock("The run list could not be loaded.", error.message);
       return;
@@ -92,13 +96,15 @@ export class DiagnoseView {
     const withReports = this.runs.filter((run) => run.reports.length);
     const wanted = parts[0] || (withReports.some((run) => run.name === context.run) ? context.run : null) || (withReports.find((run) => run.loadable) || withReports[0] || {}).name;
     if (!wanted) {
-      this.renderSelectors(null);
+      this.clearReport();
+      this.renderSelectors(null, null);
       this.content.innerHTML = `<section class="panel"><div class="panel__body">${emptyBlock("No run has an evaluation report yet. An evaluation of 10 episodes takes about 5 minutes at 3 rounds; the teacher dominates at about 30 s per episode.", `<a class="btn" href="#/launch/evaluate">Open Launch: evaluate</a>`)}</div></section>`;
       return;
     }
     const run = this.runs.find((entry) => entry.name === wanted);
     if (!run) {
-      this.renderSelectors(null);
+      this.clearReport();
+      this.renderSelectors(null, wanted);
       this.content.innerHTML = `<section class="panel"><div class="panel__body">${errorBlock(`Run "${wanted}" does not exist.`, "The hash names a run that is not in the runs directory.")}</div></section>`;
       return;
     }
@@ -109,16 +115,14 @@ export class DiagnoseView {
       return;
     }
 
+    this.clearReport();
     this.run = run.name;
     this.seed = seed === undefined ? null : seed;
     this.runInfo = run;
-    this.renderSelectors(run);
+    this.renderSelectors(run, null);
+    this.recordLink.href = Links.recordTraces(run.name, this.seed, null);
 
     if (this.seed === null) {
-      this.report = null;
-      this.facts.innerHTML = "";
-      this.flags.innerHTML = "";
-      this.recordLink.href = Links.recordTraces(run.name, null, null);
       this.content.innerHTML = `<section class="panel"><div class="panel__body">${emptyBlock(`Run "${run.name}" has no evaluation report. The teacher dominates the time: about 30 s per episode at 3 rounds, about 150 s at 5.`, `<a class="btn btn--primary" href="${esc(Links.evaluate(run.name))}">Evaluate this run</a>`)}</div></section>`;
       return;
     }
@@ -136,7 +140,6 @@ export class DiagnoseView {
       ]);
     } catch (error) {
       if (token !== this.token) return;
-      this.report = null;
       this.content.innerHTML = "";
       this.errorNode.innerHTML = errorBlock(`The report of "${this.run}", seed ${this.seed}, could not be loaded.`, error.message);
       return;
@@ -149,9 +152,22 @@ export class DiagnoseView {
     if (query.panel) this.focusPanel(query.panel);
   }
 
-  renderSelectors(run) {
+  clearReport() {
+    this.run = null;
+    this.seed = null;
+    this.runInfo = null;
+    this.report = null;
+    this.findings = [];
+    this.index = null;
+    this.facts.innerHTML = "";
+    this.flags.innerHTML = "";
+    this.recordLink.href = "#/launch/diagnose";
+  }
+
+  renderSelectors(run, missing) {
     const ordered = [...this.runs].sort((a, b) => Number(Boolean(b.loadable && b.reports.length)) - Number(Boolean(a.loadable && a.reports.length)) || Number(b.reports.length > 0) - Number(a.reports.length > 0));
-    this.runSelect.innerHTML = ordered.map((entry) => `<option value="${esc(entry.name)}"${run && entry.name === run.name ? " selected" : ""}>${esc(entry.name)}${entry.reports.length ? "" : " (no report)"}${entry.loadable === false ? " (incompatible)" : ""}</option>`).join("");
+    const placeholder = run ? "" : `<option value="" selected disabled>${missing ? `${esc(missing)} (not found)` : "no run selected"}</option>`;
+    this.runSelect.innerHTML = placeholder + ordered.map((entry) => `<option value="${esc(entry.name)}"${run && entry.name === run.name ? " selected" : ""}>${esc(entry.name)}${entry.reports.length ? "" : " (no report)"}${entry.loadable === false ? " (incompatible)" : ""}</option>`).join("");
     this.runSelect.disabled = !this.runs.length;
     const seeds = run ? run.reports.map((report) => report.seed) : [];
     this.seedSelect.innerHTML = seeds.length ? seeds.map((seed) => `<option value="${seed}"${seed === this.seed ? " selected" : ""}>${seed}</option>`).join("") : `<option>none</option>`;
