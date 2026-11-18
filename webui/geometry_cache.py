@@ -14,7 +14,11 @@ class GeometryCache:
     Attributes:
         osrm_url : Base URL of the OSRM server.
         session  : Object with a `get(url, timeout=...)` method; `requests` by default.
+
+    The cache is dropped whole when it reaches MAX_ENTRIES stop sequences.
     """
+
+    MAX_ENTRIES = 4000
 
     def __init__(self, osrm_url, session=None):
         self.osrm_url = osrm_url.rstrip("/")
@@ -60,6 +64,9 @@ class GeometryCache:
         if cached is None:
             cached = self._fetch(key)
             with self._lock:
+                if len(self._cache) >= self.MAX_ENTRIES:
+                    self._cache.clear()
+
                 self._cache[key] = cached
 
         return cached

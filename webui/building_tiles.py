@@ -20,24 +20,30 @@ class BuildingTiles:
         directory : Cache directory; tiles are stored as `16/<x>/<y>.json`.
         endpoints : Overpass interpreter URLs, tried in order.
         session   : Object with a `post(url, data=..., headers=..., timeout=...)` method; `requests` by default.
+        clock     : Callable returning the time in epoch seconds; `time.time` by default.
+
+    A block whose fetch failed answers 503 from memory for RETRY_AFTER seconds before Overpass is asked again, so the tiles of one view do not queue up behind repeated timeouts.
     """
 
     ENDPOINTS    = ("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter")
     ZOOM         = 16
     PARENT_ZOOM  = 14
     TIMEOUT      = 25
+    RETRY_AFTER  = 60
     USER_AGENT   = "routing-console/1.0"
     LEVEL_HEIGHT = 3.2
     DEFAULT      = 8.0
     NUMBER       = re.compile(r"^\s*(-?\d+(?:\.\d+)?)")
 
-    def __init__(self, directory, endpoints=None, session=None):
+    def __init__(self, directory, endpoints=None, session=None, clock=None):
         self.directory = directory
         self.endpoints = tuple(endpoints or self.ENDPOINTS)
         self.session   = session or requests
+        self.clock     = clock or time.time
 
         self.state_lock    = threading.Lock()
         self.block_locks   = {}
+        self.failed_blocks = {}
         self.pending       = 0
         self.last_error    = None
         self.last_error_at = None
@@ -175,13 +181,21 @@ class BuildingTiles:
                 if self._tile_path(x, y).exists():
                     return
 
+                failed = self.failed_blocks.get((parent_x, parent_y))
+                if failed is not None and self.clock() - failed[0] < self.RETRY_AFTER:
+                    raise ApiError(503, failed[1])
+
                 try:
                     payload = self._fetch(self._query(*self._bounds(parent_x, parent_y, self.PARENT_ZOOM)))
                 except ApiError as error:
                     with self.state_lock:
                         self.last_error    = error.message
-                        self.last_error_at = time.time()
+                        self.last_error_at = self.clock()
+
+                    self.failed_blocks[(parent_x, parent_y)] = (self.clock(), error.message)
                     raise
+
+                self.failed_blocks.pop((parent_x, parent_y), None)
 
                 self._write_block(self.split(self.features(payload), parent_x, parent_y))
         finally:

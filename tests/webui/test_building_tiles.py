@@ -130,3 +130,23 @@ def test_other_zooms_answer_400(paths):
         with pytest.raises(ApiError) as raised:
             service.tile(*arguments)
         assert raised.value.status == 400
+
+
+def test_a_failed_block_is_not_refetched_until_the_retry_window_passes(paths):
+    session = FakeOverpass({}, fail=True)
+    now     = [1000.0]
+    service = BuildingTiles(paths.buildings_dir, ["http://one.invalid/api"], session, clock=lambda: now[0])
+
+    for x in (X, X + 1):
+        with pytest.raises(ApiError) as raised:
+            service.tile(16, x, Y)
+        assert raised.value.status == 503
+
+    assert len(session.calls) == 1
+
+    now[0]         += BuildingTiles.RETRY_AFTER + 1
+    session.fail    = False
+    session.payload = payload_for(service)
+
+    assert len(json.loads(service.tile(16, X, Y))["features"]) == 2
+    assert len(session.calls) == 2
