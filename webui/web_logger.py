@@ -1,3 +1,4 @@
+import sys
 from datetime import datetime
 
 
@@ -13,7 +14,8 @@ class WebLogger:
     def _emit(self, kind, message):
         stamp = datetime.now().strftime("%H:%M:%S")
         color = self.COLORS[kind]
-        print(f"{self.COLORS['muted']}{stamp}{self.RESET} {color}{message}{self.RESET}", flush=True)
+        sys.stdout.write(f"{self.COLORS['muted']}{stamp}{self.RESET} {color}{message}{self.RESET}\n")
+        sys.stdout.flush()
 
     def ok(self, message):
         self._emit("ok", message)
