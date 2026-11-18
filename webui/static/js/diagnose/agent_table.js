@@ -6,19 +6,26 @@ import { plainChip } from "../ui/status.js";
 export class AgentTable {
   static ORDER = ["model", "teacher", "insertion_only", "do_nothing"];
 
-
   static agentCell(key) {
     return `<span class="lanekey lanekey--${Agents.style(key)}"><i></i>${esc(Agents.label(key))}</span>`;
   }
 
   static render(container, report) {
+    container.innerHTML = AgentTable.html(container, report, false);
+    const wrapper = container.querySelector(".atable");
+    if (wrapper.scrollWidth > wrapper.clientWidth) container.innerHTML = AgentTable.html(container, report, true);
+    bindTips(container);
+  }
+
+  static html(container, report, compact) {
     const present = AgentTable.ORDER.filter((key) => report.agents[key]);
     const n = report.meta.episodes;
     const rewardRows = present.map((key) => ({ key, label: Agents.label(key), style: Agents.style(key), mean: report.agents[key].mean_reward, lo: report.agents[key].ci95[0], hi: report.agents[key].ci95[1], n: report.agents[key].episodes }));
     const pairedRows = present.filter((key) => report.paired[key]).map((key) => ({ key, label: `model minus ${Agents.label(key)}`, style: Agents.style(key), mean: report.paired[key].mean_diff, lo: report.paired[key].ci95[0], hi: report.paired[key].ci95[1], n }));
-    const width = container.clientWidth >= 1500 ? 168 : container.clientWidth >= 1250 ? 120 : 96;
+    const width = compact ? 132 : container.clientWidth >= 1500 ? 168 : container.clientWidth >= 1250 ? 120 : 96;
     const rewardStrip = IntervalStrip.scale(rewardRows, width, true);
     const pairedStrip = pairedRows.length ? IntervalStrip.scale(pairedRows, width, true) : null;
+    const cell = (strip, figures) => (compact ? `<td class="atable__strip">${strip}<div class="atable__under">${figures}</div></td>` : `<td class="atable__strip">${strip}</td><td class="num">${figures}</td>`);
 
     const body = present.map((key) => {
       const agent = report.agents[key];
@@ -29,13 +36,12 @@ export class AgentTable {
       const chip = agent.identical_to ? plainChip(`identical to ${agent.identical_to}`, `Per-episode rewards equal ${agent.identical_to} in all ${n} episodes`) : "";
       const mix = agent.operator_frequency;
       const pairedCell = pair
-        ? `<td class="atable__strip">${IntervalStrip.cell(paired, pairedStrip)}</td><td class="num"><b class="${separable ? (pair.mean_diff > 0 ? "gain" : "loss") : ""}">${fmtSigned(pair.mean_diff)}</b>${separable ? "" : ` <span class="faint">not separable</span>`}</td><td class="num" title="Episodes where the model is ahead, level and behind">${pair.wins} / ${pair.ties} / ${pair.losses}</td>`
-        : `<td class="atable__strip"></td><td class="num faint">reference</td><td class="num faint">${NONE}</td>`;
+        ? `${cell(IntervalStrip.cell(paired, pairedStrip), `<b class="${separable ? (pair.mean_diff > 0 ? "gain" : "loss") : ""}">${fmtSigned(pair.mean_diff)}</b>${separable ? "" : ` <span class="faint">not separable</span>`}`)}<td class="num" title="Episodes where the model is ahead, level and behind">${pair.wins} / ${pair.ties} / ${pair.losses}</td>`
+        : `${cell("", `<span class="faint">reference</span>`)}<td class="num faint">${NONE}</td>`;
       return `
         <tr data-agent="${esc(key)}">
-          <td>${AgentTable.agentCell(key)} ${chip}</td>
-          <td class="atable__strip">${IntervalStrip.cell(reward, rewardStrip)}</td>
-          <td class="num"><b>${fmtSigned(agent.mean_reward)}</b> <span class="faint">${fmtSigned(agent.ci95[0], 1)} to ${fmtSigned(agent.ci95[1], 1)}</span></td>
+          <td class="atable__agent">${AgentTable.agentCell(key)} ${chip}</td>
+          ${cell(IntervalStrip.cell(reward, rewardStrip), `<b>${fmtSigned(agent.mean_reward)}</b> <span class="faint">${fmtSigned(agent.ci95[0], 1)} to ${fmtSigned(agent.ci95[1], 1)}</span>`)}
           ${pairedCell}
           <td class="num">${fmtMin(agent.mean_final_cost, 0)}</td>
           <td class="num">${fmtFixed(agent.mean_final_unassigned, 1)}</td>
@@ -46,18 +52,17 @@ export class AgentTable {
     }).join("");
 
     const missing = report.missing_agents.length ? `<p class="noteblock atable__missing">Missing from this report: ${report.missing_agents.map((key) => esc(Agents.label(key))).join(", ")}. The table shows the agents present.</p>` : "";
+    const head = (title, axis, figures) => `<th class="atable__strip">${title}<small>points</small><div>${axis}</div></th>${compact ? "" : `<th class="num">${figures}</th>`}`;
 
-    container.innerHTML = `
+    return `
       ${missing}
-      <div class="dtable dtable--static atable">
+      <div class="dtable dtable--static atable${compact ? " atable--compact" : ""}">
         <table>
           <thead>
             <tr>
               <th>Agent</th>
-              <th class="atable__strip">Mean reward, 95% interval<small>points</small><div>${IntervalStrip.axis(rewardStrip)}</div></th>
-              <th class="num">Mean and interval</th>
-              <th class="atable__strip">Model minus agent, paired<small>points</small><div>${pairedStrip ? IntervalStrip.axis(pairedStrip) : ""}</div></th>
-              <th class="num">Difference</th>
+              ${head("Mean reward, 95% interval", IntervalStrip.axis(rewardStrip), "Mean and interval")}
+              ${head("Model minus agent, paired", pairedStrip ? IntervalStrip.axis(pairedStrip) : "", "Difference")}
               <th class="num">Wins / ties / losses</th>
               <th class="num">Final drive<small>min</small></th>
               <th class="num">Unassigned<small>jobs</small></th>
@@ -70,6 +75,5 @@ export class AgentTable {
         </table>
       </div>
       <p class="faint atable__foot">n = ${n} episodes per agent, seed ${report.meta.seed}. Interval = mean plus or minus 1.96 standard errors. A paired difference is not separable when its interval contains 0. Final drive = plan drive time at the end of the episode; unassigned = jobs left unassigned at the end. Operator mix in percent, in the order INSERT (filled), REMOVE (hatched), DO_NOTHING (outline).</p>`;
-    bindTips(container);
   }
 }

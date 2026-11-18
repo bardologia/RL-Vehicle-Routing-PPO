@@ -329,6 +329,14 @@
 .atable .stack { min-width: 90px; }
 .atable__mix { font-stretch: 88%; white-space: nowrap; min-width: 76px; text-align: right; }
 .atable th, .atable td { padding: 0 8px; }
+.atable--compact thead th { white-space: normal; line-height: 1.15; height: auto; padding-top: 6px; }
+.atable--compact thead th.num { max-width: 84px; }
+.atable--compact thead th small { display: block; margin-left: 0; }
+.atable--compact tbody td { height: 50px; }
+.atable--compact td.atable__strip { padding-top: 4px; padding-bottom: 4px; }
+.atable--compact td.atable__agent { white-space: normal; }
+.atable--compact td.atable__agent .lanekey { margin-right: 4px; }
+.atable__under { font-stretch: 88%; line-height: 1.2; white-space: nowrap; }
 .over__reason { white-space: normal !important; padding-top: 4px !important; padding-bottom: 4px !important; }
 .atable__foot { margin: var(--sp-8) 0 0; max-width: 110ch; }
 .atable__missing { margin: 0 0 var(--sp-8); }
