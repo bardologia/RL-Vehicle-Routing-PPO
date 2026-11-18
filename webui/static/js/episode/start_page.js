@@ -13,6 +13,9 @@ export class StartPage {
     this.picker = null;
     container.addEventListener("click", (event) => this.onClick(event));
     container.addEventListener("change", (event) => this.onChange(event));
+    container.addEventListener("input", (event) => {
+      if (event.target.dataset.field) this.syncRecord();
+    });
     app.onHealth(() => this.syncRecord());
   }
 
@@ -60,16 +63,16 @@ export class StartPage {
 
     const seedBody = `
       <span class="fieldrow">
-        <span class="fieldlabel"><span>Seed</span><input class="input input--num" data-field="seed" inputmode="numeric" value="${esc(saved.seed)}"></span>
-        <span class="fieldlabel"><span>Rounds</span><input class="input input--num" data-field="rounds" inputmode="numeric" value="${esc(saved.rounds)}"></span>
-        <span class="fieldlabel"><span>Edits per round</span><input class="input input--num" data-field="edits" inputmode="numeric" value="${esc(saved.edits)}"></span>
+        <span class="fieldlabel"><span>Seed</span><input class="input input--num" data-field="seed" inputmode="numeric" value="${esc(saved.seed)}"><span class="field__error" role="alert" data-error="seed"></span></span>
+        <span class="fieldlabel"><span>Rounds</span><input class="input input--num" data-field="rounds" inputmode="numeric" value="${esc(saved.rounds)}"><span class="field__error" role="alert" data-error="rounds"></span></span>
+        <span class="fieldlabel"><span>Edits per round</span><input class="input input--num" data-field="edits" inputmode="numeric" value="${esc(saved.edits)}"><span class="field__error" role="alert" data-error="edits"></span></span>
       </span>`;
 
     const evaluationBody = this.runs.length ? `
       <span class="fieldrow">
         <span class="fieldlabel"><span>Run</span><select class="select" data-field="run">${this.runs.map((entry) => `<option value="${esc(entry.name)}"${entry.name === saved.run ? " selected" : ""}>${esc(entry.name)}</option>`).join("")}</select></span>
         <span class="fieldlabel"><span>Report seed</span><select class="select" data-field="report">${reports.map((entry) => `<option value="${entry.seed}"${entry.seed === saved.report ? " selected" : ""}>${entry.seed}</option>`).join("")}</select></span>
-        <span class="fieldlabel"><span>Episode index${report ? ` (0 to ${report.episodes - 1})` : ""}</span><input class="input input--num" data-field="index" inputmode="numeric" value="${esc(saved.index)}"></span>
+        <span class="fieldlabel"><span>Episode index${report ? ` (0 to ${report.episodes - 1})` : ""}</span><input class="input input--num" data-field="index" inputmode="numeric" value="${esc(saved.index)}"><span class="field__error" role="alert" data-error="index"></span></span>
       </span>` : `<span class="muted">No run has an evaluation report yet. <a href="#/launch/evaluate">Evaluate a run</a> first.</span>`;
 
     const recentRows = recent.length ? recent.map((episode) => {
@@ -122,23 +125,59 @@ export class StartPage {
     const note = this.container.querySelector("[data-role=record-note]");
     const up = this.app.servicesUp;
     const needsReport = this.kind === "evaluation" && !this.form.report;
-    button.disabled = !up || needsReport;
+    const invalid = this.validate();
+    button.disabled = !up || needsReport || invalid.length > 0;
     if (!this.app.health) note.textContent = "Checking OSRM and VROOM.";
     else if (!up) note.innerHTML = `${statusChip("DOWN", "routing services")} Start them from the repository root: <code>sg docker -c "docker compose up -d"</code>`;
     else if (needsReport) note.textContent = "This source needs a run with an evaluation report.";
+    else if (invalid.length) note.innerHTML = `${statusChip("FAIL")} ${esc(invalid.join(" "))}`;
     else note.textContent = "Cheap agents take about a second each; the first model lane loads the checkpoint (about 5 s).";
   }
 
+  limits() {
+    const run = this.runs.find((entry) => entry.name === this.form.run);
+    const report = run ? run.reports.find((entry) => entry.seed === this.form.report) : null;
+    return {
+      seed: { label: "Seed", min: 0, max: 4294967295, kind: "seed" },
+      rounds: { label: "Rounds", min: 1, max: 10, kind: "seed" },
+      edits: { label: "Edits per round", min: 1, max: 8, kind: "seed" },
+      index: { label: "Episode index", min: 0, max: report ? report.episodes - 1 : 0, kind: "evaluation" },
+    };
+  }
+
+  parse(name, limit) {
+    const node = this.container.querySelector(`[data-field="${name}"]`);
+    if (!node) return { node: null, value: this.form[name], problem: null, short: null };
+    const text = node.value.trim();
+    if (!/^\d+$/.test(text)) return { node, value: null, problem: `${limit.label} must be a whole number from ${limit.min} to ${limit.max}.`, short: "not a whole number" };
+    const value = Number(text);
+    if (value < limit.min || value > limit.max) return { node, value: null, problem: `${limit.label} must be from ${limit.min} to ${limit.max}.`, short: `allowed: ${limit.min} to ${limit.max}` };
+    return { node, value, problem: null, short: null };
+  }
+
+  validate() {
+    const problems = [];
+    for (const [name, limit] of Object.entries(this.limits())) {
+      const { node, problem, short } = this.parse(name, limit);
+      if (!node) continue;
+      node.setAttribute("aria-invalid", String(Boolean(problem)));
+      this.container.querySelector(`[data-error="${name}"]`).textContent = short || "";
+      if (problem && limit.kind === this.kind) problems.push(problem);
+    }
+    return problems;
+  }
+
   readForm() {
-    const value = (name) => {
+    const select = (name) => {
       const node = this.container.querySelector(`[data-field="${name}"]`);
       return node ? node.value : null;
     };
-    const int = (name, fallback) => {
-      const text = value(name);
-      return text !== null && /^\d+$/.test(text.trim()) ? Number(text) : fallback;
-    };
-    this.form = { seed: int("seed", this.form.seed), rounds: int("rounds", this.form.rounds), edits: int("edits", this.form.edits), run: value("run") || this.form.run, report: value("report") ? Number(value("report")) : this.form.report, index: int("index", this.form.index) };
+    const form = { ...this.form, run: select("run") || this.form.run, report: select("report") ? Number(select("report")) : this.form.report };
+    this.form = form;
+    for (const [name, limit] of Object.entries(this.limits())) {
+      const { value } = this.parse(name, limit);
+      if (value !== null) form[name] = value;
+    }
     Store.write("episode.form", this.form);
   }
 
@@ -154,6 +193,7 @@ export class StartPage {
     if (target.dataset.field) {
       this.readForm();
       if (target.dataset.field === "run") this.show();
+      else this.syncRecord();
     }
   }
 
@@ -166,6 +206,11 @@ export class StartPage {
     this.readForm();
     const errorNode = this.container.querySelector("[data-role=record-error]");
     errorNode.innerHTML = "";
+    const invalid = this.validate();
+    if (invalid.length) {
+      errorNode.innerHTML = errorBlock("The recording was not started.", invalid.join(" "));
+      return;
+    }
     const agents = this.picker.agents();
     if (!agents.length) {
       errorNode.innerHTML = errorBlock("Select at least one agent.");
