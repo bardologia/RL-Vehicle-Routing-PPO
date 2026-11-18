@@ -3,7 +3,6 @@ import { cssVar, Store } from "../format.js";
 export class BuildingsLayer {
   static MIN_ZOOM = 15;
   static TILE_ZOOM = 16;
-  static MAX_TILES = 60;
   static BLOCK_ZOOM = 14;
   static CONCURRENCY = 4;
   static RETRY_MS = 60000;
@@ -26,6 +25,7 @@ export class BuildingsLayer {
     this.flushTimer = null;
     this.retryTimer = null;
     this.shown = null;
+    this.flushed = null;
 
     map.on("zoomend", () => this.sync());
     map.on("moveend", () => {
@@ -48,7 +48,6 @@ export class BuildingsLayer {
   }
 
   get detail() {
-    if (this.wanted.length === 0 && this.attached) return "This view covers too many building tiles. Zoom in further to load building data.";
     const missing = this.missing;
     const lost = this.lost;
     if (lost.length && lost.length === missing.length) return `OpenStreetMap building data did not arrive for ${lost.length} of ${this.wanted.length} tiles in view: ${this.failure(BuildingsLayer.block(lost[0]))}. It is requested again after a minute, or when the layer is switched off and on.`;
@@ -62,7 +61,7 @@ export class BuildingsLayer {
 
   get label() {
     if (!this.enabled) return "Buildings: off";
-    if (this.map.getZoom() < BuildingsLayer.MIN_ZOOM || (this.attached && this.wanted.length === 0)) return "Buildings: zoom in";
+    if (this.map.getZoom() < BuildingsLayer.MIN_ZOOM) return "Buildings: zoom in";
     const missing = this.missing.length;
     const loaded = this.wanted.length - missing;
     if (missing === 0) return "Buildings: on";
@@ -103,6 +102,7 @@ export class BuildingsLayer {
     this.layer.addTo(this.map);
     this.restyle();
     this.attached = true;
+    this.flushed = null;
     this.abort = new AbortController();
     this.request();
   }
@@ -133,8 +133,7 @@ export class BuildingsLayer {
 
   request() {
     if (!this.attached) return;
-    const visible = this.visibleTiles();
-    this.wanted = visible.length > BuildingsLayer.MAX_TILES ? [] : visible;
+    this.wanted = this.visibleTiles();
     this.queue = this.missing.filter((key) => this.failure(BuildingsLayer.block(key)) === null);
     this.flush();
     this.pump();
@@ -196,10 +195,12 @@ export class BuildingsLayer {
 
   flush() {
     if (!this.attached) return;
+    const loaded = this.wanted.filter((key) => this.tiles.has(key));
+    const signature = loaded.join(" ");
+    if (signature === this.flushed) return;
+    this.flushed = signature;
     const features = [];
-    for (const key of this.wanted) {
-      if (this.tiles.has(key)) features.push(...this.tiles.get(key));
-    }
+    for (const key of loaded) features.push(...this.tiles.get(key));
     this.layer.set({ type: "FeatureCollection", features });
   }
 
