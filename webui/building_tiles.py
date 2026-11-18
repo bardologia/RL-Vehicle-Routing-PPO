@@ -28,7 +28,7 @@ class BuildingTiles:
     ENDPOINTS    = ("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter")
     ZOOM         = 16
     PARENT_ZOOM  = 14
-    TIMEOUT      = 25
+    TIMEOUT      = 90
     RETRY_AFTER  = 60
     USER_AGENT   = "routing-console/1.0"
     LEVEL_HEIGHT = 3.2
