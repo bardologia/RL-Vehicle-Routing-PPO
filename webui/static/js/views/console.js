@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { el, esc } from "../format.js";
+import { LogText } from "../ui/logtext.js";
 import { errorBlock, statusChip } from "../ui/status.js";
 
 export class ConsoleView {
@@ -10,6 +11,8 @@ export class ConsoleView {
     this.sources = {};
     this.tiles = {};
     this.focusJob = null;
+    this.texts = {};
+    this.runNames = new Set();
 
     root.appendChild(el(`
       <div class="view__pad">
@@ -20,6 +23,12 @@ export class ConsoleView {
     this.list = root.querySelector("[data-role=jobs]");
     this.errorNode = root.querySelector("[data-role=error]");
     this.list.addEventListener("click", (event) => this.onClick(event));
+    this.list.addEventListener("input", (event) => this.onSearch(event));
+  }
+
+  focusSearch() {
+    const input = this.list.querySelector("input[type=search]");
+    if (input) input.focus();
   }
 
   enter(parts) {
@@ -42,6 +51,13 @@ export class ConsoleView {
       return;
     }
     this.errorNode.innerHTML = "";
+    if (jobs.some((job) => !["running", "queued", "pending"].includes(job.status) && job.overrides["io.run_name"] && !this.runNames.has(job.overrides["io.run_name"]))) {
+      try {
+        this.runNames = new Set((await api.get("/api/runs")).runs.map((run) => run.name));
+      } catch (error) {
+        this.runNames = new Set();
+      }
+    }
 
     if (!jobs.length) {
       this.list.innerHTML = `<div class="emptyblock"><p>No jobs in this server session.</p><a class="btn" href="#/launch">Open Launch</a></div>`;
@@ -70,6 +86,8 @@ export class ConsoleView {
           <span data-role="status"></span>
           <span class="job__meta muted" data-role="meta"></span>
           <span class="job__spacer"></span>
+          <a class="btn btn--sm hidden" data-role="open-run" href="#/runs">Open run</a>
+          <label class="job__search"><input class="input" type="search" placeholder="Search in log" aria-label="Search in the log of ${esc(job.title)}" data-role="search"><span class="muted" data-role="matches"></span></label>
           <label class="check"><input type="checkbox" data-role="follow" checked><span>Follow</span></label>
           <button type="button" class="btn btn--sm" data-action="collapse" aria-expanded="true">Collapse</button>
           <button type="button" class="btn btn--sm" data-action="stop">Stop</button>
@@ -80,12 +98,13 @@ export class ConsoleView {
       </article>`);
     this.list.prepend(tile);
     this.tiles[job.job_id] = tile;
+    this.texts[job.job_id] = "";
     this.openStream(job.job_id, tile);
   }
 
   updateTile(job) {
     const tile = this.tiles[job.job_id];
-    tile.querySelector("[data-role=status]").innerHTML = statusChip(job.status);
+    tile.querySelector("[data-role=status]").innerHTML = statusChip(job.status === "failed" && job.exit_code === -15 ? "stopped" : job.status);
     const bits = [];
     if (job.pid) bits.push(`pid ${job.pid}`);
     bits.push(`started ${job.started.replace("T", " ")}`);
@@ -93,6 +112,28 @@ export class ConsoleView {
     tile.querySelector("[data-role=meta]").textContent = bits.join(", ");
     const stoppable = ["running", "queued", "pending"].includes(job.status);
     tile.querySelector("[data-action=stop]").classList.toggle("hidden", !stoppable);
+    const runName = job.overrides["io.run_name"];
+    const openRun = tile.querySelector("[data-role=open-run]");
+    const showRun = !stoppable && Boolean(runName) && this.runNames.has(runName);
+    openRun.classList.toggle("hidden", !showRun);
+    if (showRun) openRun.href = `#/runs/${encodeURIComponent(runName)}/summary`;
+  }
+
+  paint(jobId) {
+    const tile = this.tiles[jobId];
+    const log = tile.querySelector("[data-role=log]");
+    const query = tile.querySelector("[data-role=search]").value.trim();
+    const count = LogText.fill(log, this.texts[jobId], query);
+    tile.querySelector("[data-role=matches]").textContent = query ? `${count} ${count === 1 ? "match" : "matches"}` : "";
+    return log;
+  }
+
+  onSearch(event) {
+    const input = event.target.closest("input[data-role=search]");
+    if (!input) return;
+    const log = this.paint(input.closest(".job").dataset.job);
+    const mark = log.querySelector("mark");
+    if (mark) mark.scrollIntoView({ block: "nearest" });
   }
 
   async onClick(event) {
@@ -127,8 +168,9 @@ export class ConsoleView {
       const event = JSON.parse(message.data);
       if (event.type === "chunk") {
         const clean = event.data.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\r(?!\n)/g, "\n");
-        log.textContent += clean;
-        if (log.textContent.length > 400000) log.textContent = log.textContent.slice(-300000);
+        this.texts[jobId] += clean;
+        if (this.texts[jobId].length > 400000) this.texts[jobId] = this.texts[jobId].slice(-300000);
+        this.paint(jobId);
         if (follow.checked) log.scrollTop = log.scrollHeight;
       } else if (event.type === "status") {
         this.load();
