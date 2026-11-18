@@ -247,3 +247,32 @@
 .veh-2 { --veh: var(--veh-2); }
 .veh-3 { --veh: var(--veh-3); }
 .veh-4 { --veh: var(--veh-4); }
+
+.strip { display: block; overflow: visible; }
+.ch-bar.is-link { cursor: pointer; }
+.btn.is-disabled { opacity: 0.45; cursor: not-allowed; }
+mark { background: color-mix(in oklab, var(--warn) 55%, transparent); color: inherit; border-radius: 2px; }
+kbd { display: inline-block; min-width: 20px; padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: var(--radius); background: var(--sunken); font-family: var(--font-mono); font-size: var(--fs-12); text-align: center; line-height: 18px; }
+.subhead { margin: var(--sp-12) 0 var(--sp-4); font-size: var(--fs-13); font-weight: 650; }
+.subhead:first-child { margin-top: 0; }
+.subhead small { margin-left: 6px; color: var(--ink-3); font-weight: 400; font-size: 11px; }
+.panel__lede { margin: 0 0 var(--sp-8); color: var(--ink-2); font-size: var(--fs-12); max-width: 70ch; }
+.panel.is-target { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.statrow { display: flex; flex-wrap: wrap; gap: var(--sp-16); margin-bottom: var(--sp-8); }
+.statrow > div { display: flex; flex-direction: column; min-width: 0; }
+.statrow span { color: var(--ink-2); font-size: var(--fs-12); font-stretch: 88%; }
+.statrow b { font-size: var(--fs-18); font-weight: 650; }
+.statrow b.statrow__text { font-size: var(--fs-12); font-weight: 400; color: var(--ink-2); max-width: 30ch; }
+.statline { display: flex; justify-content: space-between; gap: var(--sp-12); margin: var(--sp-8) 0 0; padding-top: var(--sp-8); border-top: 1px solid var(--line); }
+.statline span { color: var(--ink-2); }
+.statline b { font-weight: 500; text-align: right; }
+.kv--wide { width: 100%; }
+.kv--wide th { width: 1%; }
+
+.keysheet { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: flex-start; justify-content: center; padding-top: 72px; background: color-mix(in oklab, var(--ink) 35%, transparent); }
+.keysheet[hidden] { display: none; }
+.keysheet__box { width: 760px; max-width: calc(100vw - 32px); max-height: calc(100vh - 120px); overflow: auto; padding: var(--sp-16); background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--overlay-shadow); }
+.keysheet__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-12); }
+.keysheet__cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-24); }
+.keysheet__cols h3 { margin-bottom: var(--sp-8); }
+.keysheet .kv th { padding-bottom: 4px; }

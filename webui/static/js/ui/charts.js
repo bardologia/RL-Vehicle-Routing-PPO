@@ -152,7 +152,8 @@ export class LineChart {
       const lastIndex = entry.shown.length - 1;
       const endY = y.map(entry.shown[lastIndex]);
       const label = drawn.length > 1 ? `<text class="ch-direct" x="${frame.x1 + 6}" y="${endY + 4}" data-end="${index}">${esc(entry.label)}</text>` : "";
-      return `<polyline class="ch-line ch-line--${entry.style || "solid"} ${entry.className || ""}" points="${points.join(" ")}"></polyline>${label}`;
+      const single = points.length === 1 ? `<circle class="ch-dot" cx="${points[0].split(",")[0]}" cy="${points[0].split(",")[1]}" r="4"></circle>` : "";
+      return `<polyline class="ch-line ch-line--${entry.style || "solid"} ${entry.className || ""}" points="${points.join(" ")}"></polyline>${single}${label}`;
     }).join("");
 
     this.container.innerHTML = `${frame.open()}${frame.axes(x, y, Scale.ticks(xLo, xHi, 5), yTicks, xLabel, yLabel)}${lines}<line class="ch-cross" y1="${frame.y1}" y2="${frame.y0}" x1="0" x2="0" visibility="hidden"></line></svg>`;
@@ -205,10 +206,25 @@ export class LineChart {
     if (this.options.onHover) this.options.onHover(snapped);
   }
 
+  cross(step) {
+    if (!this.state) return;
+    const cross = this.container.querySelector(".ch-cross");
+    if (step === null) {
+      cross.setAttribute("visibility", "hidden");
+      return;
+    }
+    const { frame, x } = this.state;
+    const px = Math.max(frame.x0, Math.min(frame.x1, x.map(step)));
+    cross.setAttribute("x1", px);
+    cross.setAttribute("x2", px);
+    cross.setAttribute("visibility", "visible");
+  }
+
   leave() {
     tooltip.hide();
     const cross = this.container.querySelector(".ch-cross");
     if (cross) cross.setAttribute("visibility", "hidden");
+    if (this.options.onHover) this.options.onHover(null);
   }
 }
 
@@ -257,6 +273,78 @@ export class IntervalPlot {
 
     container.innerHTML = `${frame.open()}${grid}${zero}${marks}<text class="ch-label" x="${(frame.x0 + frame.x1) / 2}" y="${total - 4}" text-anchor="middle">${esc(xLabel)}</text></svg>`;
     bindTips(container);
+  }
+}
+
+export class IntervalStrip {
+  static HEIGHT = 22;
+
+  static scale(rows, width, zero) {
+    let [lo, hi] = Scale.extent(rows.flatMap((row) => [row.mean, row.lo, row.hi]), zero);
+    const pad = (hi - lo) * 0.08;
+    lo -= pad;
+    hi += pad;
+    return { x: new Scale([lo, hi], [6, width - 6]), ticks: Scale.ticks(lo, hi, 4), width, zero: zero && lo < 0 && hi > 0 };
+  }
+
+  static cell(row, strip, { digits = 2 } = {}) {
+    if (!isNum(row.mean)) return "";
+    const { x, ticks, width } = strip;
+    const cy = IntervalStrip.HEIGHT / 2;
+    const style = row.style || "model";
+    const grid = ticks.map((tick) => `<line class="ch-grid" x1="${x.map(tick)}" x2="${x.map(tick)}" y1="0" y2="${IntervalStrip.HEIGHT}"></line>`).join("");
+    const zero = strip.zero ? `<line class="ch-zero" x1="${x.map(0)}" x2="${x.map(0)}" y1="0" y2="${IntervalStrip.HEIGHT}"></line>` : "";
+    const whisker = isNum(row.lo) && isNum(row.hi) ? `<line class="ch-whisker ch-agent--${style}" x1="${x.map(row.lo)}" x2="${x.map(row.hi)}" y1="${cy}" y2="${cy}"></line><line class="ch-cap" x1="${x.map(row.lo)}" x2="${x.map(row.lo)}" y1="${cy - 4}" y2="${cy + 4}"></line><line class="ch-cap" x1="${x.map(row.hi)}" x2="${x.map(row.hi)}" y1="${cy - 4}" y2="${cy + 4}"></line>` : "";
+    const tip = Tooltip.rows(esc(row.label), [["mean", fmtSigned(row.mean, digits)], isNum(row.lo) ? ["95% interval", `${fmtSigned(row.lo, digits)} to ${fmtSigned(row.hi, digits)}`] : null, row.n ? ["n", row.n] : null]);
+    return `<svg class="chart strip" width="${width}" height="${IntervalStrip.HEIGHT}" viewBox="0 0 ${width} ${IntervalStrip.HEIGHT}" role="img" aria-label="${esc(row.label)}" data-tip="${esc(tip)}">${grid}${zero}${whisker}<circle class="ch-dot ch-dot--${style}" cx="${x.map(row.mean)}" cy="${cy}" r="4.5"></circle></svg>`;
+  }
+
+  static axis(strip) {
+    const { x, ticks, width } = strip;
+    const labels = ticks.map((tick) => `<text class="ch-tick" x="${x.map(tick)}" y="12" text-anchor="middle">${Scale.tickText(tick, ticks)}</text>`).join("");
+    return `<svg class="chart strip" width="${width}" height="16" viewBox="0 0 ${width} 16" aria-hidden="true">${labels}</svg>`;
+  }
+}
+
+export class ColumnChart {
+  static render(container, rows, { xLabel = "", yLabel = "", height = 180, digits = 2, onClick, note } = {}) {
+    const usable = rows.filter((row) => isNum(row.value));
+    if (!usable.length) {
+      emptyFrame(container, height, "no values");
+      return;
+    }
+    const width = measure(container, 360);
+    const frame = new Frame(width, height, { left: 44, right: 12, top: 24, bottom: 36 });
+    const [lo, hi] = Scale.extent(usable.map((row) => row.value), true);
+    const y = new Scale([lo, hi], [frame.y0, frame.y1]);
+    const band = (frame.x1 - frame.x0) / rows.length;
+    const yTicks = Scale.ticks(lo, hi, 3);
+    const grid = yTicks.map((tick) => `<line class="ch-grid" x1="${frame.x0}" x2="${frame.x1}" y1="${y.map(tick)}" y2="${y.map(tick)}"></line><text class="ch-tick" x="${frame.x0 - 6}" y="${y.map(tick) + 4}" text-anchor="end">${Scale.tickText(tick, yTicks)}</text>`).join("");
+    const every = Math.max(1, Math.ceil(rows.length / Math.max(1, Math.floor((frame.x1 - frame.x0) / 28))));
+    const bars = rows.map((row, index) => {
+      const cx = frame.x0 + band * (index + 0.5);
+      const label = index % every === 0 ? `<text class="ch-tick" x="${cx}" y="${frame.y0 + 16}" text-anchor="middle">${esc(row.label)}</text>` : "";
+      if (!isNum(row.value)) return label;
+      const top = Math.min(y.map(row.value), y.map(0));
+      const size = Math.max(1, Math.abs(y.map(row.value) - y.map(0)));
+      const barWidth = Math.max(2, Math.min(36, band - 2));
+      const tip = row.tip || Tooltip.rows(`${esc(xLabel)} ${esc(row.label)}`, [[esc(yLabel), fmtFixed(row.value, digits)], row.n !== undefined ? ["n", row.n] : null]);
+      return `${label}<rect class="ch-bar${onClick ? " is-link" : ""}" x="${cx - barWidth / 2}" y="${top}" width="${barWidth}" height="${size}" data-index="${index}" data-tip="${esc(tip)}"${onClick ? ` tabindex="0" role="link"` : ""}></rect>`;
+    }).join("");
+    const zero = `<line class="ch-axis" x1="${frame.x0}" x2="${frame.x1}" y1="${y.map(0)}" y2="${y.map(0)}"></line>`;
+    const labels = `<text class="ch-label" x="${(frame.x0 + frame.x1) / 2}" y="${height - 4}" text-anchor="middle">${esc(xLabel)}</text><text class="ch-label" x="2" y="${frame.y1 - 8}">${esc(yLabel)}</text>`;
+    container.innerHTML = `${frame.open()}${grid}${bars}${zero}${labels}${note ? `<text class="ch-note" x="${frame.x1}" y="${frame.y1 - 8}" text-anchor="end">${esc(note)}</text>` : ""}</svg>`;
+    bindTips(container);
+    if (onClick) {
+      container.onclick = (event) => {
+        const bar = event.target.closest(".ch-bar");
+        if (bar) onClick(rows[Number(bar.dataset.index)]);
+      };
+      container.onkeydown = (event) => {
+        const bar = event.target.closest(".ch-bar");
+        if (bar && event.key === "Enter") onClick(rows[Number(bar.dataset.index)]);
+      };
+    }
   }
 }
 
@@ -343,10 +431,11 @@ export class Histogram {
 export class StackBar {
   static NAMES = ["INSERT", "REMOVE", "DO_NOTHING"];
 
-  static html(counts, { showWords = true } = {}) {
+  static html(counts, { showWords = true, shares = false } = {}) {
     const total = counts.reduce((sum, value) => sum + value, 0);
     if (!total) return `<span class="faint">no decisions</span>`;
-    const segments = counts.map((value, index) => (value ? `<i class="stack__seg stack__seg--op${index}" style="flex:${value}" title="${StackBar.NAMES[index]} ${value} of ${total}"></i>` : "")).join("");
+    const title = (value, index) => (shares ? `${StackBar.NAMES[index]} ${((value / total) * 100).toFixed(0)}%` : `${StackBar.NAMES[index]} ${value} of ${total}`);
+    const segments = counts.map((value, index) => (value ? `<i class="stack__seg stack__seg--op${index}" style="flex:${value}" title="${title(value, index)}"></i>` : "")).join("");
     const words = showWords ? `<span class="stack__words">${counts.map((value, index) => `<span><i class="opmark opmark--op${index}"></i>${StackBar.NAMES[index]} ${((value / total) * 100).toFixed(0)}%</span>`).join("")}</span>` : "";
     return `<span class="stack"><span class="stack__bar">${segments}</span>${words}</span>`;
   }
