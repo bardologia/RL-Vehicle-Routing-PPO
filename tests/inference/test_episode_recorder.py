@@ -172,6 +172,41 @@ def test_snapshot_round_trips_through_load_scenario(setup):
         assert verdict["one_step_regret"] >= -1e-9
 
 
+def test_verdict_plan_is_do_nothing_when_no_insertion_is_planned(setup):
+    config, environment, recorder = setup
+
+    source = {
+        "kind"               : "scenario",
+        "name"               : None,
+        "template"           : None,
+        "jobs"               : [job.to_dict() for job in make_jobs(2)],
+        "vehicles"           : [vehicle.to_dict() for vehicle in make_vehicles(1)],
+        "depot"              : [-46.63, -23.55],
+        "assignment"         : {"0": [0, 1]},
+        "seed"               : 1,
+        "initial_disruption" : False,
+        "expectation"        : None,
+    }
+
+    trace   = recorder.record(FixedOperatorAgent(2), META, source, verdict_scope="insertions")
+    verdict = decisions_of(trace)[0]["decision"]["verdict"]
+
+    assert verdict["best"] is None
+    assert verdict["plan"] == {"value": 0.0, "action": {"operator": 2, "operator_name": "DO_NOTHING", "vehicle_id": None, "job_id": None}}
+    assert verdict["teacher_action"] == verdict["plan"]["action"]
+
+
+def test_first_frame_reports_no_drive_change(setup):
+    config, environment, recorder = setup
+    trace                         = recorder.record(FixedOperatorAgent(2), META, {"kind": "seed", "seed": 5})
+
+    first = trace["frames"][0]["plan"]
+
+    assert first["routes"]
+    assert [route["kpis"]["drive_delta_s"] for route in first["routes"]] == [0] * len(first["routes"])
+    assert [entry["kpis"]["drive_delta_s"] for entry in first["idle"]] == [0] * len(first["idle"])
+
+
 def test_scenario_source_runs_the_pinned_plan_and_checks_the_expectation(setup):
     config, environment, recorder = setup
 

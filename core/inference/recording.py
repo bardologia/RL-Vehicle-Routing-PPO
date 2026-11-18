@@ -22,6 +22,7 @@ from core.shared import EpisodeDriver, services
 from core.shared.state import EntityPool, Job, RoutingState, Vehicle
 from core.training.ppo import ActionDistribution
 from core.training.pretraining import RegretInsertionTeacher
+from model.policy_model import Action
 
 
 OPERATOR_NAMES = {0: "INSERT", 1: "REMOVE", 2: "DO_NOTHING"}
@@ -78,7 +79,7 @@ class EpisodeLedger:
         dropped        : Bikes dropped at the depot so far.
         returns        : Cumulative reward per term, keyed by the six reward term names.
         last_executed  : Per vehicle, jobs served and failed in the latest advance, {vehicle_id: {"served", "failed"}}.
-        previous_drive : Drive seconds per vehicle in the previous frame, {vehicle_id: seconds}.
+        previous_drive : Drive seconds per vehicle in the previous frame, {vehicle_id: seconds}; None until a first frame was rendered.
     """
 
     def __init__(self):
@@ -88,7 +89,7 @@ class EpisodeLedger:
         self.dropped        = 0
         self.returns        = {term: 0.0 for term in REWARD_TERMS}
         self.last_executed  = {}
-        self.previous_drive = {}
+        self.previous_drive = None
 
     def see_jobs(self, jobs, clock):
         """Stamp the clock on every job id not seen before."""
@@ -110,6 +111,13 @@ class EpisodeLedger:
         """Add one decision's reward terms to the cumulative returns."""
         for term in REWARD_TERMS:
             self.returns[term] += float(rewards[term])
+
+    def drive_delta(self, vehicle_id, drive_s):
+        """Return the change of a vehicle's drive seconds against the previous frame; 0 on the first frame, which has no predecessor."""
+        if self.previous_drive is None:
+            return 0
+
+        return int(drive_s) - int(self.previous_drive.get(vehicle_id, 0))
 
     def remember_drive(self, state):
         """Keep the drive seconds per vehicle of the frame just rendered."""
@@ -245,7 +253,7 @@ class PlanMetrics:
             "reward_weight"      : self.reward.distance_weight * float(route.cost) / 1000.0,
             "served_last"        : executed["served"],
             "failed_last"        : executed["failed"],
-            "drive_delta_s"      : int(route.cost) - int(ledger.previous_drive.get(vehicle.id, 0)),
+            "drive_delta_s"      : ledger.drive_delta(vehicle.id, route.cost),
         }
 
     def _idle_kpis(self, vehicle, clock, ledger):
@@ -273,7 +281,7 @@ class PlanMetrics:
             "reward_weight"      : 0.0,
             "served_last"        : executed["served"],
             "failed_last"        : executed["failed"],
-            "drive_delta_s"      : -int(ledger.previous_drive.get(vehicle.id, 0)),
+            "drive_delta_s"      : ledger.drive_delta(vehicle.id, 0),
         }
 
     def _plan_kpis(self, jobs, vehicles, state, clock, routes, crossings, ledger):
@@ -703,7 +711,7 @@ class VerdictBuilder:
             removals = [{"vehicle_id": int(entry["vehicle_id"]), "job_id": int(entry["job_id"]), "reward": float(entry["reward"]), "continuation": float(entry["continuation"]), "value": float(entry["value"])} for entry in explanation["removals"]]
 
         teacher_action = self.actions.describe(environment, explanation["action"])
-        plan_action    = explanation["plan"]["action"]
+        plan_action    = self.actions.describe(environment, explanation["plan"]["action"] or Action(operator=2, vehicle_index=0, job_index=0))
         taken_reward   = float(sum(value for term, value in taken_rewards.items() if term != "holding_reward"))
         candidates     = [baseline] + [entry["reward"] for entry in insertions] + [entry["reward"] for entry in removals or []]
         profitable     = [entry["reward"] for entry in best_by_job.values() if entry["reward"] > baseline + self.PROFITABLE_MARGIN]
@@ -714,7 +722,7 @@ class VerdictBuilder:
             "insertions"      : insertions,
             "infeasible"      : [[int(job_id), int(vehicle.id)] for job_id in eligible for vehicle in environment.vehicles if (job_id, vehicle.id) not in feasible],
             "best"            : best,
-            "plan"            : {"value": float(explanation["plan"]["value"]), "action": None if plan_action is None else self.actions.describe(environment, plan_action)},
+            "plan"            : {"value": float(explanation["plan"]["value"]), "action": plan_action},
             "removals"        : removals,
             "teacher_action"  : teacher_action,
             "match"           : self._match(taken_action, teacher_action),
