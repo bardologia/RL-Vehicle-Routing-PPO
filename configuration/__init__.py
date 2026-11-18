@@ -13,24 +13,26 @@ from configuration.reward      import RewardConfig
 from configuration.telemetry   import TelemetryConfig
 from configuration.inference   import InferenceConfig
 from configuration.monitor     import MonitorConfig
+from configuration.diagnostics import DiagnosticsConfig
 
 
 @dataclass
 class Config:
-    service    : ServiceConfig     = field(default_factory=ServiceConfig)
-    io         : IOConfig          = field(default_factory=IOConfig)
-    env        : EnvironmentConfig = field(default_factory=EnvironmentConfig)
-    lr         : LearningRate      = field(default_factory=LearningRate)
-    entropy    : Entropy           = field(default_factory=Entropy)
-    model      : ModelConfig       = field(default_factory=ModelConfig)
-    training   : TrainingConfig    = field(default_factory=TrainingConfig)
-    reward     : RewardConfig      = field(default_factory=RewardConfig)
-    ppo        : PPOConfig         = field(default_factory=PPOConfig)
-    pretrain   : PretrainConfig    = field(default_factory=PretrainConfig)
-    evaluation : EvaluationConfig  = field(default_factory=EvaluationConfig)
-    telemetry  : TelemetryConfig   = field(default_factory=TelemetryConfig)
-    inference  : InferenceConfig   = field(default_factory=InferenceConfig)
-    monitor    : MonitorConfig     = field(default_factory=MonitorConfig)
+    service     : ServiceConfig     = field(default_factory=ServiceConfig)
+    io          : IOConfig          = field(default_factory=IOConfig)
+    env         : EnvironmentConfig = field(default_factory=EnvironmentConfig)
+    lr          : LearningRate      = field(default_factory=LearningRate)
+    entropy     : Entropy           = field(default_factory=Entropy)
+    model       : ModelConfig       = field(default_factory=ModelConfig)
+    training    : TrainingConfig    = field(default_factory=TrainingConfig)
+    reward      : RewardConfig      = field(default_factory=RewardConfig)
+    ppo         : PPOConfig         = field(default_factory=PPOConfig)
+    pretrain    : PretrainConfig    = field(default_factory=PretrainConfig)
+    evaluation  : EvaluationConfig  = field(default_factory=EvaluationConfig)
+    telemetry   : TelemetryConfig   = field(default_factory=TelemetryConfig)
+    inference   : InferenceConfig   = field(default_factory=InferenceConfig)
+    monitor     : MonitorConfig     = field(default_factory=MonitorConfig)
+    diagnostics : DiagnosticsConfig = field(default_factory=DiagnosticsConfig)
 
 
 config = Config()
@@ -51,6 +53,7 @@ __all__ = [
     "TelemetryConfig",
     "InferenceConfig",
     "MonitorConfig",
+    "DiagnosticsConfig",
     "Config",
     "config",
 ]
