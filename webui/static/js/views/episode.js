@@ -26,6 +26,7 @@ export class EpisodeView {
     this.lanes = [];
     this.selected = { lane: null, seq: null };
     this.pending = null;
+    this.missingLane = null;
     this.isolated = null;
     this.entity = null;
     this.verdicts = new Map();
@@ -144,6 +145,8 @@ export class EpisodeView {
 
   async open(ref, laneKey, positionText) {
     if (this.sameRef(ref) && this.built) {
+      this.missingLane = laneKey && this.lanes.length && !this.lane(laneKey) ? laneKey : null;
+      this.renderAlerts();
       const lane = this.lane(laneKey) || this.lane();
       if (lane && lane.trace.length) {
         const seq = lane.trace.resolve(Position.parse(positionText));
@@ -162,6 +165,7 @@ export class EpisodeView {
     this.lanes = [];
     this.selected = { lane: null, seq: null };
     this.pending = { lane: laneKey || null, position: positionText || null };
+    this.missingLane = null;
     this.isolated = null;
     this.entity = null;
     this.verdicts.clear();
@@ -262,6 +266,10 @@ export class EpisodeView {
     if (this.selected.lane && this.lane() && this.lane().trace.frame(this.selected.seq)) return;
     const wanted = this.pending && this.pending.lane ? withFrames.find((lane) => lane.key === this.pending.lane) : null;
     const lane = wanted || withFrames[0];
+    if (this.pending && this.pending.lane && !this.lane(this.pending.lane)) {
+      this.missingLane = this.pending.lane;
+      this.pending.lane = null;
+    }
     const seq = this.pending ? lane.trace.resolve(Position.parse(this.pending.position)) : null;
     this.selected = { lane: lane.key, seq: seq === null ? 0 : seq };
     if (wanted || !this.pending || !this.pending.lane) this.pending = null;
@@ -322,6 +330,11 @@ export class EpisodeView {
       </div>`;
     this.barNode = this.recordNode.querySelector(".ep__bar");
     this.alertsNode = this.recordNode.querySelector(".ep__alerts");
+    this.alertsNode.addEventListener("click", (event) => {
+      if (!event.target.closest("[data-action=dismiss-missing]")) return;
+      this.missingLane = null;
+      this.renderAlerts();
+    });
     this.kpiNode = this.recordNode.querySelector(".ep__kpis");
     const left = this.recordNode.querySelector(".ep__left");
 
@@ -426,9 +439,19 @@ export class EpisodeView {
     const failed = this.lanes.filter((lane) => lane.info.status === "failed");
     const broken = this.lanes.filter((lane) => lane.loadError && lane.info.status !== "failed");
     this.alertsNode.innerHTML = [
+      this.missingLane ? this.missingNote() : "",
       ...failed.map((lane) => errorBlock(`${Agents.label(lane.key)}: ${lane.info.error || "the lane failed"}`, lane.info.traceback)),
       ...broken.map((lane) => errorBlock(`${Agents.label(lane.key)}: the trace could not be read.`, lane.loadError)),
     ].join("");
+  }
+
+  missingNote() {
+    const shown = this.lane() ? `The ${Agents.label(this.selected.lane)} lane is shown instead.` : "";
+    const recorded = this.lanes.map((lane) => Agents.label(lane.key)).join(", ");
+    const action = this.ref.kind === "diag"
+      ? `<a class="btn btn--sm" href="#/launch/diagnose?io.run_name=${encodeURIComponent(this.ref.run)}&diagnostics.seed=${this.ref.seed}">Record traces</a>`
+      : "";
+    return `<p class="noteblock">${icon("warning")}<span>The link asks for the <b>${esc(Agents.label(this.missingLane))}</b> lane, which ${this.ref.kind === "diag" ? "has no stored trace for this episode" : "is not part of this recording"}. Recorded lanes: ${esc(recorded)}. ${esc(shown)}</span>${action}<button type="button" class="btn btn--sm" data-action="dismiss-missing">Dismiss</button></p>`;
   }
 
   renderTimeline() {
