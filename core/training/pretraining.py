@@ -76,13 +76,13 @@ class RegretInsertionTeacher:
 
         return options
 
-    def _insertion_plan(self, environment, state, horizon, baseline):
+    def _insertion_plan(self, environment, state, horizon, baseline, options=None):
         plan = {"value": 0.0, "action": None}
         if horizon <= 0:
             return plan
 
         discount = 1.0
-        options  = self._insertion_options(environment, state)
+        options  = self._insertion_options(environment, state) if options is None else {job_id: list(entries) for job_id, entries in options.items()}
 
         for _ in range(horizon):
             best = self._best_insertion(options, baseline)
@@ -124,28 +124,47 @@ class RegretInsertionTeacher:
 
         return options
 
-    def _best_removal(self, environment, state, horizon, baseline):
+    def _removal_values(self, environment, state, horizon, baseline):
         gamma   = self.config.ppo.gamma
         options = sorted(self._removal_options(environment, state), key=lambda option: (-option["reward"], option["vehicle_id"], option["job_id"]))
 
-        best = None
+        values = []
         for option in options:
-            continuation = self._insertion_plan(environment, option["state"], horizon - 1, baseline)
-            value        = option["reward"] + gamma * continuation["value"]
+            continuation = self._insertion_plan(environment, option["state"], horizon - 1, baseline)["value"]
+            values.append({"vehicle_id": option["vehicle_id"], "job_id": option["job_id"], "reward": option["reward"], "continuation": continuation, "value": option["reward"] + gamma * continuation})
 
-            if best is None or value > best["value"]:
-                best = {"value": value, "vehicle_id": option["vehicle_id"], "job_id": option["job_id"]}
+        return values
+
+    def _best_removal(self, environment, state, horizon, baseline, values=None):
+        if values is None:
+            values = self._removal_values(environment, state, horizon, baseline)
+
+        best = None
+        for entry in values:
+            if best is None or entry["value"] > best["value"]:
+                best = {"value": entry["value"], "vehicle_id": entry["vehicle_id"], "job_id": entry["job_id"]}
 
         return best
 
-    def select_action(self, environment, state, remaining_steps=None):
+    def explain(self, environment, state, remaining_steps=None):
+        """Score every candidate the teacher considers at a state and return them with the chosen action.
+
+        Args:
+            environment     : Environment holding the pools, depot and clock the state belongs to; it is not modified.
+            state           : RoutingState to decide on.
+            remaining_steps : Edits left in the round including this one; caps the planning horizon. None leaves the configured horizon.
+
+        Returns:
+            Dict with "baseline" (one-step reward of DO_NOTHING), "insertions" ({job_id: [(one-step reward, vehicle_id)]}, infeasible pairs absent), "best_insertion" (regret-2 pick over options at or above the baseline, or None), "plan" ({"value": discounted reward of the greedy insertion plan, "action": its first Action or None}), "removals" (list of {"vehicle_id", "job_id", "reward", "continuation", "value"}, or None when removal is disabled), "chosen_value" and "action" (the Action the teacher takes).
+        """
         baseline = self._no_op_reward(environment, state)
         horizon  = self.config.pretrain.plan_horizon
 
         if remaining_steps is not None:
             horizon = min(horizon, remaining_steps)
 
-        plan = self._insertion_plan(environment, state, horizon, baseline)
+        insertions = self._insertion_options(environment, state)
+        plan       = self._insertion_plan(environment, state, horizon, baseline, insertions)
 
         chosen_value = baseline
         action       = Action(operator=2, vehicle_index=0, job_index=0)
@@ -154,13 +173,27 @@ class RegretInsertionTeacher:
             chosen_value = plan["value"]
             action       = plan["action"]
 
+        removals = None
         if self.allow_removal:
-            removal = self._best_removal(environment, state, horizon, baseline)
+            removals = self._removal_values(environment, state, horizon, baseline)
+            removal  = self._best_removal(environment, state, horizon, baseline, removals)
+
             if removal is not None and removal["value"] > chosen_value:
                 chosen_value = removal["value"]
                 action       = Action(operator=1, vehicle_index=environment.vehicles.index_of(removal["vehicle_id"]), job_index=environment.jobs.index_of(removal["job_id"]))
 
-        return action
+        return {
+            "baseline"       : baseline,
+            "insertions"     : insertions,
+            "best_insertion" : self._best_insertion(insertions, baseline),
+            "plan"           : plan,
+            "removals"       : removals,
+            "chosen_value"   : chosen_value,
+            "action"         : action,
+        }
+
+    def select_action(self, environment, state, remaining_steps=None):
+        return self.explain(environment, state, remaining_steps)["action"]
 
 
 class TeacherRolloutCollector:
