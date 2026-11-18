@@ -50,7 +50,7 @@
 .icon--flip { transform: rotate(180deg); }
 .ep__alerts { flex: none; display: flex; flex-direction: column; gap: var(--sp-4); padding: 0 var(--sp-12); max-height: 132px; overflow: auto; }
 .ep__alerts:not(:empty) { padding-top: var(--sp-4); padding-bottom: var(--sp-4); background: var(--panel); border-bottom: 1px solid var(--line); }
-.ep__timeline { flex: none; height: 112px; background: var(--panel); border-bottom: 1px solid var(--line); overflow-y: auto; overflow-x: hidden; position: relative; }
+.ep__timeline { flex: none; height: 112px; background: var(--panel); border-bottom: 1px solid var(--line); overflow: hidden; position: relative; }
 .ep__main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 520px; }
 .ep__left { display: flex; flex-direction: column; min-height: 0; min-width: 0; position: relative; }
 .ep__kpis { flex: none; }
@@ -61,7 +61,6 @@
 
 @media (max-width: 1500px), (max-height: 860px) {
   .ep__main { grid-template-columns: minmax(0, 1fr) 400px; }
-  .ep__timeline { height: 88px; }
   .ep__kpis .kpirow { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .ep__kpis .kpi { border-bottom: 1px solid var(--line); padding-top: 3px; padding-bottom: 2px; }
   .ep__kpis .kpi__value { font-size: var(--fs-15); }
@@ -307,8 +306,13 @@
 .diag__flags { display: inline-flex; gap: var(--sp-4); text-decoration: none; align-self: center; }
 .diag__content, .over { display: flex; flex-direction: column; gap: var(--sp-8); }
 .over > .diag__bar { margin-bottom: var(--sp-4); }
-.diag__split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--sp-8); align-items: start; }
+.diag__split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: var(--sp-8); align-items: start; }
+.diag__split [data-panel=paired-scatter] .panel__head { flex-wrap: wrap; row-gap: var(--sp-8); }
+.diag__split [data-panel=paired-scatter] .panel__help { display: none; }
 .diag__regret { max-height: 420px; }
+.diag__regret thead th { white-space: normal; vertical-align: bottom; line-height: 1.15; padding-top: 4px; padding-bottom: 4px; }
+.diag__regret thead th small { display: block; margin-left: 0; }
+.diag__regret th, .diag__regret td { padding-left: 6px; padding-right: 6px; }
 .diag__section { margin: var(--sp-16) 0 var(--sp-4); }
 .diag__section .muted { font-weight: 400; font-size: var(--fs-13); margin-left: var(--sp-8); }
 .diag__grid { display: flex; gap: var(--sp-8); align-items: flex-start; }

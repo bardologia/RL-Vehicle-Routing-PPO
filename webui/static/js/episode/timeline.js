@@ -8,6 +8,9 @@ export class Timeline {
   static VALUE_W = 64;
   static HEAD_H = 26;
   static GAP = 10;
+  static LANE_H = 28;
+  static LANE_H_SHORT = 20;
+  static COMPACT = "(max-width: 1500px), (max-height: 860px)";
 
   constructor(container, { onSelect }) {
     this.container = container;
@@ -98,10 +101,10 @@ export class Timeline {
     this.state = state;
     const { lanes, selected, divergence } = state;
     const width = Math.max(600, Math.floor(this.container.clientWidth));
-    const height = Math.floor(this.container.clientHeight) || 112;
     const { slots, cell, roundX, end } = this.layout(lanes, width);
-    const laneH = Math.max(26, Math.min(44, Math.floor((height - Timeline.HEAD_H - 2) / Math.max(1, lanes.length))));
+    const laneH = window.matchMedia(Timeline.COMPACT).matches ? Timeline.LANE_H_SHORT : Timeline.LANE_H;
     const svgH = laneH * lanes.length;
+    this.container.style.height = `${Timeline.HEAD_H + laneH * Math.max(3, lanes.length) + 2}px`;
 
     const magnitudes = [0.5];
     const totals = [0];
@@ -198,7 +201,5 @@ export class Timeline {
         ${heads}
         <div class="timeline__axis" style="left:${end + 8}px">return</div>
       </div>`;
-    const current = this.container.querySelector(".timeline__lane.is-current");
-    if (current && (current.offsetTop < this.container.scrollTop + Timeline.HEAD_H || current.offsetTop + laneH > this.container.scrollTop + height)) this.container.scrollTop = Math.max(0, current.offsetTop - Timeline.HEAD_H);
   }
 }

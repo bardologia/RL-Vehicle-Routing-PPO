@@ -255,6 +255,12 @@ export class DiagnoseView {
     this.app.router.go(this.episodeHash(episode));
   }
 
+  static eventWords(events) {
+    const counts = new Map();
+    for (const word of events) counts.set(word, (counts.get(word) || 0) + 1);
+    return [...counts].map(([word, count]) => (count > 1 ? `${count} ${word}` : word)).join(", ") || "none";
+  }
+
   buildRegret() {
     const traced = new Map((this.index ? this.index.episodes : []).map((episode) => [episode.index, episode]));
     const model = (row) => (row.trace && row.trace.agents.model ? row.trace.agents.model : null);
@@ -270,13 +276,13 @@ export class DiagnoseView {
     const columns = [
       { key: "index", label: "Episode", numeric: true, render: (row) => `<a href="${esc(this.episodeHash(row))}" title="${row.has_trace.model ? "Open the stored trace" : "Record this episode now"}">${row.index}</a>` },
       { key: "seed", label: "Seed", numeric: true },
-      { key: "regret_teacher", label: "Regret, teacher", unit: "points", numeric: true, render: (row) => signed(row.regret_teacher), bar: { value: (row) => Math.max(0, row.regret_teacher), max: () => maxRegret } },
-      { key: "regret_best_baseline", label: "Regret, best baseline", unit: "points", numeric: true, render: (row) => signed(row.regret_best_baseline) },
+      { key: "regret_teacher", label: "Regret, teacher", unit: "pts", numeric: true, render: (row) => signed(row.regret_teacher), bar: { value: (row) => Math.max(0, row.regret_teacher), max: () => maxRegret } },
+      { key: "regret_best_baseline", label: "Regret, best baseline", unit: "pts", numeric: true, render: (row) => signed(row.regret_best_baseline) },
       { key: "unassigned_delta", label: "Unassigned delta", unit: "jobs", numeric: true, title: "Final unassigned jobs, model minus teacher", format: fmtSignedInt },
       { key: "served_delta", label: "Served delta", unit: "jobs", numeric: true, title: "Served jobs, model minus teacher", format: fmtSignedInt },
       { key: "jobs", label: "Jobs", numeric: true, hideable: true, sortValue: (row) => (row.trace ? row.trace.jobs : null), render: (row) => (row.trace ? row.trace.jobs : needsTraces()) },
       { key: "vehicles", label: "Vehicles", numeric: true, hideable: true, sortValue: (row) => (row.trace ? row.trace.vehicles : null), render: (row) => (row.trace ? row.trace.vehicles : needsTraces()) },
-      { key: "events", label: "Events", hideable: true, sortable: false, render: (row) => (row.trace ? esc(row.trace.events.join(", ") || "none") : needsTraces()) },
+      { key: "events", label: "Events", hideable: true, sortable: false, title: "Disruption of each round, in round order", render: (row) => (row.trace ? `<span title="${esc(`In order: ${row.trace.events.join(", ") || "none"}`)}">${esc(DiagnoseView.eventWords(row.trace.events))}</span>` : needsTraces()) },
       { key: "holding_share", label: "Holding share", ...fromTrace((agent) => agent.holding_share, (value) => fmtPct(value)) },
       { key: "decisions", label: "Decisions", ...fromTrace((agent) => agent.decisions) },
       { key: "inserts", label: "INSERT", ...fromTrace((agent) => agent.operator_counts[0]) },
