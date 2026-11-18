@@ -356,6 +356,9 @@ export class EpisodeView {
       tabs: [{ value: "routes", label: "Routes" }, { value: "unassigned", label: "Unassigned" }, { value: "compare", label: "Compare" }, { value: "inputs", label: "Inputs" }],
       onTab: () => this.renderDrawer(),
     });
+    this.coverObserver = new ResizeObserver(() => this.syncCover());
+    this.coverObserver.observe(this.drawer.root);
+    this.coverObserver.observe(this.recordNode.querySelector(".ep__map"));
     this.drawer.body.innerHTML = `<div data-pane="routes"></div><div data-pane="unassigned"></div><div data-pane="compare"></div><div data-pane="inputs"></div>`;
     this.routeTable = new RouteTable(this.drawer.body.querySelector("[data-pane=routes]"), {
       onIsolate: (vehicleId) => this.isolate(this.isolated === vehicleId ? null : vehicleId),
@@ -559,6 +562,12 @@ export class EpisodeView {
       this.map.setGhost(null);
     }
     this.map.setTeacherAlternative(alternative);
+  }
+
+  syncCover() {
+    const overlay = getComputedStyle(this.drawer.root).position === "absolute";
+    const cover = overlay ? this.map.root.getBoundingClientRect().bottom - this.drawer.root.getBoundingClientRect().top : 0;
+    this.map.setCover(Math.max(0, Math.round(cover)));
   }
 
   renderDrawer() {

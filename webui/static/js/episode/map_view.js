@@ -67,6 +67,7 @@ export class MapView {
     this.isolated = null;
     this.playing = false;
     this.fitted = false;
+    this.cover = 0;
     this.animation = null;
     this.byVehicle = new Map();
     this.jobMarkers = new Map();
@@ -614,8 +615,14 @@ export class MapView {
     this.buildings.suspend();
     const size = this.map.getSize();
     const legendRoom = this.legendOpen && size.x > 900 ? this.legendNode.offsetWidth + 24 : 48;
-    this.map.fitBounds(bounds, { paddingTopLeft: [legendRoom, 64], paddingBottomRight: [Math.min(190, size.x * 0.16), 48], maxZoom: 16, animate: Boolean(animate) });
+    this.map.fitBounds(bounds, { paddingTopLeft: [legendRoom, 64], paddingBottomRight: [Math.min(190, size.x * 0.16), this.cover ? this.cover + 12 : 48], maxZoom: 16, animate: Boolean(animate) });
     this.fitted = true;
+  }
+
+  setCover(bottom) {
+    if (bottom === this.cover) return;
+    this.cover = bottom;
+    if (this.fitted) this.fit(false);
   }
 
   resetFit() {
