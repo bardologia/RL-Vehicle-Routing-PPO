@@ -88,7 +88,7 @@ export class MapView {
     this.legendNode = this.root.querySelector(".map__legend");
     this.controlSet = controls || ["fit", "follow", "buildings", "teacher", "ghost", "crossings"];
 
-    this.map = L.map(this.root.querySelector(".map__canvas"), { zoomControl: false, attributionControl: true, zoomSnap: 0.5, maxZoom: 19 }).setView(CENTER, 11);
+    this.map = L.map(this.root.querySelector(".map__canvas"), { zoomControl: false, attributionControl: true, zoomSnap: 1, maxZoom: 19 }).setView(CENTER, 11);
     this.map.attributionControl.setPrefix(false);
     L.control.zoom({ position: "bottomright" }).addTo(this.map);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "(c) OpenStreetMap contributors" }).addTo(this.map);

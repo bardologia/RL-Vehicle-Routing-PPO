@@ -4,7 +4,8 @@ export class BuildingsLayer {
   static MIN_ZOOM = 15;
   static TILE_ZOOM = 16;
   static MAX_TILES = 60;
-  static CONCURRENCY = 2;
+  static BLOCK_ZOOM = 14;
+  static CONCURRENCY = 4;
   static RETRY_MS = 60000;
 
   constructor(map, onState) {
@@ -15,13 +16,16 @@ export class BuildingsLayer {
     this.attached = false;
     this.suspended = false;
     this.tiles = new Map();
+    this.cachedBlocks = new Set();
     this.queue = [];
     this.active = 0;
+    this.probing = new Set();
+    this.failed = new Map();
     this.wanted = [];
-    this.failedAt = 0;
-    this.failure = null;
     this.abort = null;
     this.flushTimer = null;
+    this.retryTimer = null;
+    this.shown = null;
 
     map.on("zoomend", () => this.sync());
     map.on("moveend", () => {
@@ -35,14 +39,20 @@ export class BuildingsLayer {
     this.sync();
   }
 
-  get unavailable() {
-    return this.failure !== null && Date.now() - this.failedAt < BuildingsLayer.RETRY_MS;
+  get missing() {
+    return this.wanted.filter((key) => !this.tiles.has(key));
+  }
+
+  get lost() {
+    return this.missing.filter((key) => this.failure(BuildingsLayer.block(key)) !== null);
   }
 
   get detail() {
-    if (this.wanted.length === 0 && this.attached) return "Zoom in further to load building data for this view.";
-    const missing = this.wanted.filter((key) => !this.tiles.has(key)).length;
-    if (this.unavailable && missing) return `OpenStreetMap building data did not arrive for ${missing} of ${this.wanted.length} tiles in view: ${this.failure}`;
+    if (this.wanted.length === 0 && this.attached) return "This view covers too many building tiles. Zoom in further to load building data.";
+    const missing = this.missing;
+    const lost = this.lost;
+    if (lost.length && lost.length === missing.length) return `OpenStreetMap building data did not arrive for ${lost.length} of ${this.wanted.length} tiles in view: ${this.failure(BuildingsLayer.block(lost[0]))}. It is requested again after a minute, or when the layer is switched off and on.`;
+    if (missing.length) return `Loading building data for ${missing.length} of ${this.wanted.length} tiles in view. A block that is not cached yet is fetched from OpenStreetMap and can take up to a minute.`;
     return "Extruded building footprints from OpenStreetMap, shown from zoom 15.";
   }
 
@@ -52,16 +62,29 @@ export class BuildingsLayer {
 
   get label() {
     if (!this.enabled) return "Buildings: off";
-    if (this.map.getZoom() < BuildingsLayer.MIN_ZOOM) return "Buildings: zoom in";
-    if (this.pending) return "Buildings: loading";
-    if (this.unavailable && !this.wanted.some((key) => this.tiles.has(key))) return "Buildings: unavailable";
-    return "Buildings: on";
+    if (this.map.getZoom() < BuildingsLayer.MIN_ZOOM || (this.attached && this.wanted.length === 0)) return "Buildings: zoom in";
+    const missing = this.missing.length;
+    const loaded = this.wanted.length - missing;
+    if (missing === 0) return "Buildings: on";
+    if (this.lost.length < missing) return loaded ? "Buildings: on, loading more" : "Buildings: loading";
+    return loaded ? "Buildings: on, part unavailable" : "Buildings: unavailable";
+  }
+
+  failure(block) {
+    const entry = this.failed.get(block);
+    return entry && Date.now() - entry.at < BuildingsLayer.RETRY_MS ? entry.message : null;
+  }
+
+  static block(key) {
+    const [zoom, x, y] = key.split("/").map(Number);
+    const shift = zoom - BuildingsLayer.BLOCK_ZOOM;
+    return `${x >> shift}/${y >> shift}`;
   }
 
   toggle() {
     this.enabled = !this.enabled;
     Store.write("buildings", this.enabled);
-    this.failure = null;
+    this.failed.clear();
     this.sync();
   }
 
@@ -88,9 +111,11 @@ export class BuildingsLayer {
     if (this.layer && this.attached) this.map.removeLayer(this.layer);
     this.attached = false;
     this.queue = [];
+    this.probing.clear();
     if (this.abort) this.abort.abort();
     this.abort = null;
     clearTimeout(this.flushTimer);
+    clearTimeout(this.retryTimer);
   }
 
   visibleTiles() {
@@ -110,17 +135,29 @@ export class BuildingsLayer {
     if (!this.attached) return;
     const visible = this.visibleTiles();
     this.wanted = visible.length > BuildingsLayer.MAX_TILES ? [] : visible;
-    this.queue = this.unavailable ? [] : this.wanted.filter((key) => !this.tiles.has(key));
+    this.queue = this.missing.filter((key) => this.failure(BuildingsLayer.block(key)) === null);
     this.flush();
     this.pump();
-    this.onState(this);
+    this.notify();
+  }
+
+  next() {
+    const at = this.queue.findIndex((key) => this.cachedBlocks.has(BuildingsLayer.block(key)) || !this.probing.has(BuildingsLayer.block(key)));
+    return at >= 0 ? this.queue.splice(at, 1)[0] : null;
   }
 
   pump() {
-    while (this.attached && this.active < BuildingsLayer.CONCURRENCY && this.queue.length) this.fetchTile(this.queue.shift());
+    while (this.attached && this.active < BuildingsLayer.CONCURRENCY) {
+      const key = this.next();
+      if (key === null) return;
+      this.fetchTile(key);
+    }
   }
 
   async fetchTile(key) {
+    const block = BuildingsLayer.block(key);
+    const probe = !this.cachedBlocks.has(block);
+    if (probe) this.probing.add(block);
     this.active += 1;
     const signal = this.abort.signal;
     try {
@@ -128,18 +165,28 @@ export class BuildingsLayer {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
       this.tiles.set(key, body.features);
-      this.failure = null;
+      this.cachedBlocks.add(block);
+      this.failed.delete(block);
       this.scheduleFlush();
     } catch (error) {
       if (!signal.aborted) {
-        this.failure = error.message;
-        this.failedAt = Date.now();
-        this.queue = [];
+        this.failed.set(block, { at: Date.now(), message: error.message });
+        this.queue = this.queue.filter((other) => BuildingsLayer.block(other) !== block);
+        clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => this.request(), BuildingsLayer.RETRY_MS + 100);
       }
     }
+    if (probe) this.probing.delete(block);
     this.active -= 1;
     this.pump();
-    if (!this.pending || this.failure) this.onState(this);
+    this.notify();
+  }
+
+  notify() {
+    const shown = `${this.label}|${this.detail}`;
+    if (shown === this.shown) return;
+    this.shown = shown;
+    this.onState(this);
   }
 
   scheduleFlush() {
@@ -161,6 +208,7 @@ export class BuildingsLayer {
     if (wanted && !this.attached) this.attach();
     else if (!wanted && this.attached) this.detach();
     else if (wanted) this.request();
+    this.shown = `${this.label}|${this.detail}`;
     this.onState(this);
   }
 }
