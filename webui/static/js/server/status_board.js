@@ -433,6 +433,17 @@ export class StatusBoard {
     this.head.title.textContent = sys.host;
     const bits = [`up ${ByteFormat.uptime(sys.uptime)}`, `${sys.cpu.count} cores`, sys.gpus_known ? plural(sys.gpus.length, "CUDA device") : "CUDA devices unknown", `${ByteFormat.size(sys.mem.total)} RAM`];
     this.head.dateline.textContent = bits.join(" · ");
+    this.renderMastFigures(sys);
+  }
+
+  renderMastFigures(sys) {
+    const jobs = this.jobs || [];
+    const running = jobs.filter((job) => job.status === "running").slice(0, 4);
+    const waiting = jobs.filter((job) => job.status === "queued" || job.status === "scheduled").length;
+    const busy = Math.round(Math.max(0, Math.min(100, sys.cpu.total))) / 100;
+    FigureStates.write(this.head.fleet, { routes: running.map(() => ({ stops: Math.max(1, Math.round(busy * 6)), drive: busy })), unassigned: Math.min(6, waiting), idle: 4 - running.length, solving: false });
+    const recent = sys.history.cpu.slice(-48);
+    FigureStates.write(this.head.load, recent.length ? FigureStates.training(recent.map((value) => value / 100), running.length > 0) : { values: Array(24).fill(null), best: null, live: false });
   }
 
   renderWatchdog(sys) {

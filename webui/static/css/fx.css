@@ -64,6 +64,15 @@ hairline-figure {
 .fig-fill { position: absolute; inset: 0; container-type: size; }
 .fig-fill > hairline-figure { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(100cqw, 125cqh); }
 
+.mast { display: grid; grid-template-columns: clamp(200px, 16vw, 320px) minmax(0, 1fr) clamp(200px, 16vw, 320px); align-items: center; column-gap: clamp(12px, 2vw, 32px); }
+.mast__flank { min-width: 0; width: 100%; }
+.mast__flank > hairline-figure { width: 100%; }
+.mast__center { min-width: 0; }
+@media (max-width: 760px) {
+  .mast { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
+  .mast__center ~ .mast__flank { display: none; }
+}
+
 .figcard { display: grid; grid-template-columns: clamp(160px, 12vw, 240px) minmax(0, 1fr); align-items: center; gap: var(--gap); }
 .figcard__body { min-width: 0; align-self: start; }
 .figcard__fig { position: relative; align-self: stretch; min-width: 0; min-height: 180px; container-type: size; }

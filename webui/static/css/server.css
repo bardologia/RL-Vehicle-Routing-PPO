@@ -1,4 +1,10 @@
-.server-head .view-head__figure > hairline-figure { max-width: 300px; }
+.server-mast { margin-bottom: 28px; }
+.server-mast__flank { position: relative; aspect-ratio: 5 / 4; }
+.server-mast__flank .fig-fill > hairline-figure { pointer-events: none; }
+.server-mast__center { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.server-mast__kicker { margin: 0; font-family: var(--sans); font-size: 12px; font-weight: 700; line-height: 1.25; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.server-mast__host { margin: 0; max-width: 100%; overflow-wrap: anywhere; }
+.server-mast__summary { margin: 0; font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1.5; color: var(--ink-faint); }
 .server__board > .orb-panel { min-height: 320px; }
 
 .sb-grid { align-items: stretch; }
