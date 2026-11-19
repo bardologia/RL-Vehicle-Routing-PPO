@@ -105,7 +105,7 @@ class JobStream:
             except queue.Empty:
                 break
 
-        sub.put_nowait({"type": "chunk", "data": f"\r\n\x1b[2;31m── stream truncated: {dropped} event(s) dropped, this viewer could not keep up; the on-disk log is complete ──\x1b[0m\r\n"})
+        sub.put_nowait({"type": "chunk", "data": f"\r\n\x1b[2;31mstream truncated: {dropped} event(s) dropped, this viewer could not keep up; the on-disk log is complete\x1b[0m\r\n"})
         sub.put_nowait(event)
 
         return dropped
@@ -485,7 +485,7 @@ class ProcessManager:
     def _described(self, record: dict) -> str:
         """Returns the job description as a log suffix, or an empty string when it has none."""
         description = record.get("description") or ""
-        return f" — {description}" if description else ""
+        return f": {description}" if description else ""
 
     def _resolve_follow_up(self, follow_id: str, code: int) -> None:
         """Starts or cancels a scheduled follow-up according to the parent's exit code.
