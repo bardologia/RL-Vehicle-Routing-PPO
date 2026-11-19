@@ -179,6 +179,7 @@ export class TerminalGauge {
 
 export class ConsoleTile {
   static LIVE_STATUSES = new Set(["pending", "running", "queued", "scheduled"]);
+  static CURVES = new Set(["pretrain", "train"]);
   static MAX_COLS = 120;
   static FONT_STEP = 0.25;
 
@@ -244,6 +245,7 @@ export class ConsoleTile {
         <span class="console-tile__name" title="${esc(job.command)}">${esc(job.script)}</span>
         <span class="console-tile__meta" data-role="meta"></span>
         <span data-role="state"></span>
+        <a class="btn btn--sm" data-role="curves" hidden title="Open the TensorBoard curves of this run in Runs">Curves</a>
         <a class="btn btn--sm" data-role="run" hidden>Open run</a>
         <button type="button" class="btn btn--sm" data-role="log" aria-pressed="false" title="Read the log file as plain text, live frames flattened, jumped to the last error">.out</button>
         <button type="button" class="btn btn--sm btn--danger" data-role="stop">Stop</button>
@@ -254,6 +256,7 @@ export class ConsoleTile {
     this.metaEl = this.root.querySelector("[data-role=meta]");
     this.stateEl = this.root.querySelector("[data-role=state]");
     this.runBtn = this.root.querySelector("[data-role=run]");
+    this.curvesBtn = this.root.querySelector("[data-role=curves]");
     this.logBtn = this.root.querySelector("[data-role=log]");
     this.stopBtn = this.root.querySelector("[data-role=stop]");
     this.retryBtn = this.root.querySelector("[data-role=retry]");
@@ -410,6 +413,9 @@ export class ConsoleTile {
     const shown = this.job.status === "finished" && Boolean(run) && this.manager.runNames.has(run);
     this.runBtn.hidden = !shown;
     if (shown) this.runBtn.href = `#/runs/${encodeURIComponent(run)}/summary`;
+    const curves = ConsoleTile.CURVES.has(this.job.script) && Boolean(run) && this.manager.runNames.has(run);
+    this.curvesBtn.hidden = !curves;
+    if (curves) this.curvesBtn.href = `#/runs/${encodeURIComponent(run)}/curves`;
   }
 
   syncFromList(job) {

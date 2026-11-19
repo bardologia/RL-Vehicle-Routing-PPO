@@ -6,6 +6,7 @@ import { ConsoleTile, TerminalGauge } from "./console_tile.js";
 
 export class RunConsole {
   static LIST_POLL_MS = 5000;
+  static RUNS_EVERY_MS = 15000;
   static ORB_STATES = { running: "working", queued: "breathing", scheduled: "breathing", pending: "breathing" };
 
   constructor(app, refs) {
@@ -20,6 +21,7 @@ export class RunConsole {
     this.tiles = new Map();
     this.dismissed = new Set();
     this.runNames = new Set();
+    this.runNamesAt = 0;
     this.gaugeTerm = null;
     this.fitTimer = null;
     this.fitFrame = 0;
@@ -61,8 +63,10 @@ export class RunConsole {
   }
 
   async loadRunNames() {
-    const wanted = this.jobs.some((job) => job.status === "finished" && job.overrides && job.overrides["io.run_name"] && !this.runNames.has(job.overrides["io.run_name"]));
+    const named = (job) => job.overrides && job.overrides["io.run_name"] && !this.runNames.has(job.overrides["io.run_name"]);
+    const wanted = this.jobs.some((job) => job.status === "finished" && named(job)) || (this.jobs.some((job) => job.status === "running" && ConsoleTile.CURVES.has(job.script) && named(job)) && Date.now() - this.runNamesAt > RunConsole.RUNS_EVERY_MS);
     if (!wanted) return;
+    this.runNamesAt = Date.now();
     try {
       this.runNames = new Set((await api.get("/api/runs")).runs.map((run) => run.name));
     } catch (error) {
