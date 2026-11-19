@@ -6,7 +6,7 @@ import { AgentPicker } from "../episode/agent_picker.js";
 import { FindingsList } from "../diagnose/findings_list.js";
 import { Compare } from "../episode/compare.js";
 import { DecisionPanel } from "../episode/decision_panel.js";
-import { Agents, Sources, Vehicles } from "../episode/encoding.js";
+import { Agents, Checks, Sources, Vehicles } from "../episode/encoding.js";
 import { Inputs } from "../episode/inputs.js";
 import { KpiStrip } from "../episode/kpi_strip.js";
 import { Geometry, MapView } from "../episode/map_view.js";
@@ -438,7 +438,8 @@ export class EpisodeView {
     const frames = lane ? lane.trace.length : 0;
     const position = lane && this.selected.seq !== null ? `frame ${this.selected.seq + 1} of ${frames}` : "no frame yet";
     const flagged = lane ? lane.trace.findings.filter((finding) => finding.status === "WARN" || finding.status === "FAIL").length : 0;
-    const expectations = this.lanes.filter((entry) => entry.trace.expectation).map((entry) => statusChip(entry.trace.expectation.status, Agents.label(entry.key)));
+    const judged = this.lanes.filter((entry) => entry.trace.expectation);
+    const met = judged.filter((entry) => entry.trace.expectation.status === "PASS").length;
     const up = this.app.servicesUp;
     const playing = Boolean(this.playTimer);
     const { title, meta } = this.titleParts();
@@ -452,7 +453,7 @@ export class EpisodeView {
         <button type="button" class="tbtn" data-action="forward" title="Next frame (Right)" aria-label="Next frame">${icon("step-forward")}</button>
         <span class="readout ep__position">${position}</span>
       </span>
-      ${expectations.length ? `<span class="ep__expect" data-hint-title="Expectation" data-hint="The template's declared expectation, checked on each lane after it finished.">${expectations.join("")}</span>` : ""}
+      ${judged.length ? `<button type="button" class="btn btn--sm ep__expect" data-action="expect" aria-haspopup="dialog" aria-expanded="false"><span class="state state--${met === judged.length ? "pass" : "fail"}"><i></i></span>Expectation ${met} of ${judged.length}</button>` : ""}
       <span class="ep__spacer"></span>
       <button type="button" class="btn btn--sm" data-action="findings" aria-haspopup="dialog" aria-expanded="false">Findings<span class="tabs__count">${flagged}</span></button>
       ${this.status.source.kind === "scenario" ? `<a class="btn btn--sm" href="#/lab?episode=${esc(this.ref.episodeId)}">Edit scenario</a>` : ""}
@@ -778,6 +779,7 @@ export class EpisodeView {
     if (action === "forward" && this.active()) this.step(1);
     if (action === "play" && this.active()) this.togglePlay();
     if (action === "findings") this.toggleFindings(button);
+    if (action === "expect") this.toggleExpect(button);
     if (action === "add") this.toggleAdd(button);
     if (action === "cancel") this.cancel();
   }
@@ -823,6 +825,16 @@ export class EpisodeView {
       const jump = event.target.closest("[data-jump]");
       if (jump) this.select(this.selected.lane, Number(jump.dataset.jump));
     });
+  }
+
+  toggleExpect(anchor) {
+    const rows = this.lanes.filter((entry) => entry.trace.expectation).map((entry) => {
+      const expectation = entry.trace.expectation;
+      const checks = expectation.checks.map((check) => `<li><span class="state state--${check.ok ? "pass" : "fail"}"><i></i>${esc(Checks.text(check))}<span class="sr-only">, ${check.ok ? "holds" : "fails"}</span></span></li>`).join("");
+      return `<li class="expectlist__lane"><span class="lanekey lanekey--${Agents.style(entry.key)}"><i></i>${esc(Agents.label(entry.key))}</span>${statusChip(expectation.status)}<ul class="expectlist__checks">${checks}</ul></li>`;
+    }).join("");
+    const html = `<header class="popover__head"><h3>Expectation</h3></header><p class="popover__lede">The template's declared expectation, checked on each lane on the plan at the round-1 commit.</p><ul class="expectlist">${rows}</ul>`;
+    Popover.toggle(anchor, html, { label: "Expectation", className: "popover--wide" });
   }
 
   toggleAdd(anchor) {
