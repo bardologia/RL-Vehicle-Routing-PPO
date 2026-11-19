@@ -86,6 +86,13 @@ export class Popover {
     if (Popover.current) Popover.place(Popover.current.node, Popover.current.anchor);
   }
 
+  static reanchor(anchor) {
+    if (!Popover.current || !anchor) return;
+    Popover.current.anchor = anchor;
+    anchor.setAttribute("aria-expanded", "true");
+    Popover.place(Popover.current.node, anchor);
+  }
+
   static infoButton(title, html) {
     if (!html) return "";
     return `<button type="button" class="tbtn tbtn--sm" data-info aria-haspopup="dialog" aria-expanded="false" aria-label="About ${esc(title)}" title="About ${esc(title)}">${icon("info")}</button><template data-info-body>${html}</template>`;

@@ -306,6 +306,7 @@ export class DiagnoseView {
       columns,
       rowKey: (row) => row.index,
       storeKey: "diagnose.regret",
+      menuHost: this.content.querySelector("[data-panel=regret-table] [data-role=panel-actions]"),
       sort: { key: this.report.agents.teacher ? "regret_teacher" : "regret_best_baseline", descending: true },
       onOpen: (row) => this.openEpisode(row),
       emptyText: "The report holds no episode.",

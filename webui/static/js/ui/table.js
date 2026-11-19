@@ -1,7 +1,8 @@
 import { esc, icon, isNum, NONE, Store } from "../format.js";
+import { Popover } from "./popover.js";
 
 export class DataTable {
-  constructor(container, { columns, rowKey, onSelect, onOpen, onHover, dense, storeKey, sort, emptyText, rowClass, rowLink, sets }) {
+  constructor(container, { columns, rowKey, onSelect, onOpen, onHover, dense, storeKey, sort, emptyText, rowClass, rowLink, sets, menuHost }) {
     this.container = container;
     this.columns = columns;
     this.rowKey = rowKey;
@@ -27,6 +28,11 @@ export class DataTable {
     container.addEventListener("keydown", (event) => this.onKey(event));
     container.addEventListener("pointerover", (event) => this.onPointer(event));
     container.addEventListener("pointerleave", () => this.onHover && this.onHover(null));
+    this.menuHost = menuHost && columns.some((column) => column.hideable) ? menuHost : null;
+    if (this.menuHost) {
+      this.menuHost.insertAdjacentHTML("afterbegin", this.menuButton());
+      this.menuHost.querySelector("[data-columns]").addEventListener("click", (event) => this.toggleColumns(event.currentTarget));
+    }
   }
 
   get visibleColumns() {
@@ -104,14 +110,39 @@ export class DataTable {
       return `<tr data-key="${esc(key)}" aria-selected="${key === this.selected}"${extra ? ` class="${extra}"` : ""}>${columns.map((column) => this.cell(column, row)).join("")}</tr>`;
     }).join("") : `<tr class="dtable__empty"><td colspan="${columns.length}">${esc(this.emptyText)}</td></tr>`;
 
-    const hideable = this.columns.filter((column) => column.hideable);
-    const menu = hideable.length ? `
-      <details class="dtable__menu">
-        <summary class="tbtn tbtn--sm" aria-label="Choose columns" title="Columns">${icon("columns")}</summary>
-        <div class="dtable__menulist">${hideable.map((column) => `<label><input type="checkbox" data-column="${esc(column.key)}"${this.hidden.has(column.key) ? "" : " checked"}><span>${esc(column.label)}</span></label>`).join("")}</div>
-      </details>` : "";
+    const inline = !this.menuHost && this.columns.some((column) => column.hideable);
+    const menu = inline ? this.menuButton(" dtable__menu") : "";
+    const reopen = inline && this.menuOpen();
 
     this.container.innerHTML = `${menu}<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    if (reopen) Popover.reanchor(this.container.querySelector("[data-columns]"));
+  }
+
+  menuButton(extra = "") {
+    return `<button type="button" class="tbtn tbtn--sm${extra}" data-columns aria-haspopup="dialog" aria-expanded="false" aria-label="Choose columns" title="Columns">${icon("columns")}</button>`;
+  }
+
+  menuOpen() {
+    return Boolean(Popover.current && this.container.contains(Popover.current.anchor));
+  }
+
+  columnsHtml() {
+    const hideable = this.columns.filter((column) => column.hideable);
+    return `<div class="dtable__menulist">${hideable.map((column) => `<label><input type="checkbox" data-column="${esc(column.key)}"${this.hidden.has(column.key) ? "" : " checked"}><span>${esc(column.full || column.label)}</span></label>`).join("")}</div>`;
+  }
+
+  toggleColumns(anchor) {
+    const node = Popover.toggle(anchor, this.columnsHtml(), { label: "Columns", className: "popover--menu" });
+    if (node) node.addEventListener("change", (event) => this.onColumn(event));
+  }
+
+  onColumn(event) {
+    const toggle = event.target instanceof Element ? event.target.closest("input[data-column]") : null;
+    if (!toggle) return;
+    if (toggle.checked) this.hidden.delete(toggle.dataset.column);
+    else this.hidden.add(toggle.dataset.column);
+    if (this.storeKey) Store.write(`${this.storeKey}.hidden`, [...this.hidden]);
+    this.render();
   }
 
   rowOf(event) {
@@ -131,13 +162,9 @@ export class DataTable {
       this.render();
       return;
     }
-    const toggle = event.target.closest("input[data-column]");
-    if (toggle) {
-      if (toggle.checked) this.hidden.delete(toggle.dataset.column);
-      else this.hidden.add(toggle.dataset.column);
-      if (this.storeKey) Store.write(`${this.storeKey}.hidden`, [...this.hidden]);
-      this.render();
-      this.container.querySelector(".dtable__menu").open = true;
+    const menuButton = event.target.closest("[data-columns]");
+    if (menuButton) {
+      this.toggleColumns(menuButton);
       return;
     }
     if (event.target.closest("a, button, summary, label")) return;
