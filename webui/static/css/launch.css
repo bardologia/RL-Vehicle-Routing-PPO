@@ -141,13 +141,12 @@
 .saved-card__actions { display: flex; gap: 8px; margin-top: auto; padding-top: 4px; }
 .saved-card__actions .icon { width: 12px; height: 12px; }
 
-.seq-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; align-items: start; }
-.seq-layout > .skeleton { grid-column: 1 / -1; }
-.seq-rail { display: flex; flex-direction: column; gap: 8px; }
-.seq-rail__new { justify-content: center; }
+.seq-layout { display: flex; flex-direction: column; gap: 16px; }
+.seq-rail { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; }
+.seq-rail__new { justify-content: center; min-height: 60px; padding-inline: 18px; }
 .seq-rail__new .icon { width: 12px; height: 12px; }
-.seq-rail__empty { font-size: 13px; line-height: 1.5; color: var(--ink-faint); }
-.seq-rail__card { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 2px solid var(--line-card); border-radius: var(--r); background: var(--panel); cursor: pointer; transition: border-color var(--t-ctl) var(--ease), background var(--t-ctl) var(--ease); }
+.seq-rail__empty { align-self: center; margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-faint); }
+.seq-rail__card { display: flex; flex-direction: column; justify-content: center; gap: 4px; width: 240px; padding: 10px 12px; border: 2px solid var(--line-card); border-radius: var(--r); background: var(--panel); cursor: pointer; transition: border-color var(--t-ctl) var(--ease), background var(--t-ctl) var(--ease); }
 .seq-rail__card:hover { border-color: var(--line-strong); }
 .seq-rail__card.is-active { border-color: var(--accent); background: var(--accent-wash); }
 .seq-rail__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
@@ -221,6 +220,5 @@
   .launch-rail { position: static; }
   .cfg-layout { grid-template-columns: minmax(0, 1fr); }
   .secnav { position: static; flex-direction: row; flex-wrap: wrap; order: -1; }
-  .seq-layout { grid-template-columns: minmax(0, 1fr); }
   .seq-copy { grid-template-columns: minmax(0, 1fr); }
 }

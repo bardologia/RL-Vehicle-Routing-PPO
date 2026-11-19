@@ -580,7 +580,7 @@ export class SequencesPage extends ConfigForm {
     const main = document.createElement("div");
     main.className = "seq-main";
     if (!this.current) {
-      main.innerHTML = `<p class="seq-empty">Select or create a sequence on the left.</p>`;
+      main.innerHTML = `<p class="seq-empty">Select a sequence above or create a new one.</p>`;
       this.board = null;
       return main;
     }
