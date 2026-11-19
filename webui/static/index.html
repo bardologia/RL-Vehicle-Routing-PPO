@@ -3,16 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Routing console</title>
 <link rel="icon" href="data:,">
 <link rel="preload" href="/static/vendor/fonts/archivo-variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/vendor/fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/vendor/leaflet.css">
 <link rel="stylesheet" href="/static/css/tokens.css">
 <link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/css/fx.css">
 <link rel="stylesheet" href="/static/css/components.css">
 <link rel="stylesheet" href="/static/css/views.css">
 </head>
 <body>
+<canvas class="bg-orb" id="bg-orb" aria-hidden="true"></canvas>
+<div class="grid-bg" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
@@ -32,14 +38,12 @@
     <symbol id="i-crossing" viewBox="0 0 24 24"><path d="M4 6l16 12M4 18L20 6"/><circle cx="12" cy="12" r="3"/></symbol>
     <symbol id="i-teacher" viewBox="0 0 24 24"><path d="M4 18L12 6l8 12" stroke-dasharray="4 3"/><circle cx="12" cy="6" r="2" fill="currentColor"/></symbol>
     <symbol id="i-legend" viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4.5" cy="6" r="1.5"/><rect x="3" y="10.5" width="3" height="3"/><path d="M4.5 16l1.8 2-1.8 2-1.8-2z"/></symbol>
-    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
-    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
     <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></symbol>
-    <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 3l10 18H2z" fill="currentColor" stroke="none"/><path d="M12 10v5M12 17.6v.4" stroke="#16202b" stroke-width="2"/></symbol>
-    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7 12.5l3.5 3.5L17 9" stroke="#ffffff" stroke-width="2.4"/></symbol>
-    <symbol id="i-cross" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="3" fill="currentColor" stroke="none"/><path d="M8 8l8 8M16 8l-8 8" stroke="#ffffff" stroke-width="2.4"/></symbol>
+    <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 3.5L22 20.5H2z"/><path d="M12 10v4.5M12 17.3v.2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5l5 5L19.5 7"/></symbol>
+    <symbol id="i-cross" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
     <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
     <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
@@ -59,26 +63,29 @@
   </defs>
 </svg>
 
-<header class="topbar">
-  <a class="topbar__name" href="#/overview">Routing console</a>
+<header class="topbar glass">
+  <a class="topbar__name" href="#/overview" aria-label="Routing console"><span class="topbar__mark" aria-hidden="true"></span><span>Routing <b>console</b></span></a>
   <nav class="topbar__tabs" id="tabs" aria-label="Sections"></nav>
   <div class="topbar__right">
     <span id="svc-osrm"></span>
     <span id="svc-vroom"></span>
     <a class="topbar__jobs" id="jobs-link" href="#/console"></a>
-    <button type="button" class="btn btn--quiet" id="keys-toggle" title="Keys (?)" aria-haspopup="dialog">Keys</button>
-    <button type="button" class="btn btn--quiet" id="theme-toggle"></button>
+    <button type="button" class="btn btn--quiet btn--sm" id="keys-toggle" title="Keys (?)" aria-haspopup="dialog">Keys <kbd>?</kbd></button>
   </div>
 </header>
 
 <main class="views" id="views"></main>
 
-<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="toast" class="toast glass" role="status" aria-live="polite"></div>
 <div id="keysheet" class="keysheet" role="dialog" aria-modal="true" aria-label="Keys" hidden></div>
 <div id="lightbox" class="lightbox"><img alt=""><div class="lightbox__cap"></div></div>
+<div id="boot" class="boot" aria-hidden="true"><thinking-orb state="connecting" size="64"></thinking-orb><span>Starting the console</span></div>
 
 <script src="/static/vendor/leaflet.js"></script>
 <script src="/static/vendor/osmbuildings-leaflet.js"></script>
+<script src="/static/vendor/thinking-orbs-engine.js"></script>
+<script src="/static/vendor/hairline-kernel.js"></script>
+<script src="/static/vendor/hairline-figures.js"></script>
 <script type="module" src="/static/js/main.js"></script>
 </body>
 </html>

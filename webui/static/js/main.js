@@ -1,9 +1,10 @@
 import { api } from "./api.js";
 import { el, plural, Store } from "./format.js";
+import { Figure } from "./fx/figure.js";
+import { BackdropOrb } from "./fx/orb.js";
 import { keys } from "./keys.js";
 import { KeySheet } from "./ui/keysheet.js";
 import { Router } from "./router.js";
-import { Theme } from "./theme.js";
 import { statusChip, Toast } from "./ui/status.js";
 import { ConsoleView } from "./views/console.js";
 import { DiagnoseView } from "./views/diagnose.js";
@@ -14,14 +15,16 @@ import { OverviewView } from "./views/overview.js";
 import { RunsView } from "./views/runs.js";
 
 const TABS = [
-  { key: "overview", label: "Overview", view: OverviewView },
-  { key: "diagnose", label: "Diagnose", view: DiagnoseView },
+  { key: "overview", label: "Overview", view: OverviewView, figure: "router" },
+  { key: "diagnose", label: "Diagnose", view: DiagnoseView, figure: "loupe" },
   { key: "episode", label: "Episode", view: EpisodeView, fixed: true },
   { key: "lab", label: "Lab", view: LabView, fixed: true },
   { key: "runs", label: "Runs", view: RunsView, fixed: true },
   { key: "launch", label: "Launch", view: LaunchView },
-  { key: "console", label: "Console", view: ConsoleView },
+  { key: "console", label: "Console", view: ConsoleView, figure: "terminal" },
 ];
+
+const QUIET_VIEWS = ["episode", "lab"];
 
 class App {
   constructor() {
@@ -33,7 +36,7 @@ class App {
     this.health = null;
     this.healthListeners = [];
     this.toast = new Toast(document.getElementById("toast"));
-    this.theme = new Theme(document.getElementById("theme-toggle"));
+    this.backdrop = new BackdropOrb(document.getElementById("bg-orb"));
   }
 
   get context() {
@@ -53,8 +56,14 @@ class App {
       holder.appendChild(section);
       this.sections[tab.key] = section;
       this.views[tab.key] = new tab.view(this, section);
+      const head = tab.figure ? section.querySelector("header.diag__bar, header.pagehead") : null;
+      if (head) Figure.pagehead(head, tab.figure);
       keys.bindGlobal(String(index + 1), `Open ${tab.label}`, () => this.router.go(`#/${tab.key}`));
     });
+    this.tabBar = el(`<span class="topbar__bar is-instant" aria-hidden="true"></span>`);
+    tabs.appendChild(this.tabBar);
+    window.addEventListener("resize", () => this.placeTabBar(true));
+    document.fonts.ready.then(() => this.placeTabBar(true));
 
     const lightbox = document.getElementById("lightbox");
     lightbox.addEventListener("click", () => lightbox.classList.remove("is-open"));
@@ -73,6 +82,21 @@ class App {
       document.activeElement.blur();
       return true;
     });
+  }
+
+  placeTabBar(instant) {
+    const link = document.querySelector('#tabs a[aria-current="page"]');
+    if (!link) return;
+    this.tabBar.classList.toggle("is-instant", Boolean(instant));
+    this.tabBar.style.width = `${link.offsetWidth}px`;
+    this.tabBar.style.transform = `translateX(${link.offsetLeft}px)`;
+  }
+
+  finishBoot() {
+    const boot = document.getElementById("boot");
+    if (!boot) return;
+    boot.classList.add("is-done");
+    setTimeout(() => boot.remove(), 300);
   }
 
   openLightbox(source, caption) {
@@ -113,8 +137,10 @@ class App {
       const { jobs } = await api.get("/api/jobs");
       const running = jobs.filter((job) => ["running", "queued", "pending"].includes(job.status)).length;
       link.textContent = running ? `${plural(running, "job")} running` : "No jobs running";
+      link.classList.toggle("is-live", running > 0);
     } catch (error) {
       link.textContent = "Backend unreachable";
+      link.classList.remove("is-live");
     }
   }
 
@@ -123,13 +149,18 @@ class App {
       const previous = this.views[this.active];
       if (previous.leave) previous.leave();
     }
+    const first = this.active === null;
     this.active = tab;
+    document.documentElement.dataset.view = tab;
+    this.backdrop.setStopped(QUIET_VIEWS.includes(tab));
     keys.setScope(tab);
     for (const [key, section] of Object.entries(this.sections)) section.classList.toggle("is-active", key === tab);
     for (const link of document.querySelectorAll("#tabs a")) {
       if (link.dataset.tab === tab) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     }
+    this.placeTabBar(first);
+    if (first) this.finishBoot();
     this.views[tab].enter(parts, query);
   }
 
