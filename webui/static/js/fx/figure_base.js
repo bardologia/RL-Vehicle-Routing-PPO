@@ -1,6 +1,32 @@
 "use strict";
 
 class HairlineGeometry {
+  static roundedSector(theta, half, radius, apex, roundApex, roundRim, steps) {
+    const points = [[apex * Math.cos(theta), apex * Math.sin(theta)]];
+    for (let k = 0; k <= steps; k++) {
+      const phi = theta - half + (2 * half * k) / steps;
+      points.push([radius * Math.cos(phi), radius * Math.sin(phi)]);
+    }
+    const radii = points.map((_, i) => (i === 0 ? roundApex : i === 1 || i === points.length - 1 ? roundRim : 0));
+    return HairlineGeometry.samples(HL.fillet(points, radii, 4));
+  }
+
+  static backPlate(P, x0, x1, height, y, thick) {
+    const arc  = 5;
+    const face = HL.fillet([[x1, 0], [x1, height], [x0, height], [x0, 0]], [0.6, 4, 4, 0.6], arc);
+    const at   = (depth) => face.map(([x, z]) => P(x, depth, z));
+    return { sil: HL.poly(HL.hull(at(y).concat(at(y + thick)))), crease: HL.open(at(y + thick).slice(arc, 3 * (arc + 1))) };
+  }
+
+  static faceCircle(P, x, cy, cz, r) {
+    const points = [];
+    for (let k = 0; k < 28; k++) {
+      const a = (k / 28) * Math.PI * 2;
+      points.push(P(x, cy + r * Math.cos(a), cz + r * Math.sin(a)));
+    }
+    return HL.poly(points);
+  }
+
   static samples(points) {
     const kept = points.filter((p, i) => {
       const prev = points[(i + points.length - 1) % points.length];
@@ -78,6 +104,12 @@ class HairlineFigureBase {
 
   _shifted(dx, dy, dz) {
     return (x, y, z) => this.P(x + dx, y + dy, z + dz);
+  }
+
+  _height(pts) {
+    const P  = HL.proj(this.C);
+    const ys = pts.map(([x, y, z]) => P(x, y, z)[1]);
+    return Math.max(...ys) - Math.min(...ys);
   }
 
   _onScreen(r, d) {
