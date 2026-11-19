@@ -309,7 +309,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { background: var(--accent);
 .heat__cell:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
 .heat__cell.is-masked { background: var(--hatch), var(--ramp-0); color: var(--ink-hint); }
 .heat__cell.is-infeasible { background: var(--ramp-0); color: var(--ink-hint); font-size: 11px; font-weight: 600; }
-.heat__cell.is-chosen { box-shadow: inset 0 0 0 2px var(--ink); z-index: 1; }
+.heat__cell.is-chosen { box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3.5px var(--halo); z-index: 1; }
 .heat__cell.is-teacher { outline: 2px dashed var(--lane-teacher); outline-offset: -2px; z-index: 1; }
 .heat__cell.is-chosen.is-teacher { outline-offset: -5px; }
 .heat__cell.is-argmax::after { content: ""; position: absolute; right: 3px; top: 3px; width: 5px; height: 5px; background: currentColor; transform: rotate(45deg); }
