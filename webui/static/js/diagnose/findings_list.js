@@ -77,22 +77,28 @@ export class FindingsList {
   }
 
   static row(finding, actions) {
-    const open = finding.status === "FAIL";
+    const fail = finding.status === "FAIL";
     const href = FindingsList.target(finding);
     const title = href ? `<a class="finding__title" href="${esc(href)}">${esc(finding.title)}</a>` : `<span class="finding__title">${esc(finding.title)}</span>`;
     const links = (finding.evidence || []).slice(1).map((entry) => `<a class="btn btn--sm" href="${esc(Links.evidence(entry))}">${esc(entry.label)}</a>`);
     if (finding.needs && actions && actions[finding.needs]) links.push(actions[finding.needs]);
     const numbers = FindingsList.numbers(finding);
     const frames = FindingsList.frames(finding);
+    const text = `<p class="finding__text">${esc(finding.text)}</p>`;
     return `
-      <li class="finding${open ? " is-open" : ""}" data-finding="${esc(finding.id)}">
-        <div class="finding__head">${statusChip(finding.status)}${title}<button type="button" class="tbtn tbtn--sm finding__more" data-finding-toggle aria-expanded="${open}" aria-label="Details of ${esc(finding.title)}">${icon("chevron-right")}</button></div>
+      <li class="finding finding--${FindingsList.tone(finding)}" data-finding="${esc(finding.id)}">
+        <div class="finding__head">${statusChip(finding.status)}${title}<button type="button" class="tbtn tbtn--sm finding__more" data-finding-toggle aria-expanded="false" aria-label="Details of ${esc(finding.title)}">${icon("chevron-right")}</button></div>
+        ${fail ? text : ""}
         <div class="finding__body">
-          <p>${esc(finding.text)}</p>
+          ${fail ? "" : text}
           <div class="finding__jumps"><span class="finding__id">${esc(finding.id)}</span>${numbers ? `<span class="finding__numbers">${numbers}</span>` : ""}${links.join("")}</div>
           ${frames ? `<div class="finding__jumps">${frames}</div>` : ""}
         </div>
       </li>`;
+  }
+
+  static tone(finding) {
+    return { FAIL: "fail", WARN: "warn", PASS: "pass", "NO DATA": "none" }[finding.status];
   }
 
   static restLabel(counts) {
@@ -115,12 +121,12 @@ export class FindingsList {
     const flagged = FindingsList.flagged(findings);
     const chips = flagged.map((finding) => {
       const href = FindingsList.target(finding) || link;
-      const tone = finding.status === "FAIL" ? "fail" : "warn";
-      return href ? `<a class="chip chip--${tone}" href="${esc(href)}" title="${esc(finding.text)}" data-finding="${esc(finding.id)}">${esc(finding.title)}</a>` : `<span class="chip chip--${tone}" title="${esc(finding.text)}" data-finding="${esc(finding.id)}">${esc(finding.title)}</span>`;
+      const attrs = `class="chip chip--flag chip--${FindingsList.tone(finding)}" data-hint="${esc(finding.text)}" data-hint-title="${esc(`${finding.status.toLowerCase()}: ${finding.title}`)}" data-finding="${esc(finding.id)}"`;
+      return href ? `<a ${attrs} href="${esc(href)}"><i></i>${esc(finding.title)}</a>` : `<span ${attrs}><i></i>${esc(finding.title)}</span>`;
     }).join("");
     const counts = FindingsList.counts(findings);
     const label = flagged.length ? "All findings" : `${plural(findings.length, "rule")}, none flagged`;
-    return `<div class="findstrip">${chips}<button type="button" class="btn btn--sm btn--quiet" data-findings-all aria-haspopup="dialog" aria-expanded="false" title="${esc([counts.FAIL ? `${counts.FAIL} fail` : null, counts.WARN ? `${counts.WARN} warn` : null, FindingsList.restLabel(counts)].filter((part) => part).join(", "))}">${label}</button><template data-findings-body><header class="popover__head"><h3>Findings</h3></header>${FindingsList.list(findings, { actions })}</template>${tail || ""}</div>`;
+    return `<div class="findstrip">${chips}<span class="findstrip__more"><button type="button" class="btn btn--sm btn--quiet" data-findings-all aria-haspopup="dialog" aria-expanded="false" data-hint="${esc([counts.FAIL ? `${counts.FAIL} fail` : null, counts.WARN ? `${counts.WARN} warn` : null, FindingsList.restLabel(counts)].filter((part) => part).join(", "))}">${label}</button><template data-findings-body><header class="popover__head"><h3>Findings</h3></header>${FindingsList.list(findings, { actions })}</template></span>${tail || ""}</div>`;
   }
 
   static html(findings, options = {}) {
