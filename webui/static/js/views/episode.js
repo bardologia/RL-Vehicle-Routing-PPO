@@ -13,6 +13,7 @@ import { RouteTable } from "../episode/route_table.js";
 import { StartPage } from "../episode/start_page.js";
 import { Timeline } from "../episode/timeline.js";
 import { Position, TraceModel } from "../episode/trace_model.js";
+import { Figure } from "../fx/figure.js";
 import { Drawer } from "../ui/drawer.js";
 import { errorBlock, skeleton, statusChip } from "../ui/status.js";
 import { DataTable } from "../ui/table.js";
@@ -118,7 +119,7 @@ export class EpisodeView {
     this.map = null;
     this.ref = null;
     this.showRecording();
-    this.recordNode.innerHTML = `<div class="view__pad">${errorBlock(cause, details)}<p><a class="btn" href="#/episode">Back to the episode start page</a></p></div>`;
+    this.recordNode.innerHTML = `<div class="view__pad ep__lost">${Figure.html("patch")}${errorBlock(cause, details)}<p><a class="btn" href="#/episode">Back to the episode start page</a></p></div>`;
   }
 
   async recordFromReport(run, seed, index) {
