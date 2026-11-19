@@ -129,7 +129,7 @@ export class BoardMarkup {
             <canvas class="gcard__graph" data-role="graph" title="Last 72 s: utilisation and VRAM in percent"></canvas>
             <div class="gcard__legend"><span><i class="sb-key sb-key--util"></i>util</span><span><i class="sb-key sb-key--vram"></i>vram</span></div>
           </div>
-          ${BoardMarkup.figure("gpuwire", 'data-role="wire"', "gcard__wire")}
+          <div class="gcard__live"><div class="fig-fill">${HairlineFigure.html("gpuwire", 'data-role="wire" aria-hidden="true"')}</div></div>
         </div>
         <div class="gcard__meters"><canvas class="sb-meter" data-role="temp"></canvas><canvas class="sb-meter" data-role="power"></canvas></div>
         <canvas class="gcard__health" data-role="health" title="Last hour: temperature in degrees Celsius and power in percent of the limit"></canvas>

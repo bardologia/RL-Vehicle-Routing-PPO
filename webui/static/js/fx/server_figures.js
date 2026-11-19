@@ -155,7 +155,7 @@ class SchedulerFigure extends HairlineFigureBase {
   static REST    = 0.35;
 
   constructor({ stage, svg }, value) {
-    super(svg, value, 3.3);
+    super(svg, value, 3.1);
     this.crates = new Map();
     this.lead   = null;
     this._camera(this._extent(), 168);
@@ -1004,7 +1004,7 @@ class GpuWireFigure extends HairlineFigureBase {
   static SAMPLE   = { util: 55, power: 0.55 };
 
   constructor({ stage, svg }, value) {
-    super(svg, value, 5.6);
+    super(svg, value, 5.1);
     this.util    = GpuWireFigure.SAMPLE.util / 100;
     this.energy  = GpuWireFigure.SAMPLE.power;
     this.spin    = HL.spring(this._spinFor(this.util), { k: 6, c: 5, eps: 0.01 });

@@ -85,12 +85,12 @@
 .gcard__who.is-mine { color: var(--accent); }
 .gcard__who.is-others { color: var(--warn); }
 .gcard__who.is-stale { color: var(--fail-ink); }
-.gcard__cluster { display: grid; grid-template-columns: minmax(150px, 0.9fr) minmax(0, 1fr) minmax(70px, 0.5fr); gap: 12px; align-items: center; }
+.gcard__cluster { display: grid; grid-template-columns: 172px minmax(0, 1fr) 128px; gap: 10px; align-items: end; }
 .gcard__dial { width: 100%; height: 150px; }
 .gcard__side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .gcard__graph { width: 100%; height: 96px; }
 .gcard__legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: var(--mono); font-size: 11.5px; font-weight: 600; line-height: 1.5; color: var(--ink-faint); }
-.gcard__wire { align-self: stretch; min-height: 110px; }
+.gcard__live { position: relative; width: 100%; height: 140px; min-width: 0; }
 .gcard__meters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .sb-meter { width: 100%; height: 34px; }
 .gcard__health { width: 100%; height: 34px; }
@@ -162,8 +162,8 @@
 .sb-cmd-cell { max-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
 @media (max-width: 1500px) {
-  .gcard__cluster { grid-template-columns: minmax(130px, 1fr) minmax(0, 1fr); }
-  .gcard__wire { display: none; }
+  .gcard__cluster { grid-template-columns: 140px minmax(0, 1fr) 112px; }
+  .gcard__live { height: 122px; }
 }
 
 @media (max-width: 1100px) {
