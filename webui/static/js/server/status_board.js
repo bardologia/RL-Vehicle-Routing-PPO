@@ -54,7 +54,7 @@ export class BoardMarkup {
   }
 
   static ranges(role, spans, current) {
-    return `<span class="segmented segmented--sm" role="group" aria-label="Window" data-role="${role}">${spans.map((span) => `<button type="button" data-range="${span}" aria-pressed="${span === current}">${span}</button>`).join("")}</span>`;
+    return `<span class="segmented" role="radiogroup" aria-label="Window" data-role="${role}">${spans.map((span) => `<button type="button" role="radio" data-range="${span}" aria-checked="${span === current}">${span}</button>`).join("")}</span>`;
   }
 
   static watchdog(limits) {
@@ -79,7 +79,7 @@ export class BoardMarkup {
         <div class="sb-alerts" data-role="wd-alerts"></div>
         <div class="sb-actions">
           <button type="button" class="btn btn--sm" data-role="detach" title="Detach the console server from this terminal and login session into its own systemd scope, so it survives logout and a closed terminal">Keep alive: off</button>
-          <label class="ctl"><span class="ctl__label">Launch</span><select class="select select--sm" data-role="politeness" aria-label="Launch politeness" title="Priority every new launch starts under. Running jobs keep theirs."><option value="off">off</option><option value="polite">polite</option><option value="background">background</option></select></label>
+          <label class="ctl"><span class="ctl__label">Launch</span><select class="select" data-role="politeness" aria-label="Launch politeness" title="Priority every new launch starts under. Running jobs keep theirs."><option value="off">off</option><option value="polite">polite</option><option value="background">background</option></select></label>
           <button type="button" class="btn btn--sm" data-role="throttle" aria-pressed="false" title="When on, the first alert that blames console jobs drops them to nice 19 and idle I/O. Priorities only go down, so a throttled job stays throttled until it ends.">Auto-throttle</button>
         </div>
       </section>`;
@@ -406,7 +406,7 @@ export class StatusBoard {
       button.addEventListener("click", () => {
         if (this.ranges[key] === button.dataset.range) return;
         this.ranges[key] = button.dataset.range;
-        for (const other of buttons) other.setAttribute("aria-pressed", String(other === button));
+        for (const other of buttons) other.setAttribute("aria-checked", String(other === button));
         reload();
       });
     }
@@ -563,7 +563,7 @@ export class StatusBoard {
     }
     body.innerHTML = procs.map((proc) => {
       const tone = proc.cpu >= 100 ? " is-hot" : proc.cpu >= 25 ? " is-mid" : "";
-      return `<tr${proc.state === "R" ? ' class="is-run"' : ""}><td class="num">${proc.pid}</td><td class="num sb-cpuval${tone}">${proc.cpu.toFixed(1)}</td><td class="num">${ByteFormat.mb(proc.pss != null ? proc.pss : proc.rss)}</td><td class="num">${proc.gpu ? ByteFormat.mb(proc.gpu * 1048576) : "--"}</td><td class="num">${proc.threads}</td><td>${esc(proc.state)}</td><td class="sb-cmd-cell" title="${esc(proc.cmd)}">${esc(proc.cmd)}</td></tr>`;
+      return `<tr${proc.state === "R" ? ' class="is-run"' : ""}><td class="num">${proc.pid}</td><td class="num sb-cpuval${tone}">${proc.cpu.toFixed(1)}</td><td class="num">${ByteFormat.mb(proc.pss != null ? proc.pss : proc.rss)}</td><td class="num">${proc.gpu ? ByteFormat.mb(proc.gpu * 1048576) : "--"}</td><td class="num">${proc.threads}</td><td class="mono">${esc(proc.state)}</td><td class="mono sb-cmd-cell" title="${esc(proc.cmd)}">${esc(proc.cmd)}</td></tr>`;
     }).join("");
   }
 

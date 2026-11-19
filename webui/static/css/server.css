@@ -11,7 +11,6 @@
 :where(.sb-grid) dl, :where(.sb-grid) dd { margin: 0; }
 .sb-card { display: flex; flex-direction: column; min-width: 0; }
 .sb-card .panel__head { margin-bottom: 14px; }
-.sb-card .panel__actions .btn--sm { padding: 3px 9px; font-size: 12px; }
 
 .sb-fig { position: relative; min-width: 0; min-height: 120px; }
 
@@ -45,8 +44,6 @@
 .sb-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 10px; }
 .sb-read { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11.5px; font-weight: 600; line-height: 1.55; color: var(--ink-dim); }
 
-.segmented--sm { padding: 1px; border-width: 1px; }
-.segmented--sm button { padding: 2px 8px; font-size: 11.5px; }
 
 .sb-watch { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
 .sb-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; align-content: start; margin: 0; }
@@ -61,11 +58,9 @@
 .sb-alert--danger { border-color: color-mix(in srgb, var(--fail) 55%, var(--line-soft)); background: var(--fail-wash); }
 .sb-alert__time { color: var(--ink-hint); }
 .sb-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: auto; padding-top: 14px; }
-.sb-actions .btn--sm { padding: 4px 10px; font-size: 12px; }
 .sb-actions .btn.is-on { border-color: var(--live); color: var(--live); }
 .sb-actions .btn.is-warn { border-color: var(--warn); color: var(--warn); }
 .sb-actions .btn:disabled.is-on { opacity: 1; cursor: default; }
-.select--sm { height: 28px; padding-left: 8px; font-size: 12px; }
 
 .sb-kill { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(150px, 1fr) auto auto; gap: 10px 16px; flex: 1; }
 .sb-kill__cell { display: grid; grid-row: span 3; grid-template-rows: subgrid; min-width: 0; }
@@ -161,7 +156,6 @@
 
 .sb-procs .dtable { max-height: 420px; }
 .sb-procs table { table-layout: auto; }
-.sb-procs tbody td { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-dim); }
 .sb-procs tr.is-run td { color: var(--ink); }
 .sb-cpuval.is-mid { color: var(--warn); }
 .sb-cpuval.is-hot { color: var(--fail-ink); }
