@@ -215,7 +215,7 @@ export class RunsView {
     const shown = this.runs.filter((run) => !this.filter || run.name.toLowerCase().includes(this.filter) || run.kind.includes(this.filter));
     this.list.innerHTML = shown.length ? shown.map((run) => `
       <a class="runs__item" href="${esc(Links.runs(run.name, this.section))}"${run.name === this.run ? ' aria-current="true"' : ""}>
-        <span class="runs__line">${RunStatus.dot(run)}<span class="runs__name">${esc(run.name)}</span><span class="runs__age">${esc(fmtAge(run.mtime).replace(/ ago$/, ""))}</span></span>
+        <span class="runs__line">${RunStatus.dot(run)}<span class="runs__name">${esc(run.name)}</span><span class="runs__age" data-hint="${esc(`updated ${fmtAge(run.mtime)}: the newest file in the run folder`)}">${esc(fmtAge(run.mtime).replace(/ ago$/, ""))}</span></span>
         <span class="runs__sub" data-hint="${esc(`${run.kind}, ${RunStatus.rewardLine(run)}`)}">${esc(run.reports.length ? RunStatus.rewardLine(run) : `${run.kind}, no report`)}</span>
       </a>`).join("") : `<p class="muted runs__none">No run matches "${esc(this.filter)}".</p>`;
   }
@@ -259,7 +259,7 @@ export class RunsView {
     const episodes = info && info.reports[0] ? info.reports[0].episodes : null;
     this.ensureShell();
     this.shell.title.textContent = detail.name;
-    this.shell.date.innerHTML = `<span data-role="dateline">${esc(`${detail.kind}${info ? `, ${fmtAge(info.mtime)}` : ""}`)}</span>${RunStatus.chip(detail)}`;
+    this.shell.date.innerHTML = `<span data-role="dateline">${esc(`${detail.kind}${info ? `, updated ${fmtAge(info.mtime)}` : ""}`)}</span>${RunStatus.chip(detail)}`;
     this.writeHeadKpis(detail.name);
     this.shell.controls.innerHTML = `${seed !== undefined ? `<a class="btn btn--primary" href="${esc(Links.diagnose(detail.name, seed))}">Open in Diagnose</a>` : ""}${detail.loadable ? `<button type="button" class="btn btn--sm btn--quiet" data-action="actions" aria-haspopup="dialog" aria-expanded="false">Actions</button>` : ""}<span class="runs__findings" data-role="findings"></span>`;
     this.writeHeadFindings(detail);
@@ -303,6 +303,10 @@ export class RunsView {
       return;
     }
     if (!this.shell || this.run !== name || this.detail !== detail) return;
+    if (health.kind === "ppo") {
+      this.shell.kpis.innerHTML = RunsView.ppoKpis(health);
+      return;
+    }
     if (health.kind !== "pretrain") {
       this.shell.kpis.innerHTML = "";
       return;
@@ -310,6 +314,24 @@ export class RunsView {
     const accuracy = health.charts.find((chart) => chart.key === "accuracy");
     const tiles = accuracy ? accuracy.series.filter((series) => series.values.length).map((series) => ({ label: `${series.label} head`, value: fmtPct(series.values[series.values.length - 1], 1), note: `last of ${plural(series.values.length, "epoch")}`, title: `Behaviour cloning accuracy: last logged agreement with the teacher on held-out pairs, ${series.label} head. Tag ${series.tag}.` })) : [];
     this.shell.kpis.innerHTML = tiles.length ? kpiRow(tiles, { columns: Math.max(3, tiles.length) }) : `<p class="muted">pretrain/accuracy is not logged in this run.</p>`;
+  }
+
+  static ppoKpis(health) {
+    const last = (key, label) => {
+      const chart = health.charts.find((entry) => entry.key === key);
+      const series = chart ? chart.series.find((entry) => entry.label === label) : null;
+      return series && series.values.length ? { value: series.values[series.values.length - 1], count: series.values.length, tag: series.tag } : null;
+    };
+    const small = (value) => (Math.abs(value) >= 0.01 || value === 0 ? fmtFixed(value, 3) : value.toExponential(1));
+    const reward = last("episode_reward", "episode return");
+    const entropy = last("entropy", "operator");
+    const kl = last("mean_kl", "mean KL");
+    const tiles = [
+      reward && { label: "Episode reward", value: fmtSigned(reward.value), unit: "pts", note: `last of ${plural(reward.count, "episode")}`, title: `Return of the last logged training episode. Tag ${reward.tag}.` },
+      entropy && { label: "Operator entropy", value: fmtFixed(entropy.value, 3), note: `normalised, last of ${plural(entropy.count, "sample")}`, title: `Normalised entropy of the operator head at the last logged sample; 1 is uniform over the three operators. Tag ${entropy.tag}.` },
+      kl && { label: "Mean KL", value: small(kl.value), unit: "nats", note: `last of ${kl.count} batches`, title: `Mean KL divergence between the old and the updated policy over the last logged batch. Tag ${kl.tag}.` },
+    ].filter((tile) => tile);
+    return tiles.length ? kpiRow(tiles, { columns: 3 }) : `<p class="muted">Episode reward, entropy and mean KL are not logged in this run.</p>`;
   }
 
   async renderSection(token) {
