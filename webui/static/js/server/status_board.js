@@ -642,7 +642,9 @@ export class StatusBoard {
     const state = this.states.activity;
     if (!this.built || !state) return;
     const blocks = state.bucket_s >= 3600 ? `${Math.round(state.bucket_s / 3600)} h blocks` : `${Math.round(state.bucket_s / 60)} min blocks`;
-    this.host.querySelector(".sb-card--act .panel__note").textContent = `${plural(state.gpus.length, "device")} · ${blocks}`;
+    const note = this.host.querySelector(".sb-card--act .panel__note");
+    note.textContent = blocks;
+    note.title = `${plural(state.gpus.length, "device")}, ${blocks}`;
     this.activity.render(state);
   }
 
