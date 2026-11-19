@@ -350,7 +350,8 @@ a.chip--fail:hover, button.chip--fail:hover { color: var(--ink); border-color: v
 }
 .dtable:focus-visible { outline-offset: -2px; }
 .dtable table { width: 100%; border-collapse: separate; border-spacing: 0; }
-.dtable th, .dtable td { height: var(--row); padding: 4px 8px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--line-soft); }
+.dtable th, .dtable td { height: var(--row); padding: 4px 8px; text-align: left; white-space: nowrap; }
+.dtable tbody tr { background-image: linear-gradient(var(--line-soft), var(--line-soft)); background-position: 0 100%; background-size: 100% 1px; background-repeat: no-repeat; transition: background-color var(--t-ctl) var(--ease); }
 .dtable--dense th, .dtable--dense td { height: var(--row-dense); }
 .dtable tbody td, .dtable tbody th { font-family: var(--sans); font-size: 12px; font-weight: 600; line-height: 1.55; color: var(--ink-dim); }
 .dtable thead th { position: sticky; top: 0; z-index: 2; padding: 6px 8px; background: var(--panel-solid); border-bottom: 2px solid var(--line-card); font-family: var(--sans); font-size: 11px; font-weight: 700; line-height: 1.5; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); white-space: nowrap; }
@@ -366,9 +367,9 @@ a.chip--fail:hover, button.chip--fail:hover { color: var(--ink); border-color: v
 .dtable tbody td a { text-decoration-color: var(--line); transition: text-decoration-color var(--t-ctl) var(--ease); }
 .dtable tbody td a:hover { text-decoration-color: var(--accent); }
 .dtable tbody tr[data-key], .dtable tbody tr[data-href] { cursor: pointer; }
-.dtable tbody tr td { transition: background var(--t-ctl) var(--ease); }
-.dtable tbody tr[data-key]:hover td, .dtable tbody tr[data-href]:hover td { background: var(--surface-2); }
-.dtable tbody tr[aria-selected="true"] td, .dtable tbody tr[aria-selected="true"]:hover td { background: var(--accent-wash); color: var(--ink); }
+.dtable tbody tr[data-key]:hover, .dtable tbody tr[data-href]:hover { background-color: var(--surface-2); }
+.dtable tbody tr[aria-selected="true"], .dtable tbody tr[aria-selected="true"]:hover { background-color: var(--accent-wash); }
+.dtable tbody tr[aria-selected="true"] td { color: var(--ink); }
 .dtable--static tbody tr { cursor: default; }
 .dtable__empty td { height: auto; padding: 14px 12px; color: var(--ink-hint); text-align: left; white-space: normal; }
 .dtable__barcell { position: relative; }

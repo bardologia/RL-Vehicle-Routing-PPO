@@ -390,7 +390,8 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 .atable thead th { vertical-align: top; padding-top: 6px; padding-bottom: 4px; }
 .atable__agent > .lanekey, .atable__agent > .state { vertical-align: middle; }
 .atable__agent > .state { margin-left: 6px; color: var(--ink-hint); }
-.atable tbody td { height: 34px; border-bottom: 0; }
+.atable tbody td { height: 34px; }
+.atable tbody tr { background-image: none; }
 .atable th.atable__strip, .atable td.atable__strip { padding: 0 6px; }
 .atable th.atable__strip { padding-top: 6px; padding-bottom: 2px; }
 .atable__axis { margin-top: 2px; }
@@ -427,7 +428,6 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 .over__board { align-self: stretch; padding: 12px 14px; }
 .over__board:has(> [data-role=status] > .errorblock, > [data-role=status] > .over__note) { padding: 0; border-color: transparent; background: none; }
 .over__board .atable thead th { background: transparent; }
-.over__board .atable tbody tr:last-child td { border-bottom: 0; }
 .over__note { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 .over__note p { flex: 1 1 320px; max-width: 68ch; font-size: 13px; line-height: 1.5; color: var(--ink-faint); }
 @media (max-width: 1500px) { .over__pair > .panel { grid-column: span 12; } }
