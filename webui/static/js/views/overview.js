@@ -8,7 +8,7 @@ import { kpiRow } from "../ui/kpi.js";
 import { PageHead } from "../ui/page_head.js";
 import { infoText, panelHead } from "../ui/panel.js";
 import { Popover } from "../ui/popover.js";
-import { errorBlock, failView, skeleton, statusChip } from "../ui/status.js";
+import { errorBlock, failView, skeleton, statusChip, statusTone } from "../ui/status.js";
 import { FigureStates } from "../ui/figure_states.js";
 
 const DOCKER = 'sg docker -c "docker compose up -d"';
@@ -308,7 +308,7 @@ export class OverviewView {
       return;
     }
     FigureStates.write(this.figures.queue, FigureStates.queue(jobs.jobs));
-    const row = (state, href, title, sub, age, hint) => `<li class="actlist__row"${hint ? ` data-hint="${esc(hint)}"` : ""}>${state === "finished" ? `<span class="state state--pass"><i></i><span class="sr-only">finished</span></span>` : statusChip(state)}<a class="actlist__title" href="${esc(href)}">${esc(title)}${sub ? ` <span class="actlist__sub">${esc(sub)}</span>` : ""}</a><span class="actlist__age">${esc(age)}</span></li>`;
+    const row = (state, href, title, sub, age, hint) => `<li class="actlist__row"${hint ? ` data-hint="${esc(hint)}"` : ""}><span class="state state--${statusTone(state)}"><i></i><span class="sr-only">${esc(state)}</span></span><a class="actlist__title" href="${esc(href)}">${esc(title)}${sub ? ` <span class="actlist__sub">${esc(sub)}</span>` : ""}</a><span class="actlist__state">${state === "finished" ? "" : esc(state)}</span><span class="actlist__age">${esc(age)}</span></li>`;
     const jobRows = jobs.jobs.slice(0, OverviewView.ACTIVITY).map((job) => {
       const state = job.status === "failed" && job.stopped ? "stopped" : job.status;
       const run = job.overrides && job.overrides["io.run_name"] ? job.overrides["io.run_name"] : "";
