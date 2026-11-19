@@ -79,6 +79,8 @@
 .ep__map { flex: 1; min-height: 0; position: relative; }
 .ep__decision { border-left: 2px solid var(--line-card); background: var(--well); overflow-y: auto; min-height: 0; }
 .drawer__empty { padding: var(--sp-12); color: var(--ink-faint); }
+.ep__kpis .kpi__label { font-stretch: 75%; letter-spacing: 0.03em; }
+.ep__kpis .kpi__deltas { font-stretch: 75%; }
 
 @media (max-width: 1500px), (max-height: 860px) {
   .ep__main { grid-template-columns: minmax(0, 1fr) 400px; }
