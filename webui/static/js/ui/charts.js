@@ -156,7 +156,9 @@ export class LineChart {
       return `<polyline class="ch-line ch-line--${entry.style || "solid"} ${entry.className || ""}" points="${points.join(" ")}"></polyline>${single}${label}`;
     }).join("");
 
-    this.container.innerHTML = `${frame.open()}${frame.axes(x, y, Scale.ticks(xLo, xHi, 5), yTicks, xLabel, yLabel)}${lines}<line class="ch-cross" y1="${frame.y1}" y2="${frame.y0}" x1="0" x2="0" visibility="hidden"></line></svg>`;
+    const legend = drawn.length > 1 ? `<div class="legend legend--chart">${drawn.map((entry) => `<span><i class="linekey linekey--${entry.style || "solid"}"></i>${esc(entry.label)} <b>${fmtFixed(entry.shown[entry.shown.length - 1], 4)}</b></span>`).join("")}</div>` : "";
+
+    this.container.innerHTML = `${legend}${frame.open()}${frame.axes(x, y, Scale.ticks(xLo, xHi, 5), yTicks, xLabel, yLabel)}${lines}<line class="ch-cross" y1="${frame.y1}" y2="${frame.y0}" x1="0" x2="0" visibility="hidden"></line></svg>`;
     LineChart.spreadLabels(this.container, frame);
     this.state = { frame, x, drawn };
   }
