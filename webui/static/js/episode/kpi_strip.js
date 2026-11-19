@@ -1,4 +1,4 @@
-import { fmtDur, fmtFixed, fmtKm, fmtMin, fmtPct, fmtSigned, fmtSignedDur, fmtSignedInt, isNum, NONE } from "../format.js";
+import { esc, fmtDur, fmtFixed, fmtKm, fmtMin, fmtPct, fmtSigned, fmtSignedDur, fmtSignedInt, isNum, NONE } from "../format.js";
 import { kpiRow } from "../ui/kpi.js";
 
 export class KpiStrip {
@@ -10,7 +10,7 @@ export class KpiStrip {
     { key: "idle_vehicles", label: "Idle vehicles", unit: "", value: String, delta: fmtSignedInt, title: "Vehicles in the pool without a route." },
     { key: "standing_cost", label: "Standing cost", unit: "pts", value: (v) => fmtFixed(v, 1), delta: (v) => fmtSigned(v, 1), title: "w_distance x drive time / 1000 + w_unassigned x unassigned + w_idle x idle vehicles + w_priority x unassigned priority. Reward points." },
     { key: "holding_rate", label: "Holding rate", unit: "pts/h", value: (v) => fmtFixed(v, 1), delta: (v) => fmtSigned(v, 1), title: "What this plan costs per hour of gap if committed: unassigned and priority penalty per 3600 s." },
-    { key: "served", label: "Executed", unit: "", value: (v, k) => `${k.served} / ${k.failed} / ${k.dropped}`, note: "served / failed / dropped", title: "Cumulative jobs served, pickups failed and bikes dropped at the depot up to this frame." },
+    { key: "served", label: "Executed", full: "Executed, served / failed / dropped", unit: "", value: (v, k) => `${k.served} / ${k.failed} / ${k.dropped}`, note: "served / failed / dropped", title: "Cumulative jobs served, pickups failed and bikes dropped at the depot up to this frame." },
     { key: "drive_per_served_s", label: "Drive per served", unit: "min", value: (v) => fmtMin(v), delta: (v) => fmtSigned(v / 60, 0), title: "Current plan drive time divided by the jobs served so far." },
     { key: "load_use", label: "Load use", unit: "", value: (v) => fmtPct(v), delta: (v) => `${fmtSigned(v * 100, 0)} pt`, title: "Sum of peak load over sum of capacity on active routes." },
     { key: "crossings", label: "Crossings", unit: "", value: String, delta: fmtSignedInt, title: "Intersections between straight stop-to-stop legs of different routes." },
@@ -32,14 +32,36 @@ export class KpiStrip {
     });
   }
 
-  static html(trace, seq) {
+  static LEAD = ["drive_s", "unassigned", "standing_cost", "holding_rate", "return"];
+
+  static PLAN_LEAD = ["drive_s", "unassigned", "standing_cost", "holding_rate"];
+
+  static PLAN_MORE = ["distance_m", "idle_vehicles", "load_use", "crossings"];
+
+  static frameTiles(trace, seq) {
     const frame = trace.frame(seq);
     const previous = seq > 0 ? trace.frame(seq - 1) : null;
     const start = trace.frame(0);
-    return kpiRow(KpiStrip.tiles(frame.plan.kpis, previous ? previous.plan.kpis : null, start ? start.plan.kpis : null), { strip: true });
+    return KpiStrip.tiles(frame.plan.kpis, previous ? previous.plan.kpis : null, start ? start.plan.kpis : null);
+  }
+
+  static html(trace, seq) {
+    const tiles = KpiStrip.frameTiles(trace, seq).filter((tile) => KpiStrip.LEAD.includes(tile.key));
+    return `${kpiRow(tiles, { strip: true, columns: tiles.length })}<button type="button" class="btn btn--sm kpimore" data-action="kpi-more" aria-haspopup="dialog" aria-expanded="false" data-hint-title="More measures" data-hint="Every plan measure of this frame with its change over the step and since the episode start.">More</button>`;
+  }
+
+  static moreHtml(trace, seq) {
+    const rows = KpiStrip.frameTiles(trace, seq).map((tile) => `<tr data-kpi="${esc(tile.key)}"><th>${esc(tile.full || tile.label)}</th><td class="num">${esc(tile.value)}${tile.unit ? `<small>${esc(tile.unit)}</small>` : ""}</td><td class="num">${esc(tile.deltaPrev === undefined ? NONE : tile.deltaPrev)}</td><td class="num">${esc(tile.deltaStart === undefined ? NONE : tile.deltaStart)}</td></tr>`).join("");
+    return `<header class="popover__head"><h3>Plan measures</h3><span class="muted">this frame</span></header><div class="dtable dtable--dense dtable--static kpimore__table"><table><thead><tr><th>Measure</th><th class="num">Value</th><th class="num">Step</th><th class="num">Start</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   static planHtml(kpis) {
-    return kpiRow(KpiStrip.tiles(kpis).filter((tile) => !["served", "drive_per_served_s", "return", "oldest_unassigned_s"].includes(tile.key)), { strip: true });
+    const tiles = KpiStrip.tiles(kpis).filter((tile) => KpiStrip.PLAN_LEAD.includes(tile.key)).map((tile) => (tile.sub ? { ...tile, sub: undefined, subs: [tile.sub] } : tile));
+    return kpiRow(tiles, { strip: true, columns: 2 });
+  }
+
+  static planMoreHtml(kpis) {
+    const rows = KpiStrip.tiles(kpis).filter((tile) => KpiStrip.PLAN_MORE.includes(tile.key)).map((tile) => `<tr data-kpi="${esc(tile.key)}"><th>${esc(tile.full || tile.label)}</th><td class="num">${esc(tile.value)}${tile.unit ? `<small>${esc(tile.unit)}</small>` : ""}</td></tr>`).join("");
+    return `<header class="popover__head"><h3>Plan measures</h3></header><div class="dtable dtable--dense dtable--static kpimore__table"><table><thead><tr><th>Measure</th><th class="num">Value</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 }

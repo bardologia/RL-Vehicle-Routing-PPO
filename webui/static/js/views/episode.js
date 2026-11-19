@@ -15,6 +15,7 @@ import { StartPage } from "../episode/start_page.js";
 import { Timeline } from "../episode/timeline.js";
 import { Position, TraceModel } from "../episode/trace_model.js";
 import { Drawer } from "../ui/drawer.js";
+import { Popover } from "../ui/popover.js";
 import { errorBlock, failView, skeleton, statusChip } from "../ui/status.js";
 import { FigureStates } from "../ui/figure_states.js";
 import { DataTable } from "../ui/table.js";
@@ -387,6 +388,12 @@ export class EpisodeView {
     });
 
     this.barNode.addEventListener("click", (event) => this.onBarClick(event));
+    this.kpiNode.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action=kpi-more]");
+      const lane = this.lane();
+      const frame = this.frame();
+      if (button && lane && frame) Popover.toggle(button, KpiStrip.moreHtml(lane.trace, frame.seq), { label: "Plan measures", className: "popover--wide" });
+    });
     this.built = true;
   }
 
