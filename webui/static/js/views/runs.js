@@ -235,6 +235,8 @@ export class RunsView {
     const figure = this.shell.figure;
     if (figure.getAttribute("name") !== name) {
       delete figure.dataset.stateKey;
+      if (name === "terminal") figure.setAttribute("autopilot", "scrub");
+      else figure.removeAttribute("autopilot");
       figure.setAttribute("name", name);
     }
     if (intensity === undefined) figure.removeAttribute("intensity");

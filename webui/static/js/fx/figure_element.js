@@ -96,6 +96,7 @@ class HairlineAutopilot {
   }
 
   _speed(clock) {
+    if (this.scrub) return 1;
     const share = (clock / HairlineAutopilot.CYCLE) % 1;
     if (share < HairlineAutopilot.HOVER) return HairlineAutopilot.DRIFT;
     const swell = Math.sin((Math.PI * (share - HairlineAutopilot.HOVER)) / (1 - HairlineAutopilot.HOVER)) ** 2;
