@@ -1,6 +1,6 @@
 """API routes for building, saving and executing experiment sequences.
 
-Serves the sequence store (create, save, list, delete) and the sequence runner
+Serves the sequence store (create, save, decide, list, delete) and the sequence runner
 (start, resume scan, stop, clear, checkpoint release), attaching each
 sequence's live execution state to its definition.
 """
@@ -28,11 +28,12 @@ class SequenceRouter(SubRouter):
         super().__init__(("/api/sequences",))
 
     def declare(self, table: RouteTable) -> None:
-        """Registers the listing, create, detail, save, delete and execution routes."""
+        """Registers the listing, create, detail, save, decide, delete and execution routes."""
         table.add("GET",  "/api/sequences", self.listing)
         table.add("POST", "/api/sequences", self.create)
         table.wildcard("GET",  "/api/sequences/", "",             self.detail)
         table.wildcard("POST", "/api/sequences/", "/save",        self.save)
+        table.wildcard("POST", "/api/sequences/", "/decide",      self.decide)
         table.wildcard("POST", "/api/sequences/", "/delete",      self.remove)
         table.wildcard("POST", "/api/sequences/", "/resume-scan", self.resume_scan)
         table.wildcard("POST", "/api/sequences/", "/start",       self.start)
@@ -63,6 +64,10 @@ class SequenceRouter(SubRouter):
     def save(self, exchange: HttpExchange, sequence_id: str) -> None:
         """Replaces one sequence's definition with the validated body."""
         exchange.send_result(self.sequences.save(sequence_id, exchange.body))
+
+    def decide(self, exchange: HttpExchange, sequence_id: str) -> None:
+        """Records one block's verdict on a decision axis and freezes it into the blocks after it."""
+        exchange.send_result(self.sequences.decide(sequence_id, str(exchange.body.get("block_id", "")), str(exchange.body.get("path", "")), str(exchange.body.get("choice", ""))))
 
     def remove(self, exchange: HttpExchange, sequence_id: str) -> None:
         """Deletes one sequence, refusing while it is still running or held."""

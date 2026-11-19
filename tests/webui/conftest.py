@@ -12,10 +12,11 @@ if str(WEBUI_DIR) not in sys.path:
 
 import core.shared.services as services_module
 
-from politeness      import JobPoliteness
-from process_manager import ProcessManager
-from system_monitor  import SystemMonitor
-from web_logger      import WebLogger
+from politeness         import JobPoliteness
+from process_manager    import ProcessManager
+from sequence_decisions import SequenceDecisions
+from system_monitor     import SystemMonitor
+from web_logger         import WebLogger
 
 WEBUI_ROOT = WEBUI_DIR
 SLEEP_LONG = "import time\ntime.sleep(30)\n"
@@ -108,6 +109,48 @@ class StubDescriber:
     def describe(self, key: str, interpreter: str, overrides: dict | None) -> str:
         """Returns a constant description mentioning the script key."""
         return f"stub description for {key}"
+
+
+LEAVES = {
+    "train"    : {"io.run_name": "None", "training.num_updates": "100", "training.device": "cuda", "training.max_disruptions_per_episode": "5"},
+    "evaluate" : {"io.run_name": "None", "evaluation.episodes": "200", "training.device": "cuda"},
+}
+
+
+class FakeResolver:
+    """Config-resolver stand-in returning fixed leaves with default values per entry-point key.
+
+    Attributes:
+        leaves_by_key : Leaf path-to-default mappings keyed by entry-point key.
+    """
+
+    def __init__(self, leaves_by_key: dict) -> None:
+        """Stores the per-key leaf defaults."""
+        self.leaves_by_key = leaves_by_key
+
+    def resolve(self, key: str, interpreter: str) -> dict:
+        """Returns the configured leaves for the key, or a failed result when absent."""
+        leaves = self.leaves_by_key.get(key)
+        if leaves is None:
+            return {"ok": False, "error": "unresolvable"}
+        return {"ok": True, "leaves": [{"path": path, "value": value} for path, value in leaves.items()]}
+
+
+class FakeInterpreters:
+    """Launcher stand-in exposing only the interpreter choice the decision engine needs."""
+
+    def preferred_interpreter(self, key: str = "") -> str:
+        """Returns a fixed interpreter path."""
+        return "/usr/bin/python3"
+
+
+def decision_engine(leaves: dict | None = None) -> SequenceDecisions:
+    """Returns a decision engine resolving against the fake leaf table.
+
+    Args:
+        leaves : Leaf defaults keyed by entry-point key; the shared table when omitted.
+    """
+    return SequenceDecisions(FakeResolver(LEAVES if leaves is None else leaves), FakeInterpreters(), WebLogger())
 
 
 def job_record(manager: ProcessManager, job_id: str) -> dict:

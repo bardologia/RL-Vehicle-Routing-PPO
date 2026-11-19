@@ -4,8 +4,11 @@ A sequence is a directed acyclic graph of blocks, each block one entry-point
 launch with its own config overrides, linked by predecessor edges. The sequence
 carries a detach flag, an isolation flag that gives every execution its own
 fresh run directory, and per-block checkpoint marks that hold the chain until
-released and skip marks that bypass a block. One JSON file per sequence lives
-under ``logs/webui/sequences``.
+released and skip marks that bypass a block. A block may also declare the
+configuration axes it decides; every save stamps those decisions onto the
+blocks they govern, which writes the per-block field notes labelling config
+paths as ``frozen`` (an earlier block's verdict) or ``waiting`` (a later block
+decides it). One JSON file per sequence lives under ``logs/webui/sequences``.
 """
 
 from __future__ import annotations
@@ -27,16 +30,18 @@ class SequenceStore:
         logger    : Console logger.
         lock      : Guards the directory against concurrent readers and writers.
         directory : Directory holding one JSON file per sequence.
+        decisions : Engine stamping each block's declared decision axes onto the blocks they govern.
     """
 
     ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
 
-    def __init__(self, paths, logger: WebLogger) -> None:
-        """Stores the paths and logger and creates the sequences directory."""
+    def __init__(self, paths, logger: WebLogger, decisions) -> None:
+        """Stores the paths, logger and decision engine, and creates the sequences directory."""
         self.paths     = paths
         self.logger    = logger
         self.lock      = threading.Lock()
         self.directory = paths.sequences_dir
+        self.decisions = decisions
         self.directory.mkdir(parents=True, exist_ok=True)
 
     def create(self, name: str) -> dict:
@@ -73,7 +78,7 @@ class SequenceStore:
             payload     : Full definition with ``name``, ``detach``, ``isolate`` and ``blocks``; blocks without a ``block_id`` are assigned one.
 
         Returns:
-            Result carrying the stored entry, or ``ok`` False with an error when the sequence is unknown, a block script does not exist, an edge points at a missing block or the graph has a cycle.
+            Result carrying the stored entry, or ``ok`` False with an error when the sequence is unknown, a block script does not exist, an edge points at a missing block, the graph has a cycle, or an entry point of a block cannot be resolved to stamp the declared decisions.
         """
         with self.lock:
             current = self._read(sequence_id)
@@ -82,6 +87,10 @@ class SequenceStore:
 
             blocks = [self._clean_block(block) for block in list(payload.get("blocks") or [])]
             error  = self._validate(blocks)
+            if error:
+                return {"ok": False, "error": error}
+
+            error = self.decisions.apply(blocks, self.order(blocks))
             if error:
                 return {"ok": False, "error": error}
 
@@ -98,8 +107,50 @@ class SequenceStore:
 
         return {"ok": True, "entry": entry}
 
+    def decide(self, sequence_id: str, block_id: str, path: str, choice: str) -> dict:
+        """Records the verdict of one decision axis and re-stamps the sequence.
+
+        A verdict outside the declared options joins them, so a value recorded
+        off a finished run, which no option list could anticipate, shows in the
+        picker like a chosen candidate.
+
+        Args:
+            sequence_id : Identifier of the sequence holding the deciding block.
+            block_id    : Identifier of the block that decides the axis.
+            path        : Configuration path of the decided axis.
+            choice      : Winning value, or empty to reopen the question.
+
+        Returns:
+            Result carrying the re-stamped entry, or ``ok`` False with an error
+            when the sequence, block or axis is unknown.
+        """
+        entry = self.get(sequence_id)
+        if entry is None:
+            return {"ok": False, "error": "sequence not found"}
+
+        block = next((item for item in entry["blocks"] if item["block_id"] == block_id), None)
+        if block is None:
+            return {"ok": False, "error": "block not found"}
+
+        decision = next((item for item in block["decisions"] if item["path"] == path), None)
+        if decision is None:
+            return {"ok": False, "error": f"block '{block['title']}' does not decide '{path}'"}
+
+        decision["choice"] = str(choice)
+        if decision["choice"] and decision["choice"] not in decision["options"]:
+            decision["options"].append(decision["choice"])
+        result = self.save(sequence_id, entry)
+
+        if result["ok"]:
+            self.logger.ok(f"sequence {sequence_id}: '{block['name'] or block['title']}' {'decided ' + path + ' = ' + str(choice) if choice else 'reopened ' + path}")
+        return result
+
     def _clean_block(self, block: dict) -> dict:
-        """Returns one block normalised to the stored schema, assigning a fresh id when absent."""
+        """Returns one block normalised to the stored schema, assigning a fresh id when absent.
+
+        Field notes are not read from the payload: they are rewritten from the
+        declared decisions once the whole block list is validated.
+        """
         return {
             "block_id"     : str(block.get("block_id") or uuid.uuid4().hex[:8]),
             "script"       : str(block.get("script", "")),
@@ -107,6 +158,8 @@ class SequenceStore:
             "name"         : str(block.get("name", "")).strip(),
             "interpreter"  : str(block.get("interpreter", "")).strip(),
             "overrides"    : {str(path): str(value) for path, value in dict(block.get("overrides") or {}).items()},
+            "field_notes"  : {},
+            "decisions"    : self.decisions.clean(block),
             "predecessors" : [str(pred) for pred in list(block.get("predecessors") or [])],
             "checkpoint"   : bool(block.get("checkpoint")),
             "skip"         : bool(block.get("skip")),

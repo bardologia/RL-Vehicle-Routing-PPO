@@ -34,6 +34,7 @@ from scenario_lab           import ScenarioLab
 from scenario_store         import ScenarioStore
 from script_catalog         import ScriptCatalog
 from script_config_resolver import ScriptConfigResolver
+from sequence_decisions     import SequenceDecisions
 from sequence_runner        import SequenceRunner
 from sequence_store         import SequenceStore
 from stream_hub             import StreamHub
@@ -125,7 +126,8 @@ class WebUIServer:
         self.energy      = JobEnergyMeter(self.system, self.processes, self.logger)
         self.launcher    = RunLauncher(self.paths, self.logger, self.processes)
         self.run_configs = RunConfigReader(self.logger)
-        self.sequences   = SequenceStore(self.paths, self.logger)
+        self.decisions   = SequenceDecisions(self.resolver, self.launcher, self.logger)
+        self.sequences   = SequenceStore(self.paths, self.logger, self.decisions)
         self.sequencer   = SequenceRunner(self.sequences, self.processes, self.launcher, self.logger)
 
         self.runtime     = ConsoleRuntime(self.paths)

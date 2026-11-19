@@ -21,7 +21,7 @@ from sequence_runner import SequenceRunner
 from sequence_store  import SequenceStore
 from web_logger      import WebLogger
 
-from tests.webui.conftest import SLEEP_LONG
+from tests.webui.conftest import SLEEP_LONG, decision_engine
 
 QUICK   = "import pathlib, sys\nargs = sys.argv[1:]\nname = pathlib.Path(__file__).stem\npathlib.Path('order.txt').open('a').write(name + ' ' + ' '.join(args) + '\\n')\n"
 FAILING = "import sys\nsys.exit(2)\n"
@@ -43,7 +43,7 @@ class LocalLauncher(RunLauncher):
 def setup(make_manager, tmp_path):
     """Returns a store and runner over a manager whose scripts record their order and arguments."""
     manager = make_manager({"first": QUICK, "second": QUICK, "third": QUICK, "failing": FAILING, "sleep_long": SLEEP_LONG})
-    store   = SequenceStore(manager.paths, WebLogger())
+    store   = SequenceStore(manager.paths, WebLogger(), decision_engine())
     runner  = SequenceRunner(store, manager, LocalLauncher(manager.paths, WebLogger(), manager), WebLogger())
     return store, runner, manager
 
