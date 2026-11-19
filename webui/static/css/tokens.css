@@ -118,7 +118,7 @@
   --sans: "Archivo", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, monospace;
 
-  --tile-filter: grayscale(1) invert(1) brightness(0.78) contrast(1.2) sepia(0.75) hue-rotate(180deg) saturate(2.2);
-  --bld-wall: rgba(30, 39, 48, 0.92);
-  --bld-roof: #2a3540;
+  --tile-filter: grayscale(1) invert(1) brightness(0.86) contrast(1.12) sepia(0.5) hue-rotate(178deg) saturate(1.6);
+  --bld-wall: rgba(30, 39, 48, 0.8);
+  --bld-roof: rgba(42, 53, 64, 0.8);
 }
