@@ -78,6 +78,7 @@ export class Drawer {
   apply() {
     this.root.classList.toggle("is-collapsed", this.collapsed);
     this.root.style.setProperty("--drawer-h", `${this.height}px`);
+    this.root.parentElement.style.setProperty("--drawer-h", `${this.height}px`);
     this.toggle.innerHTML = `${icon(this.collapsed ? "chevron-up" : "chevron-down")}<span>${this.collapsed ? "Open" : "Collapse"}</span>`;
     this.toggle.setAttribute("aria-expanded", String(!this.collapsed));
   }

@@ -98,6 +98,7 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 @media (max-width: 1500px), (max-height: 860px) {
   .ep__left .drawer:not(.is-collapsed) { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1200; }
   .ep__left:has(.drawer:not(.is-collapsed)) .ep__map { margin-bottom: var(--drawer-bar); }
+  .ep__left:has(.drawer:not(.is-collapsed)) .map__controls { max-height: calc(100% - 16px - var(--drawer-h, 240px) + var(--drawer-bar)); }
   .ep__position { min-width: 0; }
 }
 
@@ -161,7 +162,8 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 .map .leaflet-bar a:last-child { border-bottom: 0; }
 .map .leaflet-bar a:hover { background: linear-gradient(var(--surface-2), var(--surface-2)), var(--glass-solid); color: var(--ink); }
 .map .leaflet-bar a.leaflet-disabled { background: var(--glass-solid); color: var(--ink-hint); }
-.map__controls { position: absolute; z-index: 1000; right: var(--sp-8); top: var(--sp-8); display: flex; flex-direction: column; gap: var(--sp-4); }
+.map__controls { position: absolute; z-index: 1000; right: var(--sp-8); top: var(--sp-8); display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, 34px); gap: var(--sp-4); max-height: calc(100% - 16px); direction: rtl; }
+.map__controls > * { direction: ltr; }
 .map__tool { background: var(--glass-solid); color: var(--ink-dim); }
 .map__tool:hover { color: var(--ink); }
 .map__tool[aria-pressed="true"] { background: linear-gradient(var(--accent-wash), var(--accent-wash)), var(--glass-solid); color: var(--accent); border-color: var(--accent); }
