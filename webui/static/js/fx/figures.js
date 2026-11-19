@@ -3123,6 +3123,8 @@ class FxDispatchFigure extends HairlineFigureBase {
   static BREATHE  = 5;
   static LEAVE_MS = 900;
   static BACK_MS  = 900;
+  static SHUTTLE  = [1.4, 1.1, 1.2, 1.1];
+  static REACH    = [5.5, 2.2];
   static DEFAULT  = { armed: true, loads: 3, queued: false, fired: 0 };
 
   constructor({ stage, svg }, value) {
@@ -3217,6 +3219,7 @@ class FxDispatchFigure extends HairlineFigureBase {
       } else this.shot = null;
       busy      = true;
     }
+    if (!this.shot && !still) y += this._shuttle();
     this.vanKit.pose(this.van, heading, x, y, 0, grow);
     this.depth.move(this.vanItem, x + y);
     if (armed && !still && !this.shot) this._puff(x, y);
@@ -3224,6 +3227,18 @@ class FxDispatchFigure extends HairlineFigureBase {
     this.light.set(this.chosen === null ? this.van.body.sil : this.chosen);
     this.depth.sort();
     return still ? busy : true;
+  }
+
+  _shuttle() {
+    const [dock, out, wait, back] = FxDispatchFigure.SHUTTLE;
+    const reach = FxDispatchFigure.REACH[this.data.queued ? 1 : 0];
+    let t       = this.clock % (dock + out + wait + back);
+    if (t < dock) return 0;
+    t          -= dock;
+    if (t < out) return reach * FxRank.smooth(t / out);
+    t          -= out;
+    if (t < wait) return reach;
+    return reach * (1 - FxRank.smooth((t - wait) / back));
   }
 
   _puff(x, y) {
