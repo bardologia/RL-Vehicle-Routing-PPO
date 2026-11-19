@@ -833,6 +833,8 @@ class FxFleetFigure extends HairlineFigureBase {
   static PARKED  = [[15.4, -2.6], [15.4, 2.6], [24.6, -2.6], [24.6, 2.6]];
   static PAD     = [[-4.5, 12.5], [0, 12.5], [4.5, 12.5], [-4.5, 17], [0, 17], [4.5, 17]];
   static REST    = 0.5;
+  static DOOR    = [0.15, 0.85];
+  static DOOR_S  = 5;
   static DEFAULT = { routes: [{ stops: 5, drive: 0.4 }, { stops: 3, drive: 0.3 }, { stops: 4, drive: 0.3 }], unassigned: 2, idle: 1, solving: false };
 
   constructor({ stage, svg }, value) {
@@ -1042,6 +1044,7 @@ class FxFleetFigure extends HairlineFigureBase {
     if (!still && !this.data.solving) this.clock += dt;
     let moving  = false;
     for (const loop of this.loops) moving = this._drawLoop(loop, now, still) || moving;
+    this._drawDoor(still);
     this._drawScan(still);
     this.light.set(this._hiTarget());
     this.depth.sort();
@@ -1068,6 +1071,12 @@ class FxFleetFigure extends HairlineFigureBase {
       post.led.setAttribute("class", lit);
     });
     return busy;
+  }
+
+  _drawDoor(still) {
+    const parked = !this.loops.some((loop) => loop.active);
+    const wave   = parked && !still ? 0.5 - 0.5 * Math.cos((2 * Math.PI * this.clock) / FxFleetFigure.DOOR_S) : 0;
+    this.door.draw(FxFleetFigure.DOOR[0] + (FxFleetFigure.DOOR[1] - FxFleetFigure.DOOR[0]) * wave);
   }
 
   _drawScan(still) {
@@ -2800,6 +2809,8 @@ class FxQueueFigure extends HairlineFigureBase {
   static MARKS   = 3.6;
   static SPEED   = 6;
   static LAMP_S  = 0.8;
+  static STANDBY_S = 1.4;
+  static CREEP   = 0.9;
   static BREATH_S = 5;
   static INCH    = 0.6;
   static DEFAULT = { running: 1, queued: 2, finished: 5, failed: 1 };
@@ -2887,7 +2898,7 @@ class FxQueueFigure extends HairlineFigureBase {
     if (!still) this.clock += dt;
     const running = this.data.running > 0;
     const bh      = FxQueueFigure.BELT[4];
-    const travel  = running && !still ? (this.clock * FxQueueFigure.SPEED) % FxQueueFigure.MARKS : 0;
+    const travel  = still ? 0 : (this.clock * (running ? FxQueueFigure.SPEED : FxQueueFigure.CREEP)) % FxQueueFigure.MARKS;
     let marks     = "";
     for (let x = FxQueueFigure.BELT[0] + 1 + travel; x < FxQueueFigure.BELT[1] - 0.5; x += FxQueueFigure.MARKS) marks += HL.seg(this.P(x, -2.8, bh), this.P(x, 2.8, bh));
     if (marks !== this.marks.getAttribute("d")) this.marks.setAttribute("d", marks);
@@ -2908,7 +2919,7 @@ class FxQueueFigure extends HairlineFigureBase {
       this.runner.drawn = rKey;
       HL.put(this.runner.solid, running ? this.crate.path(FxQueueFigure.GATE_X, 0, 0, FxQueueFigure.CRATE_H * 1.2) : FxPrism.EMPTY);
     }
-    const lamp    = !running ? "dot off" : still || (this.clock / FxQueueFigure.LAMP_S) % 2 < 1 ? "dot" : "dot m";
+    const lamp    = running ? (still || (this.clock / FxQueueFigure.LAMP_S) % 2 < 1 ? "dot" : "dot m") : !still && (this.clock / FxQueueFigure.STANDBY_S) % 2 < 1 ? "dot m" : "dot off";
     FxParts.set(this.lamp, lamp);
     this.light.set(this.chosen === null ? this.rest : this.chosen);
     this.depth.sort();
