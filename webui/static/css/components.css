@@ -52,7 +52,7 @@
 }
 .tbtn:hover { border-color: var(--line-strong); }
 .tbtn:active { transform: scale(0.98); }
-.tbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tbtn:disabled, .tbtn[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; }
 .tbtn:disabled:hover { border-color: var(--line); }
 .tbtn .icon { width: 14px; height: 14px; stroke-width: 1.8; }
 .tbtn kbd { border: 0; padding: 0; min-width: 0; height: auto; font-size: 13px; font-weight: 700; color: inherit; }

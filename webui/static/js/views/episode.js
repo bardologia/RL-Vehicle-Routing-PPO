@@ -502,7 +502,6 @@ export class EpisodeView {
     if (!lane || !frame) {
       this.kpiNode.innerHTML = "";
       this.map.setScene(null);
-      this.map.setCaption("");
       this.syncMapCover();
       this.decision.empty(this.isRunning() ? `<div class="decision__head">${skeleton(4)}</div>` : `<p class="decision__rule muted">No lane of this recording has frames.</p>`);
       this.renderDrawer();
@@ -515,7 +514,6 @@ export class EpisodeView {
     this.kpiNode.innerHTML = KpiStrip.html(trace, frame.seq);
     this.map.setScene({ depot: trace.depot, jobs: trace.entities.jobs, vehicles: frame.plan.vehicles, plan: frame.plan, pathOf: (route) => trace.path(route) });
     this.map.isolate(this.isolated);
-    this.map.setCaption(`<span class="lanekey lanekey--${Agents.style(lane.key)}"><i></i>${esc(Agents.label(lane.key))}</span><b>${esc(Sentences.frame(frame, trace.meta.caps))}</b>${frame.decision && frame.decision.wasted ? statusChip("WASTED") : ""}`);
     this.map.showChange(this.change(trace, frame, animate));
     this.renderOverlays();
     this.decision.render({ trace, seq: frame.seq, verdictState: this.verdictState() });

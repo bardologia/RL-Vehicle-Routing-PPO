@@ -78,16 +78,14 @@ export class MapView {
 
     this.root = el(`
       <div class="map">
-        <div class="map__caption glass" role="status" aria-live="polite"></div>
         <div class="map__canvas"></div>
-        <div class="map__controls" role="toolbar" aria-label="Map controls"></div>
-        <div class="map__legend"></div>
+        <div class="map__controls" role="toolbar" aria-label="Map controls" aria-orientation="vertical"></div>
+        <div class="map__legend glass" hidden></div>
       </div>`);
     container.appendChild(this.root);
-    this.captionNode = this.root.querySelector(".map__caption");
     this.controlsNode = this.root.querySelector(".map__controls");
     this.legendNode = this.root.querySelector(".map__legend");
-    this.controlSet = controls || ["fit", "follow", "buildings", "teacher", "ghost", "crossings"];
+    this.controlSet = [...(controls || ["fit", "follow", "buildings", "teacher", "ghost", "crossings"]), "legend"];
 
     this.map = L.map(this.root.querySelector(".map__canvas"), { zoomControl: false, attributionControl: true, zoomSnap: 1, maxZoom: 19 }).setView(CENTER, 11);
     this.map.attributionControl.setPrefix(false);
@@ -101,7 +99,7 @@ export class MapView {
     for (const name of ["ghost", "routes", "chevrons", "changes", "teacher", "crossings", "stops", "vehicles", "depot", "labels"]) this.groups[name] = L.layerGroup().addTo(this.map);
 
     this.buildings = new BuildingsLayer(this.map, () => this.renderControls());
-    this.legendOpen = Store.read("map.legend", window.innerHeight >= 900);
+    this.legendOpen = Store.read("map.legend", false);
 
     this.map.on("zoomend", () => {
       this.root.classList.toggle("is-near", this.buildings.near);
@@ -111,11 +109,10 @@ export class MapView {
       if (this.onMapClick) this.onMapClick([Number(event.latlng.lng.toFixed(6)), Number(event.latlng.lat.toFixed(6))]);
     });
     this.controlsNode.addEventListener("click", (event) => this.onControl(event));
-    this.legendNode.addEventListener("click", (event) => {
-      if (event.target.closest("button")) this.toggleLegend();
-    });
 
-    this.observer = new ResizeObserver(() => this.map.invalidateSize({ animate: false }));
+    this.observer = new ResizeObserver(() => {
+      if (this.root.clientWidth && this.root.clientHeight) this.map.invalidateSize({ animate: false });
+    });
     this.observer.observe(this.root);
     this.renderControls();
     this.renderLegend();
@@ -125,11 +122,6 @@ export class MapView {
     this.cancelAnimation();
     this.observer.disconnect();
     this.map.remove();
-  }
-
-  setCaption(html) {
-    this.captionNode.innerHTML = html;
-    this.captionNode.classList.toggle("hidden", !html);
   }
 
   setEditable(editable) {
@@ -147,27 +139,33 @@ export class MapView {
 
   renderControls() {
     const defs = {
-      fit: { label: "Fit plan", iconName: "fit", key: "F" },
-      follow: { label: "Follow", iconName: "follow", pressed: this.toggles.follow, title: "Pan to the changed job when it is off screen. Never zooms. Paused during playback." },
-      buildings: { label: this.buildings ? this.buildings.label : "Buildings", iconName: "buildings", pressed: this.buildings ? this.buildings.enabled : false, key: "B", title: this.buildings ? this.buildings.detail : "" },
-      teacher: { label: "Teacher alternative", iconName: "teacher", pressed: this.toggles.teacher && this.available.teacher, disabled: !this.available.teacher, title: this.available.teacher ? "The insertion the teacher would make, as a dashed leg." : "Ask the teacher on this decision first." },
-      ghost: { label: "Ghost lane", iconName: "ghost", pressed: this.toggles.ghost && this.available.ghost, disabled: !this.available.ghost, key: "G", title: this.available.ghost ? "Routes of another agent at the same round, as thin grey lines." : "Needs a second recorded agent." },
-      crossings: { label: "Crossings", iconName: "crossing", pressed: this.toggles.crossings, title: "Points where straight stop-to-stop legs of different routes intersect." },
+      fit: { label: "Fit plan", iconName: "fit", key: "F", detail: "Zoom to the depot, the vehicles and every stop." },
+      follow: { label: "Follow", iconName: "follow", pressed: this.toggles.follow, detail: "Pan to the changed job when it is off screen. Never zooms. Paused during playback." },
+      buildings: { label: this.buildings ? this.buildings.label : "Buildings", iconName: "buildings", pressed: this.buildings ? this.buildings.enabled : false, key: "B", detail: this.buildings ? this.buildings.detail : "" },
+      teacher: { label: "Teacher alternative", iconName: "teacher", pressed: this.toggles.teacher && this.available.teacher, disabled: !this.available.teacher, detail: this.available.teacher ? "The insertion the teacher would make, as a dashed leg." : "Ask the teacher on this decision first." },
+      ghost: { label: "Ghost lane", iconName: "ghost", pressed: this.toggles.ghost && this.available.ghost, disabled: !this.available.ghost, key: "G", detail: this.available.ghost ? "Routes of another agent at the same round, as thin grey lines." : "Needs a second recorded agent." },
+      crossings: { label: "Crossings", iconName: "crossing", pressed: this.toggles.crossings, detail: "Points where straight stop-to-stop legs of different routes intersect." },
+      legend: { label: "Legend", iconName: "legend", pressed: this.legendOpen, key: "L", detail: "What each line and marker on the map stands for." },
     };
     this.controlsNode.innerHTML = this.controlSet.map((name) => {
       const def = defs[name];
       const pressed = def.pressed === undefined ? "" : ` aria-pressed="${def.pressed}"`;
-      return `<button type="button" class="btn btn--sm" data-control="${name}"${pressed}${def.disabled ? " disabled" : ""} title="${esc(def.title || def.label)}${def.key ? ` (key ${def.key})` : ""}">${icon(def.iconName)}<span>${esc(def.label)}</span></button>`;
+      const hint = `${def.detail}${def.key ? ` Key ${def.key}.` : ""}`;
+      return `<button type="button" class="tbtn map__tool" data-control="${name}"${pressed}${def.disabled ? " aria-disabled=\"true\"" : ""} aria-label="${esc(def.label)}" data-hint-title="${esc(def.label)}" data-hint="${esc(hint)}">${icon(def.iconName)}</button>`;
     }).join("");
   }
 
   onControl(event) {
     const button = event.target.closest("button[data-control]");
-    if (!button || button.disabled) return;
+    if (!button || button.getAttribute("aria-disabled") === "true") return;
     this.control(button.dataset.control);
   }
 
   control(name) {
+    if (name === "legend") {
+      this.toggleLegend();
+      return;
+    }
     if (name === "fit") this.fit(true);
     else if (name === "buildings") this.buildings.toggle();
     else {
@@ -184,26 +182,26 @@ export class MapView {
     this.legendOpen = !this.legendOpen;
     Store.write("map.legend", this.legendOpen);
     this.renderLegend();
+    this.renderControls();
   }
 
   renderLegend() {
     const stop = (shape, size, extra) => `<span class="mk-stop mk-stop--${shape} sz-${size} veh-1 ${extra || ""}">1</span>`;
     const rows = [
-      [`<span class="lg-line veh-1"></span>`, "route on roads, colour and number by vehicle id"],
-      [`<span class="lg-line lg-line--dashed veh-1"></span>`, "vehicles 4 to 7: same hues, dashed, hollow badge"],
+      [`<span class="lg-line veh-1"></span>`, "route on roads, colour by vehicle"],
+      [`<span class="lg-line lg-line--dashed veh-1"></span>`, "vehicles 4 to 7, same hues, dashed"],
       [`<span class="mk-vehicle veh-1"><svg viewBox="0 0 26 26"><path d="M13 2l10 7.5-3.8 12H6.800L3 9.5z"/><text x="13" y="17.500" text-anchor="middle">0</text></svg></span>`, "vehicle position, numbered by id"],
       [`<span class="mk-depot"></span>`, "depot"],
-      [stop("circle", 2), "support job, number is the visit order"],
+      [stop("circle", 2), "support job, numbered by visit order"],
       [stop("square", 2), "repossession pickup"],
       [`<span class="mk-drop veh-1"></span>`, "depot drops of a route"],
       [`${stop("circle", 1)}${stop("circle", 2)}${stop("circle", 3)}`, "priority 1 to 2, 3, 4 to 5"],
-      [`<span class="mk-stop mk-stop--circle sz-2 is-unassigned">14</span>`, "unassigned job, number is the job id"],
+      [`<span class="mk-stop mk-stop--circle sz-2 is-unassigned">14</span>`, "unassigned job, numbered by job id"],
       [`<span class="lg-line lg-line--ghost"></span>`, "removed leg or ghost lane"],
       [`<span class="lg-line lg-line--teacher"></span>`, "teacher alternative"],
     ];
-    this.legendNode.innerHTML = `
-      <button type="button" class="btn btn--sm" aria-expanded="${this.legendOpen}" title="Legend (key L)">${icon("legend")}<span>Legend</span>${icon(this.legendOpen ? "chevron-down" : "chevron-up")}</button>
-      ${this.legendOpen ? `<div class="map__legendbody glass">${rows.map(([mark, text]) => `<div class="lg-row"><span class="lg-mark">${mark}</span><span>${text}</span></div>`).join("")}</div>` : ""}`;
+    this.legendNode.hidden = !this.legendOpen;
+    this.legendNode.innerHTML = this.legendOpen ? rows.map(([mark, text]) => `<div class="lg-row"><span class="lg-mark">${mark}</span><span>${text}</span></div>`).join("") : "";
   }
 
   latLng(lonLat) {
@@ -282,29 +280,7 @@ export class MapView {
       line.addTo(this.groups.routes);
       this.track(id).lines.push(casing, line);
       this.track(id).line = line;
-
-      const middle = this.badgePoint(route, path);
-      const badge = this.marker([middle[1], middle[0]], `<span class="mk-routebadge veh-${slot}${Vehicles.dashed(id) ? " is-hollow" : ""}">vehicle ${id}</span>`, 18, "labels", { interactive: false });
-      badge.addTo(this.groups.labels);
-      this.track(id).markers.push(badge);
     }
-  }
-
-  badgePoint(route, path) {
-    const anchors = [this.scene.vehicles[route.vehicle_id].start, this.scene.depot, ...route.stops.map((stop) => stop.location)];
-    const stride = Math.max(1, Math.floor(path.length / 40));
-    let best = path[Math.floor(path.length / 2)];
-    let bestDistance = -1;
-    for (let index = stride; index < path.length - 1; index += stride) {
-      const point = path[index];
-      let nearest = Infinity;
-      for (const anchor of anchors) nearest = Math.min(nearest, (point[0] - anchor[1]) ** 2 + (point[1] - anchor[0]) ** 2);
-      if (nearest > bestDistance) {
-        bestDistance = nearest;
-        best = point;
-      }
-    }
-    return best;
   }
 
   drawStops() {
@@ -627,8 +603,8 @@ export class MapView {
     if (this.map.getSize().y < 50) return;
     this.buildings.suspend();
     const size = this.map.getSize();
-    const legendRoom = this.legendOpen && size.x > 900 ? this.legendNode.offsetWidth + 24 : 48;
-    this.map.fitBounds(bounds, { paddingTopLeft: [legendRoom, 64], paddingBottomRight: [Math.min(190, size.x * 0.16), this.cover ? this.cover + 12 : 48], maxZoom: 16, animate: Boolean(animate) });
+    const right = 64 + (this.legendOpen && size.x > 900 ? this.legendNode.offsetWidth + 8 : 0);
+    this.map.fitBounds(bounds, { paddingTopLeft: [40, 56], paddingBottomRight: [right, this.cover ? this.cover + 12 : 40], maxZoom: 16, animate: Boolean(animate) });
     this.fitted = true;
   }
 

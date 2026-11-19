@@ -153,16 +153,16 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .map .leaflet-bar a:last-child { border-bottom: 0; }
 .map .leaflet-bar a:hover { background: linear-gradient(var(--surface-2), var(--surface-2)), var(--glass-solid); color: var(--ink); }
 .map .leaflet-bar a.leaflet-disabled { background: var(--glass-solid); color: var(--ink-hint); }
-.map__caption { position: absolute; z-index: 1000; left: var(--sp-8); top: var(--sp-8); max-width: calc(100% - 196px); display: flex; align-items: center; gap: 6px var(--sp-12); padding: 6px 10px; border: 2px solid var(--line); border-radius: var(--r); font-size: 13px; line-height: 1.5; color: var(--ink-dim); flex-wrap: wrap; }
-.map__caption b { font-weight: 700; color: var(--ink); }
-.map__controls { position: absolute; z-index: 1000; right: var(--sp-8); top: var(--sp-8); display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-4); }
-.map__controls .btn { padding: 5px 11px; justify-content: flex-start; background: var(--glass-solid); }
-.map .btn:disabled, .map .btn:disabled:hover { opacity: 1; border-color: var(--line-card); color: var(--ink-hint); }
-.map__controls .btn[aria-pressed="true"] { background: linear-gradient(var(--accent-wash), var(--accent-wash)), var(--glass-solid); color: var(--accent); border-color: var(--accent); }
-.map__legend { position: absolute; z-index: 1000; left: var(--sp-8); bottom: var(--sp-8); display: flex; flex-direction: column-reverse; align-items: flex-start; gap: var(--sp-4); }
-.map__legend > .btn { padding: 5px 11px; background: var(--glass-solid); }
-.map__legendbody { padding: var(--sp-8) var(--sp-12); border: 2px solid var(--line); border-radius: var(--r); display: flex; flex-direction: column; font-family: var(--mono); font-size: 11.5px; font-weight: 600; line-height: 1.55; color: var(--ink-dim); }
-.lg-row { display: flex; align-items: center; gap: var(--sp-8); min-height: 20px; }
+.map__controls { position: absolute; z-index: 1000; right: var(--sp-8); top: var(--sp-8); display: flex; flex-direction: column; gap: var(--sp-4); }
+.map__tool { background: var(--glass-solid); color: var(--ink-dim); }
+.map__tool:hover { color: var(--ink); }
+.map__tool[aria-pressed="true"] { background: linear-gradient(var(--accent-wash), var(--accent-wash)), var(--glass-solid); color: var(--accent); border-color: var(--accent); }
+.map__tool[aria-disabled="true"], .map__tool[aria-disabled="true"]:hover { border-color: var(--line-card); color: var(--ink-hint); cursor: not-allowed; }
+.map__tool[aria-disabled="true"] { opacity: 1; }
+.map__tool[aria-disabled="true"]:active { transform: none; }
+.map__legend { position: absolute; z-index: 1000; right: 50px; top: var(--sp-8); display: flex; flex-direction: column; padding: var(--sp-8) var(--sp-12); border: 2px solid var(--line); border-radius: var(--r); font-size: 12px; font-weight: 600; line-height: 1.55; color: var(--ink-dim); }
+.map__legend[hidden] { display: none; }
+.lg-row { display: flex; align-items: center; gap: var(--sp-8); min-height: 20px; white-space: nowrap; }
 .lg-mark .mk-stop, .lg-mark .mk-vehicle { transform: scale(0.8); margin: -2px; }
 .lg-mark { width: 62px; display: inline-flex; align-items: center; gap: 3px; flex: none; }
 .lg-line { display: inline-block; width: 44px; border-top: 3px solid var(--veh); }
@@ -186,8 +186,6 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .route-teacher { stroke: var(--lane-teacher); stroke-opacity: 0.9; stroke-dasharray: 6 5; fill: none; }
 .mk-chevron { width: 12px; height: 12px; }
 .mk-chevron path { fill: var(--veh); stroke: var(--halo); stroke-width: 1; stroke-linejoin: round; paint-order: stroke; }
-.mk-routebadge { padding: 1px 6px; border-radius: var(--r); background: var(--veh); color: var(--on-accent); border: 1.5px solid var(--halo); font-family: var(--mono); font-size: 11px; font-weight: 700; line-height: 1.3; white-space: nowrap; }
-.mk-routebadge.is-hollow { background: var(--bg); color: var(--veh); border: 1.5px dashed var(--veh); }
 .mk-stop { display: inline-flex; align-items: center; justify-content: center; background: var(--veh); color: var(--on-accent); border: 1.5px solid var(--halo); font-family: var(--mono); font-size: 11px; font-weight: 700; line-height: 1; letter-spacing: -0.04em; cursor: pointer; }
 .mk-stop--circle { border-radius: 50%; }
 .mk-stop--square { border-radius: var(--r); }
