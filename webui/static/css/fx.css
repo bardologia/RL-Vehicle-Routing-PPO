@@ -73,10 +73,10 @@ hairline-figure {
   .mast__center ~ .mast__flank { display: none; }
 }
 
-.figcard { display: grid; grid-template-columns: clamp(160px, 12vw, 240px) minmax(0, 1fr); align-items: center; gap: var(--gap); }
+.figcard { display: grid; grid-template-columns: clamp(225px, 16vw, 307px) minmax(0, 1fr); align-items: center; gap: var(--gap); }
 .figcard__body { min-width: 0; align-self: start; }
-.figcard__fig { position: relative; align-self: stretch; min-width: 0; min-height: 180px; container-type: size; }
-.figcard__fig > hairline-figure { position: absolute; left: 50%; top: 50%; width: min(100cqw, 125cqh); transform: translate(-50%, -50%); }
+.figcard__fig { min-width: 0; }
+.figcard__fig > hairline-figure { width: 100%; }
 
 .fig-band { position: relative; flex: none; height: 200px; overflow: hidden; container-type: size; }
 .fig-band > hairline-figure { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(100cqw, 150cqh); }
