@@ -480,7 +480,7 @@
 .runs__gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-12); }
 .runs__thumb { display: flex; flex-direction: column; gap: 6px; padding: var(--sp-8); border: 2px solid var(--line-card); border-radius: var(--r); background: var(--panel); color: var(--ink-dim); font: 600 11.5px var(--mono); cursor: pointer; text-align: left; transition: border-color var(--t-ctl) var(--ease); }
 .runs__thumb:hover { border-color: var(--line-strong); color: var(--ink); }
-.runs__thumb img { width: 100%; height: 180px; object-fit: contain; background: var(--well); filter: invert(0.92) hue-rotate(180deg); }
+.runs__thumb img { width: 100%; height: 180px; object-fit: contain; filter: var(--figure-filter); }
 .job__search { display: inline-flex; align-items: center; gap: var(--sp-8); }
 .job__search .input { width: 180px; height: 26px; }
 

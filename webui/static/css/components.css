@@ -338,7 +338,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { background: var(--accent);
 
 .lightbox { position: fixed; inset: 0; z-index: 80; display: none; align-items: center; justify-content: center; flex-direction: column; gap: var(--sp-12); background: rgba(11, 15, 19, 0.9); color: var(--ink-dim); }
 .lightbox.is-open { display: flex; }
-.lightbox img { max-width: 94vw; max-height: 86vh; border: 2px solid var(--line-card); border-radius: var(--r); background: var(--well); filter: invert(0.92) hue-rotate(180deg); }
+.lightbox img { max-width: 94vw; max-height: 86vh; border: 2px solid var(--line-card); border-radius: var(--r); background: var(--well); filter: var(--figure-filter); }
 .lightbox__cap { padding: 4px 10px; border: 2px solid var(--line); border-radius: var(--r); background: var(--glass); -webkit-backdrop-filter: var(--frost); backdrop-filter: var(--frost); font: 600 12px var(--mono); }
 .lightbox__cap:empty { display: none; }
 
