@@ -6,8 +6,8 @@
 <meta name="color-scheme" content="dark">
 <title>Routing console</title>
 <link rel="icon" href="data:,">
-<link rel="preload" href="/static/vendor/fonts/archivo-variable.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/static/vendor/fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/vendor/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/vendor/fonts/jetbrainsmono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/vendor/leaflet.css">
 <link rel="stylesheet" href="/static/css/tokens.css">
 <link rel="stylesheet" href="/static/css/base.css">
@@ -59,6 +59,9 @@
     <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h12l-2 4 2 4H5"/></symbol>
     <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></symbol>
     <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.4v.2"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.2M12 12h.2M19 12h.2" stroke-width="3"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5"/></symbol>
   </defs>
 </svg>
@@ -67,10 +70,9 @@
   <a class="topbar__name" href="#/overview" aria-label="Routing console"><span class="topbar__mark" aria-hidden="true"></span><span>Routing <b>console</b></span></a>
   <nav class="topbar__tabs" id="tabs" aria-label="Sections"></nav>
   <div class="topbar__right">
-    <span id="svc-osrm"></span>
-    <span id="svc-vroom"></span>
+    <button type="button" class="svc is-pending" id="svc" aria-haspopup="dialog" aria-expanded="false"><i></i><span>services</span></button>
     <a class="topbar__jobs" id="jobs-link" href="#/console"></a>
-    <button type="button" class="btn btn--quiet btn--sm" id="keys-toggle" title="Keys (?)" aria-haspopup="dialog">Keys <kbd>?</kbd></button>
+    <button type="button" class="tbtn" id="keys-toggle" title="Keys" aria-label="Keys" aria-haspopup="dialog"><kbd>?</kbd></button>
   </div>
 </header>
 
