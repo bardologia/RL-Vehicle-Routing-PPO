@@ -230,11 +230,10 @@ export class OverviewView {
     const separable = teacher && (teacher.ci95[0] > 0 || teacher.ci95[1] < 0);
     const tiles = [];
     if (model) {
-      const lanes = ["teacher", "do_nothing"].filter((key) => report.agents[key]).map((key) => ({ html: `<span><span class="lanekey lanekey--${Agents.style(key)}"><i></i>${esc(Agents.label(key))}</span> ${fmtSigned(report.agents[key].mean_reward)}</span>` }));
-      tiles.push({ key: "reward", label: "Model reward", full: "Model mean reward", value: fmtSigned(model.mean_reward), unit: "pts", subs: lanes, title: `95% interval ${fmtSigned(model.ci95[0])} to ${fmtSigned(model.ci95[1])} points.${model.identical_to ? ` Identical to ${model.identical_to}: same reward in every episode.` : ""}` });
+      tiles.push({ key: "reward", label: "Model reward", full: "Model mean reward", value: fmtSigned(model.mean_reward), unit: "pts", title: `95% interval ${fmtSigned(model.ci95[0])} to ${fmtSigned(model.ci95[1])} points.${model.identical_to ? ` Identical to ${model.identical_to}: same reward in every episode.` : ""}` });
       if (teacher) {
         tiles.push({ key: "paired", label: "Model minus teacher", value: fmtSigned(teacher.mean_diff), unit: "pts", tone: separable ? (teacher.mean_diff > 0 ? "gain" : "loss") : "", subs: [separable ? "separable" : "not separable"], title: `Paired difference of the episode reward. 95% interval ${fmtSigned(teacher.ci95[0])} to ${fmtSigned(teacher.ci95[1])} points${separable ? "" : ", not separable at this n"}.` });
-        tiles.push({ key: "record", label: "Won / level / lost", value: `${teacher.wins} / ${teacher.ties} / ${teacher.losses}`, subs: [`of ${plural(report.meta.episodes, "episode")}`], title: "Episodes the model won, tied and lost against the teacher." });
+        tiles.push({ key: "record", label: "Won / level / lost", value: `${teacher.wins} / ${teacher.ties} / ${teacher.losses}`, subs: ["against the teacher"], title: "Episodes the model won, tied and lost against the teacher." });
       }
     }
     this.statusTiles = tiles;
