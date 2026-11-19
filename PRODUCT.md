@@ -22,6 +22,8 @@ He knows the domain and the code. He does not need the interface to explain rein
 
 A local web console over the training, evaluation and trace files of the routing project. It exists so that judging a policy takes a glance and investigating it takes a few clicks, instead of reading logs and notebooks. Success: on every tab the answer to that tab's question is the largest object on screen, and everything else waits one interaction away. No number or capability is ever removed to get there; detail moves behind disclosure.
 
+The Console, Server and Launch tabs follow the DLR TomoSAR consoles feature for feature, with one scope decision the owner accepted at the start of that port: the console runs on one local machine for one user, so the DLR job notification (the Notify card, the ntfy topic and server, Test and Save, the notifier routes and the JobNotifier inside the process manager) and the shared-server features (the GPU WEEK schedule with Greedy and Charity, the NEIGHBOUR IMPACT contention monitor, the GPU GUARD intrusion journal and the ACTIVE USERS table) are not ported. The Auto-nuke switch is ported, because it acts on this machine's own jobs.
+
 ## Brand Personality
 
 Quiet, exact, instrument-like. The console belongs to a family of the author's research consoles and takes its standard from the Mercado market console: a dark ground, heavy grotesque titles, monospaced numbers, two-pixel hairlines, and isometric hairline figures that are always moving and are driven by the page's data. The voice is that of a lab instrument: short labels, units on every number, sentences only where a finding has to be stated. Academic and professional. No emojis, no decorative symbols, no exclamation.
