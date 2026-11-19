@@ -241,7 +241,6 @@ input[type="range"]:focus-visible::-moz-range-thumb { background: var(--accent);
 .ch-tick, .ch-label, .ch-note, .ch-value { fill: var(--ink-faint); font-size: 11px; }
 .ch-rowlabel { fill: var(--ink-dim); font-size: 11px; }
 .ch-value { fill: var(--ink); font-size: 12px; font-weight: 700; }
-.ch-direct { fill: var(--ink); font-size: 11px; paint-order: stroke; stroke: var(--panel-solid); stroke-width: 3px; stroke-linejoin: round; }
 .ch-line { fill: none; stroke: var(--lane-model); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .ch-line--teacher { stroke: var(--lane-teacher); stroke-width: 1.6; }
 .ch-line--dashed, .ch-line--insertion_only { stroke: var(--lane-insertion); stroke-width: 1.6; stroke-dasharray: 6 4; }
@@ -276,7 +275,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { background: var(--accent);
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 600 11.5px var(--mono); color: var(--ink-dim); }
 .legend > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .legend b { font-weight: 700; color: var(--ink); }
-.legend--chart { margin-bottom: 2px; }
+.legend--chart { padding-bottom: 2px; }
 .linekey { flex: none; width: 22px; height: 0; border-top: 2px solid var(--lane-model); }
 .linekey--dashed { border-top-style: dashed; border-top-color: var(--lane-insertion); }
 .linekey--dotted { border-top-style: dotted; border-top-color: var(--lane-nothing); }

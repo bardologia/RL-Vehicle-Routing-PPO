@@ -469,7 +469,7 @@
 .runs__slider input { width: 140px; }
 .runs__slider output { width: 4ch; font: 700 12px var(--mono); letter-spacing: 0; color: var(--ink); }
 .runs__pager { display: inline-flex; align-items: center; gap: var(--sp-8); font: 600 12px var(--mono); color: var(--ink-faint); }
-.runs__charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); align-items: start; }
+.runs__charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); align-items: stretch; }
 .runs__multi + .runs__multi { margin-top: var(--sp-8); }
 .runs__tag { font: 700 13px var(--mono); letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; direction: rtl; text-align: left; }
 .runs__tag + .panel__help { flex: 0; }

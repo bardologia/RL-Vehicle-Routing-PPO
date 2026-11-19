@@ -122,7 +122,7 @@ export class LineChart {
 
   render(series) {
     this.data = series;
-    const { height = 200, xLabel = "step", yLabel = "", smoothing = 0, log = false, emptyText = "not logged" } = this.options;
+    const { height = 200, xLabel = "step", yLabel = "", smoothing = 0, log = false, emptyText = "not logged", caption = "" } = this.options;
     const drawn = series.filter((entry) => entry.values.length).map((entry) => ({ ...entry, shown: LineChart.smooth(entry.values, smoothing) }));
     if (!drawn.length) {
       emptyFrame(this.container, height, emptyText);
@@ -130,9 +130,13 @@ export class LineChart {
       return;
     }
 
+    const keys = drawn.length > 1 ? drawn.map((entry) => `<span><i class="linekey linekey--${entry.style || "solid"}"></i>${esc(entry.label)} <b>${fmtFixed(entry.shown[entry.shown.length - 1], 4)}</b></span>`).join("") : caption ? `<span>${esc(caption)}</span>` : "";
+    const legend = keys ? `<div class="legend legend--chart">${keys}</div>` : "";
+    this.container.innerHTML = legend;
+    const head = legend ? this.container.firstElementChild.offsetHeight : 0;
+
     const width = measure(this.container, 480);
-    const labelRoom = drawn.length > 1 ? Math.min(140, 12 + 7 * Math.max(...drawn.map((entry) => entry.label.length))) : 16;
-    const frame = new Frame(width, height, { left: 52, right: labelRoom, top: 24, bottom: 34 });
+    const frame = new Frame(width, Math.max(96, height - head), { left: 52, right: 16, top: 24, bottom: 34 });
     const allX = drawn.flatMap((entry) => entry.steps);
     let allY = drawn.flatMap((entry) => entry.shown).filter(isNum);
     const useLog = log && allY.every((value) => value > 0);
@@ -147,19 +151,13 @@ export class LineChart {
     const y = new Scale([yLo, yHi], [frame.y0, frame.y1], useLog);
     const yTicks = useLog ? LineChart.logTicks(yLo, yHi) : Scale.ticks(yLo, yHi, 4);
 
-    const lines = drawn.map((entry, index) => {
+    const lines = drawn.map((entry) => {
       const points = entry.steps.map((step, i) => (isNum(entry.shown[i]) ? `${x.map(step).toFixed(1)},${y.map(entry.shown[i]).toFixed(1)}` : null)).filter((point) => point);
-      const lastIndex = entry.shown.length - 1;
-      const endY = y.map(entry.shown[lastIndex]);
-      const label = drawn.length > 1 ? `<text class="ch-direct" x="${frame.x1 + 6}" y="${endY + 4}" data-end="${index}">${esc(entry.label)}</text>` : "";
       const single = points.length === 1 ? `<circle class="ch-dot" cx="${points[0].split(",")[0]}" cy="${points[0].split(",")[1]}" r="4"></circle>` : "";
-      return `<polyline class="ch-line ch-line--${entry.style || "solid"} ${entry.className || ""}" points="${points.join(" ")}"></polyline>${single}${label}`;
+      return `<polyline class="ch-line ch-line--${entry.style || "solid"} ${entry.className || ""}" points="${points.join(" ")}"></polyline>${single}`;
     }).join("");
 
-    const legend = drawn.length > 1 ? `<div class="legend legend--chart">${drawn.map((entry) => `<span><i class="linekey linekey--${entry.style || "solid"}"></i>${esc(entry.label)} <b>${fmtFixed(entry.shown[entry.shown.length - 1], 4)}</b></span>`).join("")}</div>` : "";
-
     this.container.innerHTML = `${legend}${frame.open()}${frame.axes(x, y, Scale.ticks(xLo, xHi, 5), yTicks, xLabel, yLabel)}${lines}<line class="ch-cross" y1="${frame.y1}" y2="${frame.y0}" x1="0" x2="0" visibility="hidden"></line></svg>`;
-    LineChart.spreadLabels(this.container, frame);
     this.state = { frame, x, drawn };
   }
 
@@ -169,16 +167,6 @@ export class LineChart {
       if (10 ** power >= lo && 10 ** power <= hi) out.push(10 ** power);
     }
     return out.length ? out : [lo, hi];
-  }
-
-  static spreadLabels(container, frame) {
-    const labels = [...container.querySelectorAll(".ch-direct")].sort((a, b) => Number(a.getAttribute("y")) - Number(b.getAttribute("y")));
-    let floor = frame.y1;
-    for (const label of labels) {
-      const wanted = Math.max(floor, Number(label.getAttribute("y")));
-      label.setAttribute("y", wanted);
-      floor = wanted + 13;
-    }
   }
 
   hover(event) {

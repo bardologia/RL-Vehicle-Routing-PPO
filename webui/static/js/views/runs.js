@@ -338,7 +338,7 @@ export class RunsView {
       const frames = sparse ? kpiRow(chart.series.filter((entry) => entry.values.length).map((entry) => ({ label: entry.label, value: fmtFixed(entry.values[0], 3), unit: chart.unit, note: `one value, step ${entry.steps[0]}`, title: entry.tag }))) : split ? series.map((entry, s) => `<div class="runs__multi"><h4 class="subhead">${esc(entry.label)}</h4><div data-chart="${index}" data-series="${s}"></div></div>`).join("") : `<div data-chart="${index}"></div>`;
       const points = chart.series.length ? Math.max(...chart.series.map((entry) => entry.steps.length)) : 0;
       const merged = series.filter((entry) => entry.merged.length > 1).map((entry) => `${entry.merged.join(", ")} are identical`).join("; ");
-      blocks.push(`<section class="panel" data-health="${esc(chart.key)}"><header class="panel__head"><h3 class="panel__title">${esc(chart.title)}</h3><span class="panel__help">${points ? `n = ${plural(points, "point")}` : ""}${merged ? `. ${esc(merged)}` : ""}</span></header><div class="panel__body">${frames}</div></section>`);
+      blocks.push(`<section class="panel" data-health="${esc(chart.key)}"><header class="panel__head"><h3 class="panel__title">${esc(chart.title)}</h3><span class="panel__help">${points ? `n = ${plural(points, "point")}` : ""}${merged && (sparse || split) ? `. ${esc(merged)}` : ""}</span></header><div class="panel__body">${frames}</div></section>`);
     });
     this.body.innerHTML = `
       <div class="runs__controls"><span class="muted">${health.kind === "ppo" ? "PPO training" : "Behaviour cloning"}: fixed charts. Charts on the same step axis share the crosshair.</span><span class="diag__spacer"></span>${this.smoothingControl()}</div>
@@ -352,7 +352,7 @@ export class RunsView {
       if (series.length > 3) {
         series.forEach((entry, s) => this.mountChart(this.body.querySelector(`[data-chart="${index}"][data-series="${s}"]`), [{ ...entry, style: "solid" }], { height: 130, xLabel, yLabel: chart.unit, domain }));
       } else {
-        this.mountChart(this.body.querySelector(`[data-chart="${index}"]`), series.map((entry, s) => ({ ...entry, style: STYLES[s] })), { xLabel, yLabel: chart.unit, domain });
+        this.mountChart(this.body.querySelector(`[data-chart="${index}"]`), series.map((entry, s) => ({ ...entry, style: STYLES[s] })), { xLabel, yLabel: chart.unit, domain, caption: series.filter((entry) => entry.merged.length > 1).map((entry) => `${entry.merged.join(", ")} are identical`).join("; ") });
       }
     });
   }
