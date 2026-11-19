@@ -116,7 +116,7 @@ export class LabView {
       onHover: (row) => this.map.highlight(row ? { vehicleId: row.id } : null),
       columns: [
         { key: "id", label: "Vehicle", render: (row) => Vehicles.swatch(row.id, row.stops === 0) },
-        { key: "capacity", label: "Capacity", numeric: true },
+        { key: "capacity", label: "Cap", full: "Capacity", title: "Capacity, bikes", numeric: true },
         { key: "onboard", label: "Onboard", numeric: true },
         { key: "stops", label: "Stops", numeric: true },
       ],
