@@ -1,4 +1,8 @@
+"""Command-line entry point that starts the routing console."""
+
 import argparse
+import faulthandler
+import signal
 import sys
 from pathlib import Path
 
@@ -13,18 +17,33 @@ from web_ui_server import WebUIServer
 
 
 class ServeEntry:
-    def _parse(self):
-        parser = argparse.ArgumentParser(description="RL Vehicle Routing PPO web console")
-        parser.add_argument("--host", default="127.0.0.1")
-        parser.add_argument("--port", type=int, default=8766)
-        parser.add_argument("--overpass", default=None, help="Comma-separated Overpass interpreter URLs for building data; the built-in list when omitted")
-        return parser.parse_args()
+    """Parses the console command line and starts the web UI server.
 
-    def run(self):
-        args      = self._parse()
+    Attributes:
+        parser : Argument parser holding the host, port, root and Overpass options.
+    """
+
+    def __init__(self) -> None:
+        """Builds the argument parser."""
+        self.parser = argparse.ArgumentParser(description="RL Vehicle Routing PPO web console")
+        self.parser.add_argument("--host", default="127.0.0.1")
+        self.parser.add_argument("--port", type=int, default=8766)
+        self.parser.add_argument("--root", type=Path, default=None, help="project root the console operates on (jobs, logs, runs); defaults to the repository holding this file")
+        self.parser.add_argument("--overpass", default=None, help="comma-separated Overpass interpreter URLs for building data; the built-in list when omitted")
+
+    def run(self) -> None:
+        """Parses the command line and serves the console until it is stopped.
+
+        SIGUSR1 dumps every thread's stack to stderr, so a request that hangs can
+        be located with ``kill -USR1 <pid>`` while the console keeps running.
+        """
+        faulthandler.register(signal.SIGUSR1, all_threads=True)
+
+        args      = self.parser.parse_args()
         endpoints = [url.strip() for url in args.overpass.split(",") if url.strip()] if args.overpass else None
 
-        WebUIServer(args.host, args.port, endpoints).serve()
+        WebUIServer(host=args.host, port=args.port, root=args.root, overpass_endpoints=endpoints).serve()
 
 
-ServeEntry().run()
+if __name__ == "__main__":
+    ServeEntry().run()
