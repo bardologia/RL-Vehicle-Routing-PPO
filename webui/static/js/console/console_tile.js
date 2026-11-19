@@ -426,7 +426,10 @@ export class ConsoleTile {
       this.job.log_path = job.log_path;
       this.logBtn.hidden = false;
     }
-    this.job.stopped = job.stopped;
+    if (Boolean(job.stopped) !== Boolean(this.job.stopped)) {
+      this.job.stopped = job.stopped;
+      this.setStatus(this.job.status);
+    }
     this.showRun();
     if (job.status === this.job.status || this.streamOpen) return;
 
