@@ -1,6 +1,8 @@
 import { api } from "../api.js";
 import { el, esc, plural } from "../format.js";
 import { Figure } from "../fx/figure.js";
+import { PageHead } from "../ui/page_head.js";
+import { infoText, panelHead } from "../ui/panel.js";
 import { errorBlock, skeleton } from "../ui/status.js";
 
 export class LaunchView {
@@ -55,7 +57,7 @@ export class LaunchView {
         <a class="launch__script" href="#/launch/${esc(script.key)}" data-key="${esc(script.key)}">
           <span class="launch__scripttitle">${esc(script.title)}</span>
           <span class="launch__scriptsum">${esc(script.summary)}</span>
-        </a>`).join("")}`).join("") + Figure.html("elevator", "launch__figure");
+        </a>`).join("")}`).join("");
   }
 
   async select(key, query) {
@@ -140,22 +142,17 @@ export class LaunchView {
     }).join("");
 
     this.main.innerHTML = `
-      <header class="launch__head">
-        <div>
-          <h2>${esc(form.title)}</h2>
-          <p class="muted">${esc(form.summary)}</p>
-        </div>
-        <div class="launch__actions">
-          <span class="muted" data-role="count"></span>
-          <button type="button" class="btn btn--quiet" data-action="reset">Reset</button>
-          <button type="button" class="btn" data-action="queue">Queue</button>
-          <button type="button" class="btn btn--primary" data-action="launch">Launch</button>
-        </div>
-      </header>
+      ${PageHead.html({
+        title: form.title,
+        lead: form.summary,
+        form: "narrow",
+        controls: `<button type="button" class="btn btn--primary" data-action="launch">Launch</button><button type="button" class="btn" data-action="queue">Queue</button><button type="button" class="btn btn--sm btn--quiet" data-action="reset">Reset</button><span class="launch__count" data-role="count"></span>`,
+        figure: Figure.html("elevator"),
+      })}
       <div data-role="error"></div>
       <pre class="launch__cmd" data-role="cmd" aria-label="Command preview"></pre>
       <section class="panel">
-        <header class="panel__head"><h3 class="panel__title">Essentials</h3><span class="panel__help">The fields most runs change. Everything else keeps its default unless edited below.</span></header>
+        ${panelHead("Essentials", { info: infoText("The fields most runs change. Everything else keeps its default unless edited below.") })}
         <div class="panel__body"><div class="launch__grid">${essentials.map((field) => this.fieldHtml(field)).join("")}</div></div>
       </section>
       <div class="launch__sections">${sections}</div>`;
@@ -212,7 +209,8 @@ export class LaunchView {
 
     const count = Object.keys(this.dirty).length;
     const bad = Object.keys(this.invalid).length;
-    this.main.querySelector("[data-role=count]").textContent = bad ? `${plural(bad, "field")} invalid` : count ? `${plural(count, "override")}` : "All defaults";
+    this.main.querySelector("[data-role=count]").textContent = bad ? `${bad} invalid` : count ? `${count} changed` : "all defaults";
+    this.main.querySelector("[data-role=count]").classList.toggle("launch__changed", count > 0 && !bad);
     for (const button of this.main.querySelectorAll("[data-action=launch], [data-action=queue]")) button.disabled = bad > 0;
 
     this.form.sections.forEach((section, index) => {

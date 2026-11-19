@@ -4,8 +4,11 @@ import { BehaviourPanels } from "../diagnose/behaviour.js";
 import { FindingsList } from "../diagnose/findings_list.js";
 import { Links } from "../diagnose/links.js";
 import { Agents } from "../episode/encoding.js";
-import { el, esc, fmtPct, icon, fmtSigned, fmtSignedInt, isNum, plural } from "../format.js";
+import { el, esc, fmtPct, fmtSigned, fmtSignedInt, isNum, plural } from "../format.js";
+import { Figure } from "../fx/figure.js";
 import { Scatter } from "../ui/charts.js";
+import { PageHead } from "../ui/page_head.js";
+import { infoText, panelHead } from "../ui/panel.js";
 import { emptyBlock, errorBlock, skeleton } from "../ui/status.js";
 import { DataTable, needsTraces } from "../ui/table.js";
 import { Segmented } from "../ui/tabs.js";
@@ -30,21 +33,19 @@ export class DiagnoseView {
 
     root.appendChild(el(`
       <div class="view__pad diag">
-        <header class="diag__bar">
-          <h2>Diagnose</h2>
-          <label class="fieldlabel"><span>Run</span><select class="select" data-role="run" aria-label="Run"></select></label>
-          <label class="fieldlabel"><span>Report seed</span><select class="select" data-role="seed" aria-label="Report"></select></label>
-          <div class="diag__facts" data-role="facts"></div>
-          <span class="diag__spacer"></span>
-          <a class="diag__flags" data-role="flags" href="#" title="Jump to the findings of this report"></a>
-          <a class="btn" data-role="record" href="#/launch/diagnose">Record traces</a>
-        </header>
+        ${PageHead.html({
+          title: "Diagnose",
+          controls: `${PageHead.control("Run", `<select class="select" data-role="run" aria-label="Run"></select>`)}<label class="ctl" data-role="seedwrap"><span class="ctl__label">Report seed</span><select class="select" data-role="seed" aria-label="Report"></select></label><a class="btn btn--sm btn--quiet" data-role="record" href="#/launch/diagnose">Record traces</a>`,
+          extra: `<div data-role="flags"></div>`,
+          figure: Figure.html("loupe"),
+        })}
         <div data-role="error"></div>
         <div data-role="content" class="diag__content"></div>
       </div>`));
     this.runSelect = root.querySelector("[data-role=run]");
     this.seedSelect = root.querySelector("[data-role=seed]");
-    this.facts = root.querySelector("[data-role=facts]");
+    this.facts = root.querySelector("[data-role=dateline]");
+    this.seedWrap = root.querySelector("[data-role=seedwrap]");
     this.flags = root.querySelector("[data-role=flags]");
     this.recordLink = root.querySelector("[data-role=record]");
     this.errorNode = root.querySelector("[data-role=error]");
@@ -52,10 +53,6 @@ export class DiagnoseView {
 
     this.runSelect.addEventListener("change", () => this.app.router.go(Links.diagnose(this.runSelect.value, null)));
     this.seedSelect.addEventListener("change", () => this.app.router.go(Links.diagnose(this.run, this.seedSelect.value)));
-    this.flags.addEventListener("click", (event) => {
-      event.preventDefault();
-      this.focusPanel("findings");
-    });
 
     app.keys.bind("diagnose", "j", "Next row of the regret table", () => this.moveRow(1));
     app.keys.bind("diagnose", "k", "Previous row of the regret table", () => this.moveRow(-1));
@@ -172,6 +169,7 @@ export class DiagnoseView {
     const seeds = run ? run.reports.map((report) => report.seed) : [];
     this.seedSelect.innerHTML = seeds.length ? seeds.map((seed) => `<option value="${seed}"${seed === this.seed ? " selected" : ""}>${seed}</option>`).join("") : `<option>none</option>`;
     this.seedSelect.disabled = seeds.length < 2;
+    this.seedWrap.hidden = seeds.length < 2;
   }
 
   get recordHash() {
@@ -191,8 +189,9 @@ export class DiagnoseView {
       const done = this.report.episodes.filter((episode) => episode.has_trace[key]).length;
       return done || key !== "model_sampled" ? `${Agents.label(key)} ${done} of ${meta.episodes}` : null;
     }).filter((part) => part);
-    this.facts.innerHTML = `<span>${facts.map(esc).join(", ")}</span><span class="muted">Traces: ${coverage.map(esc).join(", ")}</span>`;
-    this.flags.innerHTML = FindingsList.summaryChips(this.findings);
+    this.facts.textContent = facts.join(", ");
+    const withoutData = FindingsList.counts(this.findings)["NO DATA"];
+    this.flags.innerHTML = FindingsList.strip(this.findings, { actions: this.findingActions(), tail: `<button type="button" class="btn btn--sm btn--quiet" data-info aria-haspopup="dialog" aria-expanded="false" aria-label="Trace coverage">${withoutData ? `${withoutData} without data` : "Traces"}</button><template data-info-body><p>Traces: ${coverage.map(esc).join(", ")}</p></template>` });
     this.recordLink.href = this.recordHash;
   }
 
@@ -200,26 +199,22 @@ export class DiagnoseView {
     this.renderFacts();
     this.content.innerHTML = `
       <section class="panel" data-panel="agent-table">
-        <header class="panel__head"><h3 class="panel__title">Agents</h3><span class="panel__help">One row per agent on the same ${this.report.meta.episodes} episodes. Reward is the undiscounted episode return in reward points; higher is better.</span></header>
+        ${panelHead("Agents", { info: AgentTable.info(this.report) })}
         <div class="panel__body" data-role="agents"></div>
       </section>
-      <div class="diag__split">
-        <section class="panel" data-panel="paired-scatter">
-          <header class="panel__head"><h3 class="panel__title">Model against a reference, per episode</h3><span class="panel__help"></span><span class="panel__actions"><span data-role="reference"></span></span></header>
-          <div class="panel__body"><p class="panel__lede">Points above the diagonal are episodes the model won. Click a point to open the episode.</p><div data-role="scatter"></div></div>
+      <div class="grid-12">
+        <section class="panel span-5" data-panel="paired-scatter">
+          ${panelHead("Model against reference", { note: "points", info: infoText("One point per episode: model reward against the reward of the reference agent.", "Points above the diagonal are episodes the model won. Click a point to open the episode.") })}
+          <div class="panel__body"><div class="ctls diag__against"><span class="ctl"><span class="ctl__label">Against</span><span data-role="reference"></span></span></div><div data-role="scatter"></div></div>
         </section>
-        <section class="panel panel--flush" data-panel="regret-table">
-          <header class="panel__head"><h3 class="panel__title">Episodes by regret</h3><span class="panel__help">Regret = reference reward minus model reward, in points. J and K move, Enter opens the episode.</span></header>
+        <section class="panel panel--flush span-7" data-panel="regret-table">
+          ${panelHead("Episodes by regret", { info: infoText("Regret = reference reward minus model reward, in points.", "J and K move, Enter opens the episode.") })}
           <div class="panel__body"><div data-role="regret" class="diag__regret"></div></div>
         </section>
       </div>
-      <h3 class="diag__section">Behaviour <span class="muted">from recorded traces</span></h3>
+      <div class="sechead diag__section"><h2>Behaviour <span class="muted">from recorded traces</span></h2></div>
       <div data-role="behaviour-note"></div>
-      <div data-role="behaviour"></div>
-      <section class="panel" data-panel="findings">
-        <header class="panel__head"><h3 class="panel__title">Findings</h3><span class="panel__help">Fixed rules with fixed thresholds over this report, its traces and the training curves of the run.</span></header>
-        <div class="panel__body">${FindingsList.html(this.findings, { actions: this.findingActions(), columns: true })}</div>
-      </section>`;
+      <div data-role="behaviour"></div>`;
 
     const available = REFERENCES.filter((option) => this.report.agents[option.value]);
     if (!available.some((option) => option.value === this.reference)) this.reference = available.length ? available[0].value : null;
@@ -249,7 +244,7 @@ export class DiagnoseView {
     if (this.index) this.behaviour.render(this.index);
     else {
       this.behaviour.needsTraces();
-      this.content.querySelector("[data-role=behaviour-note]").innerHTML = `<p class="noteblock">${icon("warning")}<span>No traces are recorded for this report, so the eight behaviour panels and the trace columns of the regret table are empty. ${esc(this.estimate())}</span><a class="btn btn--primary" href="${esc(this.recordHash)}">Record traces</a></p>`;
+      this.content.querySelector("[data-role=behaviour-note]").innerHTML = `<p class="noteblock"><span>No traces are recorded for this report, so the eight behaviour panels and the trace columns of the regret table are empty. ${esc(this.estimate())}</span><a class="btn btn--primary" href="${esc(this.recordHash)}">Record traces</a></p>`;
     }
   }
 
@@ -260,7 +255,7 @@ export class DiagnoseView {
       return;
     }
     const points = this.report.episodes.map((episode) => ({ x: episode.reward[this.reference], y: episode.reward.model, title: `Episode ${episode.index}, seed ${episode.seed}`, episode }));
-    Scatter.render(node, points, { xLabel: `${Agents.label(this.reference)} reward (points)`, yLabel: "model reward (points)", height: 320, onClick: (point) => this.openEpisode(point.episode) });
+    Scatter.render(node, points, { xLabel: `${Agents.label(this.reference)} reward`, yLabel: "model reward", height: 320, onClick: (point) => this.openEpisode(point.episode) });
   }
 
   episodeHash(episode) {
@@ -292,19 +287,19 @@ export class DiagnoseView {
     const columns = [
       { key: "index", label: "Episode", numeric: true, render: (row) => `<a href="${esc(this.episodeHash(row))}" title="${row.has_trace.model ? "Open the stored trace" : "Record this episode now"}">${row.index}</a>` },
       { key: "seed", label: "Seed", numeric: true },
-      { key: "regret_teacher", label: "Regret, teacher", unit: "pts", numeric: true, render: (row) => signed(row.regret_teacher), bar: { value: (row) => Math.max(0, row.regret_teacher), max: () => maxRegret } },
-      { key: "regret_best_baseline", label: "Regret, best baseline", unit: "pts", numeric: true, render: (row) => signed(row.regret_best_baseline) },
-      { key: "unassigned_delta", label: "Unassigned delta", unit: "jobs", numeric: true, title: "Final unassigned jobs, model minus teacher", format: fmtSignedInt },
-      { key: "served_delta", label: "Served delta", unit: "jobs", numeric: true, title: "Served jobs, model minus teacher", format: fmtSignedInt },
+      { key: "regret_teacher", label: "Regret", full: "Regret against the teacher: teacher reward minus model reward", unit: "pts", numeric: true, render: (row) => signed(row.regret_teacher), bar: { value: (row) => Math.max(0, row.regret_teacher), max: () => maxRegret } },
+      { key: "regret_best_baseline", label: "Vs best", full: "Regret against the best baseline", unit: "pts", numeric: true, render: (row) => signed(row.regret_best_baseline) },
+      { key: "unassigned_delta", label: "Unassigned", unit: "jobs", numeric: true, title: "Final unassigned jobs, model minus teacher", format: fmtSignedInt },
+      { key: "served_delta", label: "Served", unit: "jobs", numeric: true, title: "Served jobs, model minus teacher", format: fmtSignedInt },
       { key: "jobs", label: "Jobs", numeric: true, hideable: true, sortValue: (row) => (row.trace ? row.trace.jobs : null), render: (row) => (row.trace ? row.trace.jobs : needsTraces()) },
       { key: "vehicles", label: "Vehicles", numeric: true, hideable: true, sortValue: (row) => (row.trace ? row.trace.vehicles : null), render: (row) => (row.trace ? row.trace.vehicles : needsTraces()) },
       { key: "events", label: "Events", hideable: true, sortable: false, title: "Disruption of each round, in round order", render: (row) => (row.trace ? `<span title="${esc(`In order: ${row.trace.events.join(", ") || "none"}`)}">${esc(DiagnoseView.eventWords(row.trace.events))}</span>` : needsTraces()) },
       { key: "holding_share", label: "Holding share", ...fromTrace((agent) => agent.holding_share, (value) => fmtPct(value)) },
       { key: "decisions", label: "Decisions", ...fromTrace((agent) => agent.decisions) },
       { key: "inserts", label: "INSERT", ...fromTrace((agent) => agent.operator_counts[0]) },
-      { key: "wasted_edits", label: "Wasted edits", ...fromTrace((agent) => agent.wasted_edits) },
+      { key: "wasted_edits", label: "Wasted", full: "Wasted edits", ...fromTrace((agent) => agent.wasted_edits) },
       { key: "abandonments", label: "Abandonments", ...fromTrace((agent) => agent.abandonments) },
-      { key: "profitable_left", label: "Profitable left", title: "Profitable insertions left at round ends, from teacher verdicts", ...fromTrace((agent) => agent.profitable_left, (value) => (value === null ? "needs verdicts" : value)) },
+      { key: "profitable_left", label: "Left", title: "Profitable insertions left at round ends, from teacher verdicts", ...fromTrace((agent) => agent.profitable_left, (value) => (value === null ? "needs verdicts" : value)) },
     ];
 
     this.regret = new DataTable(this.content.querySelector("[data-role=regret]"), {

@@ -167,9 +167,9 @@ export class DecisionPanel {
     const error = decision.policy.value - decision.return_to_go_discounted;
     return `
       <div class="decision__triple">
-        <div><span class="muted">V(s), critic estimate</span><b>${fmtSigned(decision.policy.value, 2)}</b></div>
-        <div><span class="muted">Realised return-to-go</span><b>${fmtSigned(decision.return_to_go_discounted, 2)}</b></div>
-        <div><span class="muted">Error (V minus realised)</span><b class="${signClass(-Math.abs(error))}">${fmtSigned(error, 2)}</b></div>
+        <div data-hint="V(s), the critic estimate"><span class="muted">V(s)</span><b>${fmtSigned(decision.policy.value, 2)}</b></div>
+        <div data-hint="Realised discounted return-to-go"><span class="muted">Return-to-go</span><b>${fmtSigned(decision.return_to_go_discounted, 2)}</b></div>
+        <div data-hint="Error: V minus the realised return-to-go"><span class="muted">Error</span><b class="${signClass(-Math.abs(error))}">${fmtSigned(error, 2)}</b></div>
       </div>
       <p class="decision__foot muted">Discounted with gamma ${fmtFixed(this.current.trace.meta.gamma, 2)}; undiscounted return-to-go ${fmtSigned(decision.return_to_go, 2)}.</p>`;
   }

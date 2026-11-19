@@ -593,7 +593,7 @@ export class LabView {
         <div data-role="picker"></div>
         <div class="lab__fields">
           <label class="fieldlabel"><span>Rounds</span><input class="input input--num" data-run="rounds" inputmode="numeric" value="${saved.rounds}"></label>
-          <label class="fieldlabel"><span>Edits per round</span><input class="input input--num" data-run="edits" inputmode="numeric" value="${saved.edits}"></label>
+          <label class="fieldlabel"><span>Edits</span><input class="input input--num" data-run="edits" inputmode="numeric" value="${saved.edits}"></label>
           <label class="fieldlabel"><span>Seed</span><input class="input input--num" data-run="seed" inputmode="numeric" value="${saved.seed}"></label>
         </div>
         <label class="check"><input type="checkbox" data-run="disruption"${saved.disruption ? " checked" : ""}><span>Apply an initial disruption</span></label>

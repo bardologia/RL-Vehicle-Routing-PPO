@@ -1,7 +1,9 @@
 import { api } from "../api.js";
 import { el, esc } from "../format.js";
 import { LogText } from "../ui/logtext.js";
-import { errorBlock, statusChip } from "../ui/status.js";
+import { Figure } from "../fx/figure.js";
+import { PageHead } from "../ui/page_head.js";
+import { emptyBlock, errorBlock, statusChip } from "../ui/status.js";
 
 export class ConsoleView {
   constructor(app, root) {
@@ -16,12 +18,13 @@ export class ConsoleView {
 
     root.appendChild(el(`
       <div class="view__pad">
-        <header class="pagehead"><h2>Console</h2><p class="muted">Jobs started from Launch in this server session, newest first, with their live logs.</p></header>
+        ${PageHead.html({ title: "Console", form: "narrow", figure: Figure.html("terminal") })}
         <div data-role="error"></div>
         <div class="jobs" data-role="jobs"></div>
       </div>`));
     this.list = root.querySelector("[data-role=jobs]");
     this.errorNode = root.querySelector("[data-role=error]");
+    this.dateline = root.querySelector("[data-role=dateline]");
     this.list.addEventListener("click", (event) => this.onClick(event));
     this.list.addEventListener("input", (event) => this.onSearch(event));
   }
@@ -51,6 +54,8 @@ export class ConsoleView {
       return;
     }
     this.errorNode.innerHTML = "";
+    const count = (...states) => jobs.filter((job) => states.includes(job.status)).length;
+    this.dateline.textContent = jobs.length ? `${count("running")} running, ${count("queued", "pending")} queued, ${count("finished")} finished, ${count("failed", "cancelled")} failed` : "";
     if (jobs.some((job) => !["running", "queued", "pending"].includes(job.status) && job.overrides["io.run_name"] && !this.runNames.has(job.overrides["io.run_name"]))) {
       try {
         this.runNames = new Set((await api.get("/api/runs")).runs.map((run) => run.name));
@@ -60,11 +65,11 @@ export class ConsoleView {
     }
 
     if (!jobs.length) {
-      this.list.innerHTML = `<div class="emptyblock"><p>No jobs in this server session.</p><a class="btn" href="#/launch">Open Launch</a></div>`;
+      this.list.innerHTML = emptyBlock("No jobs in this server session.", `<a class="btn" href="#/launch">Open Launch</a>`);
       this.tiles = {};
       return;
     }
-    if (this.list.querySelector(".emptyblock")) this.list.innerHTML = "";
+    if (this.list.querySelector(".figure-empty")) this.list.innerHTML = "";
 
     for (const job of [...jobs].reverse()) {
       if (!this.tiles[job.job_id]) this.addTile(job);

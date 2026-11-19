@@ -2,16 +2,19 @@ import { el, esc, fmtFixed, fmtPct, fmtSigned, isNum, NONE, plural } from "../fo
 import { Agents, OPERATORS, TERMS } from "../episode/encoding.js";
 import { BarChart, bindTips, ColumnChart, Histogram, Scatter, StackBar } from "../ui/charts.js";
 import { HeatTable } from "../ui/heat_table.js";
+import { kpiRow } from "../ui/kpi.js";
+import { infoText, panelHead } from "../ui/panel.js";
+import { emptyBlock } from "../ui/status.js";
 import { kvTable } from "../ui/table.js";
 import { Links } from "./links.js";
 
 const PANELS = [
-  { key: "operator-mix", title: "Operator mix", help: "Share of INSERT, REMOVE and DO_NOTHING per agent, then by edit position inside a round." },
+  { key: "operator-mix", title: "Operator mix", help: "Share of INSERT, REMOVE and DO_NOTHING per agent, then by edit position inside a round.", more: "The number beside each bar is the count of decisions taken at that edit position. Filled = INSERT, hatched = REMOVE, outline = DO_NOTHING." },
   { key: "burst-profile", title: "Burst profile", help: "How many edits the model spends per round, and how often a round ends with work left." },
   { key: "reward-by-term", title: "Reward by term", help: "Mean episode sum of each reward term per agent, on one scale." },
-  { key: "critic-calibration", title: "Critic calibration", help: "V(s) against the realised discounted return-to-go of every model decision. Click a point to open the decision." },
+  { key: "critic-calibration", title: "Critic calibration", help: "V(s) against the realised discounted return-to-go of every model decision. Click a point to open the decision.", more: "Dashed diagonal = perfect critic. Solid line = mean return in six bins of V(s)." },
   { key: "confidence", title: "Confidence", help: "Joint probability the policy gave to the action it took." },
-  { key: "job-ranking", title: "Job ranking", help: "Mean rank the job head gives a job, by job priority. Rank 1 is the most probable job." },
+  { key: "job-ranking", title: "Job ranking", help: "Mean rank the job head gives a job, by job priority. Rank 1 is the most probable job.", more: "A head that favours urgent jobs gives a clearly negative rho. Bars of equal height mean the job head ignores priority. n per bar is the number of decisions that offered a job of that priority." },
   { key: "teacher-agreement", title: "Teacher agreement", help: "Model action against the teacher verdict on the same state." },
   { key: "execution", title: "Execution", help: "What the vehicles did between rounds. Pickup outcomes are sampled, so this is luck, not policy." },
 ];
@@ -77,11 +80,11 @@ export class BehaviourPanels {
     for (const panel of PANELS) {
       const node = el(`
         <section class="panel" data-panel="${panel.key}">
-          <header class="panel__head"><h3 class="panel__title">${esc(panel.title)}</h3><span class="panel__help" data-role="n"></span></header>
-          <div class="panel__body"><p class="panel__lede">${esc(panel.help)}</p><div data-role="body"></div></div>
+          ${panelHead(panel.title, { info: infoText(panel.help, panel.more) })}
+          <div class="panel__body"><div data-role="body"></div></div>
         </section>`);
       this.panels.push(node);
-      this.bodies[panel.key] = { body: node.querySelector("[data-role=body]"), n: node.querySelector("[data-role=n]") };
+      this.bodies[panel.key] = { body: node.querySelector("[data-role=body]"), n: node.querySelector("[data-role=panel-note]") };
     }
   }
 
@@ -98,7 +101,7 @@ export class BehaviourPanels {
     this.layout();
     for (const { body, n } of Object.values(this.bodies)) {
       n.textContent = "";
-      body.innerHTML = `<div class="emptyblock"><p>Needs traces.</p><a class="btn btn--sm" href="${esc(this.recordHash)}">Record traces</a></div>`;
+      body.innerHTML = emptyBlock("Needs traces.", `<a class="btn btn--sm" href="${esc(this.recordHash)}">Record traces</a>`);
     }
   }
 
@@ -119,12 +122,11 @@ export class BehaviourPanels {
     }).join("")}</tr>`).join("");
     body.innerHTML = `
       <table class="kv kv--wide">${overall}</table>
-      <h4 class="subhead">By edit position</h4>
+      <h4 class="ctl__label behav__sub">By edit position</h4>
       <table class="mixgrid">
         <thead><tr><th class="num">Edit</th>${byEdit.map((row) => `<th>${esc(Agents.label(row.key))}</th>`).join("")}</tr></thead>
         <tbody>${rows}</tbody>
-      </table>
-      <p class="faint">The number beside each bar is the count of decisions taken at that edit position. Filled = INSERT, hatched = REMOVE, outline = DO_NOTHING.</p>`;
+      </table>`;
   }
 
   burst(agg) {
@@ -140,7 +142,7 @@ export class BehaviourPanels {
     body.innerHTML = `
       <div data-role="chart"></div>
       <div class="dtable dtable--dense dtable--static"><table>
-        <thead><tr><th>Agent</th><th class="num">Rounds ended with unassigned jobs</th><th class="num">of which with edits remaining</th></tr></thead>
+        <thead><tr><th>Agent</th><th class="num" data-hint="Rounds ended with unassigned jobs">Ended unassigned</th><th class="num" data-hint="Of those rounds, the ones committed with edits remaining">Edits remaining</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`;
     Histogram.render(body.querySelector("[data-role=chart]"), edits, { xLabel: "edits used in a round (model)", integer: true, domain: [1, agg.index.meta.caps.edits], height: 170 });
@@ -153,7 +155,7 @@ export class BehaviourPanels {
     const max = Math.max(1e-9, ...values.flat().map((row) => Math.abs(row.value)).filter(isNum));
     const blocks = TERMS.map((term, index) => `
       <div class="termblock">
-        <h4 class="subhead">${esc(term.label)}<small>points</small></h4>
+        <h4 class="ctl__label behav__sub">${esc(term.label)}</h4>
         ${BarChart.html(values[index].map((row) => ({ label: Agents.label(row.key), labelHtml: this.agentLabel(row.key), value: row.value })), { max })}
       </div>`).join("");
     const shares = agg.keys.map((key) => `${esc(Agents.label(key))} ${fmtPct(agg.holdingShare(key))}`).join(", ");
@@ -165,15 +167,10 @@ export class BehaviourPanels {
     const critic = agg.index.aggregates.critic;
     n.textContent = `n = ${plural(critic.n, "decision")}`;
     body.innerHTML = `
-      <div class="statrow">
-        <div><span>Explained variance</span><b>${fmtFixed(critic.explained_variance, 3)}</b></div>
-        <div><span>Bias, V minus return</span><b>${fmtSigned(critic.bias)}</b></div>
-        <div><span>Mean absolute error</span><b>${fmtFixed(critic.mae)}</b></div>
-      </div>
-      <div data-role="chart"></div>
-      <p class="faint">Dashed diagonal = perfect critic. Solid line = mean return in six bins of V(s).</p>`;
+      ${kpiRow([{ label: "Explained", value: fmtFixed(critic.explained_variance, 3), title: "Explained variance" }, { label: "Bias", value: fmtSigned(critic.bias), title: "Bias, V minus return" }, { label: "Abs error", value: fmtFixed(critic.mae), title: "Mean absolute error" }], { strip: true })}
+      <div data-role="chart"></div>`;
     const points = agg.index.decisions.map((decision) => ({ x: decision.value, y: decision.return_to_go, title: `Episode ${decision.episode}, round ${decision.round + 1}, edit ${decision.edit + 1}: ${OPERATORS[decision.operator]}`, decision }));
-    Scatter.render(body.querySelector("[data-role=chart]"), points, { xLabel: "V(s) (points)", yLabel: "discounted return-to-go (points)", bins: 6, height: 300, onClick: (point) => this.onNavigate(Links.decision(this.run, this.seed, point.decision)) });
+    Scatter.render(body.querySelector("[data-role=chart]"), points, { xLabel: "V(s)", yLabel: "discounted return-to-go, points", bins: 6, height: 300, onClick: (point) => this.onNavigate(Links.decision(this.run, this.seed, point.decision)) });
   }
 
   confidence(agg) {
@@ -206,12 +203,8 @@ export class BehaviourPanels {
       return { label: String(priority), value: ranks.length ? ranks.reduce((a, b) => a + b, 0) / ranks.length : null, n: ranks.length };
     });
     body.innerHTML = `
-      <div class="statrow">
-        <div><span>Spearman rho, priority against rank</span><b>${fmtSigned(ranking.spearman, 3)}</b></div>
-        <div><span>Reading</span><b class="statrow__text">a head that favours urgent jobs gives a clearly negative rho</b></div>
-      </div>
-      <div data-role="chart"></div>
-      <p class="faint">Bars of equal height mean the job head ignores priority. n per bar is the number of decisions that offered a job of that priority.</p>`;
+      ${kpiRow([{ label: "Spearman rho", value: fmtSigned(ranking.spearman, 3), title: "Spearman rho, priority against rank" }], { strip: true })}
+      <div data-role="chart"></div>`;
     ColumnChart.render(body.querySelector("[data-role=chart]"), rows, { xLabel: "job priority (5 = most urgent)", yLabel: "mean rank", height: 190 });
   }
 
@@ -220,19 +213,15 @@ export class BehaviourPanels {
     const agreement = agg.index.aggregates.agreement;
     if (!agreement) {
       n.textContent = "";
-      body.innerHTML = `<div class="emptyblock"><p>Needs verdicts. Record traces with the teacher verdict set to insertions or full.</p><a class="btn" href="${esc(this.recordHash)}">Record traces</a></div>`;
+      body.innerHTML = emptyBlock("Needs verdicts. Record traces with the teacher verdict set to insertions or full.", `<a class="btn btn--sm" href="${esc(this.recordHash)}">Record traces</a>`);
       return;
     }
     n.textContent = `n = ${plural(agreement.n, "decision")}, verdict scope ${agg.index.meta.teacher_verdict}`;
     body.innerHTML = `
-      <div class="statrow">
-        <div><span>Same operator</span><b>${fmtPct(agreement.operator)}</b></div>
-        <div><span>Same vehicle</span><b>${fmtPct(agreement.vehicle)}</b></div>
-        <div><span>Same job</span><b>${fmtPct(agreement.job)}</b></div>
-      </div>
-      <h4 class="subhead">Operator confusion<small>decisions</small></h4>
+      ${kpiRow([{ label: "Same operator", value: fmtPct(agreement.operator) }, { label: "Same vehicle", value: fmtPct(agreement.vehicle) }, { label: "Same job", value: fmtPct(agreement.job) }], { strip: true })}
+      <h4 class="ctl__label behav__sub">Operator confusion, decisions</h4>
       <div data-role="heat"></div>
-      <h4 class="subhead">Profitable insertions left at round ends, per episode</h4>
+      <h4 class="ctl__label behav__sub">Profitable insertions left at round ends</h4>
       <div data-role="chart"></div>`;
     const heat = new HeatTable(body.querySelector("[data-role=heat]"), {});
     heat.render({
@@ -244,7 +233,7 @@ export class BehaviourPanels {
       marks: {},
     });
     const rows = agg.index.episodes.map((episode) => ({ label: String(episode.index), value: episode.agents.model ? episode.agents.model.profitable_left : null, episode }));
-    ColumnChart.render(body.querySelector("[data-role=chart]"), rows, { xLabel: "episode index", yLabel: "insertions left", height: 160, digits: 0, onClick: (row) => this.onNavigate(Links.episode(this.run, this.seed, row.episode.index, true)) });
+    ColumnChart.render(body.querySelector("[data-role=chart]"), rows, { xLabel: "episode", yLabel: "insertions left", height: 160, digits: 0, onClick: (row) => this.onNavigate(Links.episode(this.run, this.seed, row.episode.index, true)) });
   }
 
   execution(agg) {
@@ -260,7 +249,7 @@ export class BehaviourPanels {
     const links = divergent.map((episode) => `<a href="${esc(Links.episode(this.run, this.seed, episode.index, true))}">${episode.index}</a>`).join(", ");
     body.innerHTML = `
       <div class="dtable dtable--dense dtable--static"><table>
-        <thead><tr><th>Agent</th><th class="num">Served<small>jobs</small></th><th class="num">Failed<small>jobs</small></th><th class="num">Dropped<small>bikes</small></th><th class="num">Pickup failure rate</th></tr></thead>
+        <thead><tr><th>Agent</th><th class="num">Served<small>jobs</small></th><th class="num">Failed<small>jobs</small></th><th class="num">Dropped<small>bikes</small></th><th class="num" data-hint="Pickup failure rate">Failure rate</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
       <p class="statline"><span>Nominal pickup failure rate</span><b>${fmtPct(nominal)}</b></p>

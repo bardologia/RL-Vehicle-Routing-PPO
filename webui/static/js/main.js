@@ -1,11 +1,13 @@
 import { api } from "./api.js";
-import { el, plural, Store } from "./format.js";
-import { Figure } from "./fx/figure.js";
+import { el, esc, plural, Store } from "./format.js";
+import "./fx/figure.js";
 import { BackdropOrb } from "./fx/orb.js";
 import { keys } from "./keys.js";
 import { KeySheet } from "./ui/keysheet.js";
+import { Popover } from "./ui/popover.js";
 import { Router } from "./router.js";
 import { statusChip, Toast } from "./ui/status.js";
+import { tooltip, Tooltip } from "./ui/tooltip.js";
 import { ConsoleView } from "./views/console.js";
 import { DiagnoseView } from "./views/diagnose.js";
 import { EpisodeView } from "./views/episode.js";
@@ -15,16 +17,17 @@ import { OverviewView } from "./views/overview.js";
 import { RunsView } from "./views/runs.js";
 
 const TABS = [
-  { key: "overview", label: "Overview", view: OverviewView, figure: "router" },
-  { key: "diagnose", label: "Diagnose", view: DiagnoseView, figure: "loupe" },
+  { key: "overview", label: "Overview", view: OverviewView },
+  { key: "diagnose", label: "Diagnose", view: DiagnoseView },
   { key: "episode", label: "Episode", view: EpisodeView, fixed: true },
   { key: "lab", label: "Lab", view: LabView, fixed: true },
-  { key: "runs", label: "Runs", view: RunsView, fixed: true },
+  { key: "runs", label: "Runs", view: RunsView },
   { key: "launch", label: "Launch", view: LaunchView },
-  { key: "console", label: "Console", view: ConsoleView, figure: "terminal" },
+  { key: "console", label: "Console", view: ConsoleView },
 ];
 
 const QUIET_VIEWS = ["episode", "lab"];
+const DOCKER = 'sg docker -c "docker compose up -d"';
 
 class App {
   constructor() {
@@ -47,7 +50,15 @@ class App {
     Store.write("context", { run, seed });
   }
 
+  measureScrollbar() {
+    const probe = el(`<div style="position:absolute;top:-200px;width:100px;height:100px;overflow-y:scroll"></div>`);
+    document.body.appendChild(probe);
+    document.documentElement.style.setProperty("--sbw", `${probe.offsetWidth - probe.clientWidth}px`);
+    probe.remove();
+  }
+
   mount() {
+    this.measureScrollbar();
     const tabs = document.getElementById("tabs");
     const holder = document.getElementById("views");
     TABS.forEach((tab, index) => {
@@ -56,8 +67,6 @@ class App {
       holder.appendChild(section);
       this.sections[tab.key] = section;
       this.views[tab.key] = new tab.view(this, section);
-      const head = tab.figure ? section.querySelector("header.diag__bar, header.pagehead") : null;
-      if (head) Figure.pagehead(head, tab.figure);
       keys.bindGlobal(String(index + 1), `Open ${tab.label}`, () => this.router.go(`#/${tab.key}`));
     });
     this.tabBar = el(`<span class="topbar__bar is-instant" aria-hidden="true"></span>`);
@@ -70,6 +79,9 @@ class App {
 
     this.keySheet = new KeySheet(document.getElementById("keysheet"), keys, () => TABS.find((tab) => tab.key === this.active).label);
     document.getElementById("keys-toggle").addEventListener("click", () => this.keySheet.toggle());
+    this.serviceNode = document.getElementById("svc");
+    this.serviceNode.addEventListener("click", () => this.toggleServices());
+    tooltip.bind(document.body, "[data-hint]", (target) => Tooltip.text(target.dataset.hintTitle ? esc(target.dataset.hintTitle) : "", esc(target.dataset.hint)));
     keys.bindGlobal("?", "Show this key list", () => this.keySheet.toggle());
     keys.bindGlobal("/", "Focus the search of the current view", () => {
       const view = this.views[this.active];
@@ -123,12 +135,41 @@ class App {
       health = { osrm: false, vroom: false, osrm_url: "", vroom_url: "", unreachable: true };
     }
     this.health = health;
-    for (const service of ["osrm", "vroom"]) {
-      const node = document.getElementById(`svc-${service}`);
-      node.innerHTML = statusChip(health[service] ? "UP" : "DOWN", null, service.toUpperCase());
-      node.title = health[`${service}_url`];
-    }
+    this.renderServices();
     for (const listener of this.healthListeners) listener(health);
+  }
+
+  serviceWord() {
+    const health = this.health;
+    if (health.unreachable) return "Backend unreachable";
+    if (!health.osrm && !health.vroom) return "OSRM and VROOM down";
+    if (!health.osrm) return "OSRM down";
+    if (!health.vroom) return "VROOM down";
+    return "services";
+  }
+
+  renderServices() {
+    const down = !this.servicesUp;
+    this.serviceNode.classList.remove("is-pending");
+    this.serviceNode.classList.toggle("is-down", down);
+    this.serviceNode.querySelector("span").textContent = this.serviceWord();
+    if (Popover.isOpenFor(this.serviceNode)) Popover.current.node.innerHTML = this.servicesHtml();
+  }
+
+  servicesHtml() {
+    const health = this.health || { osrm: false, vroom: false, osrm_url: "", vroom_url: "" };
+    const down = !health.osrm || !health.vroom;
+    const row = (name, key) => `<b>${name}</b><span>${esc(health[`${key}_url`] || "")}</span>${statusChip(health[key] ? "UP" : "DOWN")}`;
+    return `
+      <div class="svcpop__figure" data-role="services-figure"></div>
+      <div class="svcpop__rows">${row("OSRM", "osrm")}${row("VROOM", "vroom")}</div>
+      ${health.unreachable ? `<p class="svcpop__text">The console backend did not answer.</p>` : ""}
+      <p class="svcpop__text">${down ? "Recording, solving and teacher verdicts are disabled. Start the services from the repository root:" : "Recording, solving and teacher verdicts need both routing services. Started from the repository root with:"}</p>
+      <code class="svcpop__cmd">${esc(DOCKER)}</code>`;
+  }
+
+  toggleServices() {
+    Popover.toggle(this.serviceNode, this.servicesHtml(), { label: "Routing services", className: "svcpop" });
   }
 
   async pollJobs() {

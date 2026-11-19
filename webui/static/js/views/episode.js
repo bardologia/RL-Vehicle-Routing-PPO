@@ -3,6 +3,7 @@ import { el, esc, fmtMin, fmtSigned, icon, isNum, NONE, plural } from "../format
 import { keys } from "../keys.js";
 import { Router } from "../router.js";
 import { AgentPicker } from "../episode/agent_picker.js";
+import { FindingsList } from "../diagnose/findings_list.js";
 import { Compare } from "../episode/compare.js";
 import { DecisionPanel } from "../episode/decision_panel.js";
 import { Agents, Sentences, Vehicles } from "../episode/encoding.js";
@@ -416,15 +417,15 @@ export class EpisodeView {
     const playing = Boolean(this.playTimer);
 
     this.barNode.innerHTML = `
-      <a class="btn btn--quiet btn--sm" href="#/episode" title="Back to the episode start page">${icon("chevron-right", "icon--flip")}<span>Episodes</span></a>
+      <a class="tbtn" href="#/episode" title="Episodes" aria-label="Back to the episode start page">${icon("back")}</a>
       <span class="ep__source" title="${esc(this.sourceText())}">${esc(this.sourceText())}</span>
       <span class="ep__transport" role="group" aria-label="Playback">
-        <button type="button" class="btn btn--sm" data-action="back" title="Previous frame (Left)" aria-label="Previous frame">${icon("step-back")}</button>
-        <button type="button" class="btn btn--sm" data-action="play" title="Play or pause (Space)" aria-pressed="${playing}">${icon(playing ? "pause" : "play")}<span>${playing ? "Pause" : "Play"}</span></button>
-        <button type="button" class="btn btn--sm" data-action="forward" title="Next frame (Right)" aria-label="Next frame">${icon("step-forward")}</button>
-        <span class="ep__position muted">${position}</span>
+        <button type="button" class="tbtn" data-action="back" title="Previous frame (Left)" aria-label="Previous frame">${icon("step-back")}</button>
+        <button type="button" class="tbtn tbtn--play" data-action="play" title="Play or pause (Space)" aria-label="${playing ? "Pause" : "Play"}" aria-pressed="${playing}">${icon(playing ? "pause" : "play")}</button>
+        <button type="button" class="tbtn" data-action="forward" title="Next frame (Right)" aria-label="Next frame">${icon("step-forward")}</button>
+        <span class="readout ep__position">${position}</span>
       </span>
-      ${expectations.length ? `<span class="ep__expect"><span class="muted">Expectation:</span>${expectations.join("")}</span>` : ""}
+      ${expectations.length ? `<span class="ep__expect"><span class="ctl__label">Expectation</span>${expectations.join("")}</span>` : ""}
       <span class="ep__spacer"></span>
       ${!up && isEpisode ? `<span class="ep__down">${statusChip("DOWN", "routing services")}<code>sg docker -c "docker compose up -d"</code></span>` : ""}
       <button type="button" class="btn btn--sm" data-action="findings" aria-haspopup="dialog">${icon("flag")}<span>Findings</span><span class="tabs__count">${flagged}</span></button>
@@ -452,7 +453,7 @@ export class EpisodeView {
     const action = this.ref.kind === "diag"
       ? `<a class="btn btn--sm" href="#/launch/diagnose?io.run_name=${encodeURIComponent(this.ref.run)}&diagnostics.seed=${this.ref.seed}">Record traces</a>`
       : "";
-    return `<p class="noteblock">${icon("warning")}<span>The link asks for the <b>${esc(Agents.label(this.missingLane))}</b> lane, which ${this.ref.kind === "diag" ? "has no stored trace for this episode" : "is not part of this recording"}. Recorded lanes: ${esc(recorded)}. ${esc(shown)}</span>${action}<button type="button" class="btn btn--sm" data-action="dismiss-missing">Dismiss</button></p>`;
+    return `<p class="noteblock"><span>The link asks for the <b>${esc(Agents.label(this.missingLane))}</b> lane, which ${this.ref.kind === "diag" ? "has no stored trace for this episode" : "is not part of this recording"}. Recorded lanes: ${esc(recorded)}. ${esc(shown)}</span>${action}<button type="button" class="btn btn--sm" data-action="dismiss-missing">Dismiss</button></p>`;
   }
 
   renderTimeline() {
@@ -776,7 +777,7 @@ export class EpisodeView {
     this.closePopover();
     if (same) return;
     const box = anchor.getBoundingClientRect();
-    const node = el(`<div class="popover" role="dialog" aria-label="${kind === "findings" ? "Episode findings" : "Add an agent"}"></div>`);
+    const node = el(`<div class="popover popover--wide glass" role="dialog" aria-label="${kind === "findings" ? "Episode findings" : "Add an agent"}"></div>`);
     node.style.top = `${box.bottom + 6}px`;
     node.style.right = `${Math.max(8, window.innerWidth - box.right)}px`;
     document.body.appendChild(node);
@@ -789,19 +790,9 @@ export class EpisodeView {
   fillFindings(node) {
     const lane = this.lane();
     const findings = lane ? lane.trace.findings : [];
-    const order = { FAIL: 0, WARN: 1, PASS: 2, "NO DATA": 3 };
-    const rows = [...findings].sort((a, b) => order[a.status] - order[b.status]).map((finding) => {
-      const jumps = finding.seqs.slice(0, 14).map((seq) => `<button type="button" class="btn btn--sm" data-jump="${seq}">${seq + 1}</button>`).join("");
-      return `
-        <li class="finding">
-          <div class="finding__head">${finding.status === "NO DATA" ? `<span class="chip chip--plain"><span class="chip__word">NO DATA</span></span>` : statusChip(finding.status)}<b>${esc(finding.id)} ${esc(finding.title)}</b></div>
-          <p>${esc(finding.text)}</p>
-          ${jumps ? `<div class="finding__jumps"><span class="muted">frames</span>${jumps}${finding.seqs.length > 14 ? `<span class="muted">and ${finding.seqs.length - 14} more</span>` : ""}</div>` : ""}
-        </li>`;
-    }).join("");
     node.innerHTML = `
-      <header class="popover__head"><h3>Findings for ${esc(lane ? Agents.label(lane.key) : "")}</h3><span class="muted">keys [ and ] step through flagged frames</span></header>
-      ${rows ? `<ul class="findings">${rows}</ul>` : `<p class="muted">${lane && !lane.trace.complete ? "Findings are computed when the lane has finished." : "No findings for this lane."}</p>`}`;
+      <header class="popover__head"><h3>Findings for ${esc(lane ? Agents.label(lane.key) : "")}</h3><span class="muted" title="Keys [ and ] step through flagged frames"><kbd>[</kbd> <kbd>]</kbd></span></header>
+      ${findings.length ? FindingsList.list(findings, {}) : `<p class="muted">${lane && !lane.trace.complete ? "Findings are computed when the lane has finished." : "No findings for this lane."}</p>`}`;
     node.addEventListener("click", (event) => {
       const jump = event.target.closest("[data-jump]");
       if (jump) this.select(this.selected.lane, Number(jump.dataset.jump));

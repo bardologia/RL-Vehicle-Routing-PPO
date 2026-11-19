@@ -1,6 +1,8 @@
 import { api } from "../api.js";
 import { esc, fmtAge, fmtSigned, isNum, Store } from "../format.js";
 import { Figure } from "../fx/figure.js";
+import { PageHead } from "../ui/page_head.js";
+import { infoText, panelHead } from "../ui/panel.js";
 import { errorBlock, skeleton, statusChip } from "../ui/status.js";
 import { AgentPicker } from "./agent_picker.js";
 import { Agents } from "./encoding.js";
@@ -66,14 +68,14 @@ export class StartPage {
       <span class="fieldrow">
         <span class="fieldlabel"><span>Seed</span><input class="input input--num" data-field="seed" inputmode="numeric" value="${esc(saved.seed)}"><span class="field__error" role="alert" data-error="seed"></span></span>
         <span class="fieldlabel"><span>Rounds</span><input class="input input--num" data-field="rounds" inputmode="numeric" value="${esc(saved.rounds)}"><span class="field__error" role="alert" data-error="rounds"></span></span>
-        <span class="fieldlabel"><span>Edits per round</span><input class="input input--num" data-field="edits" inputmode="numeric" value="${esc(saved.edits)}"><span class="field__error" role="alert" data-error="edits"></span></span>
+        <span class="fieldlabel"><span>Edits</span><input class="input input--num" data-field="edits" inputmode="numeric" value="${esc(saved.edits)}"><span class="field__error" role="alert" data-error="edits"></span></span>
       </span>`;
 
     const evaluationBody = this.runs.length ? `
       <span class="fieldrow">
         <span class="fieldlabel"><span>Run</span><select class="select" data-field="run">${this.runs.map((entry) => `<option value="${esc(entry.name)}"${entry.name === saved.run ? " selected" : ""}>${esc(entry.name)}</option>`).join("")}</select></span>
         <span class="fieldlabel"><span>Report seed</span><select class="select" data-field="report">${reports.map((entry) => `<option value="${entry.seed}"${entry.seed === saved.report ? " selected" : ""}>${entry.seed}</option>`).join("")}</select></span>
-        <span class="fieldlabel"><span>Episode index${report ? ` (0 to ${report.episodes - 1})` : ""}</span><input class="input input--num" data-field="index" inputmode="numeric" value="${esc(saved.index)}"><span class="field__error" role="alert" data-error="index"></span></span>
+        <span class="fieldlabel"><span>Episode</span><input class="input input--num" data-field="index"${report ? ` title="0 to ${report.episodes - 1}"` : ""} inputmode="numeric" value="${esc(saved.index)}"><span class="field__error" role="alert" data-error="index"></span></span>
       </span>` : `<span class="muted">No run has an evaluation report yet. <a href="#/launch/evaluate">Evaluate a run</a> first.</span>`;
 
     const recentRows = recent.length ? recent.map((episode) => {
@@ -89,7 +91,7 @@ export class StartPage {
 
     this.container.innerHTML = `
       <div class="view__pad start">
-        <header class="pagehead"><h2>Record an episode</h2><p class="muted">One episode, every agent on the same start, replayed decision by decision with the policy distribution, the reward terms and the plan on the map.</p></header>
+        ${PageHead.html({ title: "Episode", lead: "Record one episode with every agent on the same start.", form: "narrow", figure: Figure.html("patch") })}
         <div class="start__top">
           <div>
         <div class="start__sources" role="radiogroup" aria-label="Episode source">
@@ -102,7 +104,7 @@ export class StartPage {
           </div>
         </div>
         <section class="panel start__agents">
-          <header class="panel__head"><h3 class="panel__title">Agents</h3><span class="panel__help">Each agent gets its own lane on the same episode.</span></header>
+          ${panelHead("Agents", { info: infoText("Each agent gets its own lane on the same episode.", "The episode is replayed decision by decision with the policy distribution, the reward terms and the plan on the map.") })}
           <div class="panel__body">
             <div data-role="picker"></div>
             <div class="start__record">
@@ -113,10 +115,9 @@ export class StartPage {
           </div>
         </section>
           </div>
-          ${Figure.html("patch")}
         </div>
         <section class="panel panel--flush">
-          <header class="panel__head"><h3 class="panel__title">Recent recordings</h3><span class="panel__help">The last ten, stored under logs/webui/episodes.</span></header>
+          ${panelHead("Recent recordings", { note: "last ten", info: infoText("The last ten recordings, stored under logs/webui/episodes.") })}
           <div class="panel__body"><div class="dtable dtable--static"><table><thead><tr><th>Recorded</th><th>Source</th><th>Agents and return</th><th></th></tr></thead><tbody>${recentRows}</tbody></table></div></div>
         </section>
       </div>`;

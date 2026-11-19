@@ -8,7 +8,10 @@ import { kpiRow } from "../ui/kpi.js";
 import { LogText } from "../ui/logtext.js";
 import { MarkdownTable } from "../ui/markdown_table.js";
 import { Figure } from "../fx/figure.js";
-import { emptyBlock, errorBlock, plainChip, skeleton, statusChip } from "../ui/status.js";
+import { PageHead } from "../ui/page_head.js";
+import { infoText, panelHead, panelHtml } from "../ui/panel.js";
+import { Popover } from "../ui/popover.js";
+import { emptyBlock, errorBlock, skeleton, statusChip } from "../ui/status.js";
 import { kvTable } from "../ui/table.js";
 import { Tabs } from "../ui/tabs.js";
 
@@ -31,9 +34,8 @@ export class RunStatus {
   }
 
   static chip(run) {
-    const word = RunStatus.word(run);
-    if (word === "NO CHECKPOINT") return plainChip(word);
-    return statusChip(word, run.loadable ? null : run.reason);
+    const hint = run.loadable === false && run.reason ? ` data-hint="${esc(run.reason)}"` : "";
+    return `<span${hint}>${statusChip(RunStatus.word(run))}</span>`;
   }
 
   static rewardLine(run) {
@@ -98,7 +100,6 @@ export class RunsView {
         <aside class="runs__rail" aria-label="Runs">
           <label class="runs__search">${icon("search")}<input class="input" type="search" placeholder="Search runs" aria-label="Search runs" data-role="search"></label>
           <div class="runs__list" data-role="list"></div>
-          ${Figure.html("cabinet", "runs__figure")}
         </aside>
         <div class="runs__main" data-role="main"></div>
       </div>`));
@@ -202,24 +203,24 @@ export class RunsView {
     const episodes = info && info.reports[0] ? info.reports[0].episodes : null;
     this.main.innerHTML = `
       <div class="view__pad">
-        <header class="runs__head">
-          <div class="runs__title">
-            <h2>${esc(detail.name)}</h2>
-            <span class="muted">${esc(detail.kind)}${info ? `, ${esc(fmtAge(info.mtime))}` : ""}</span>
-            ${RunStatus.chip(detail)}
-          </div>
-          <div class="runs__actions">
-            ${seed !== undefined ? `<a class="btn" href="${esc(Links.diagnose(detail.name, seed))}">Open in Diagnose</a>` : ""}
-            ${detail.loadable ? `<a class="btn" href="#/episode">Record episode</a>` : ""}
-            ${detail.loadable ? `<a class="btn" href="${esc(Links.evaluate(detail.name))}">Evaluate</a>` : ""}
-            ${detail.loadable ? `<a class="btn" href="${esc(Links.recordTraces(detail.name, seed === undefined ? null : seed, episodes))}">Record traces</a>` : ""}
-          </div>
-        </header>
+        ${PageHead.html({
+          title: detail.name,
+          form: "narrow",
+          dateline: `${detail.kind}${info ? `, ${fmtAge(info.mtime)}` : ""}`,
+          datelineExtra: RunStatus.chip(detail),
+          controls: `${seed !== undefined ? `<a class="btn btn--primary" href="${esc(Links.diagnose(detail.name, seed))}">Open in Diagnose</a>` : ""}${detail.loadable ? `<button type="button" class="btn btn--sm btn--quiet" data-action="actions" aria-haspopup="dialog" aria-expanded="false">Actions</button>` : ""}`,
+          figure: Figure.html("cabinet"),
+        })}
         <div data-role="tabs" class="runs__tabs"></div>
         <div data-role="section" class="runs__section"></div>
       </div>`;
     new Tabs(this.main.querySelector("[data-role=tabs]"), SECTIONS.map((entry) => ({ ...entry, count: entry.value === "logs" ? detail.logs.length : entry.value === "files" ? detail.files.length : entry.value === "gallery" ? detail.analysis.length : undefined })), this.section, (value) => this.app.router.go(Links.runs(this.run, value)));
     this.body = this.main.querySelector("[data-role=section]");
+    this.actionItems = detail.loadable ? [
+      { label: "Record episode", href: "#/episode" },
+      { label: "Evaluate", href: Links.evaluate(detail.name) },
+      { label: "Record traces", href: Links.recordTraces(detail.name, seed === undefined ? null : seed, episodes) },
+    ] : [];
   }
 
   async cached(key, url) {
@@ -246,8 +247,8 @@ export class RunsView {
     }
   }
 
-  panel(title, help, bodyHtml, extra) {
-    return `<section class="panel"${extra || ""}><header class="panel__head"><h3 class="panel__title">${esc(title)}</h3><span class="panel__help">${esc(help || "")}</span></header><div class="panel__body">${bodyHtml}</div></section>`;
+  panel(title, help, bodyHtml, extra, note) {
+    return panelHtml(title, bodyHtml, { info: infoText(help), note, attrs: extra });
   }
 
   async renderSummary(token) {
@@ -261,23 +262,23 @@ export class RunsView {
     if (token !== this.token) return;
 
     const parts = [];
-    if (detail.loadable === false) parts.push(`<div class="errorblock" role="alert">${statusChip("INCOMPATIBLE")}<span class="errorblock__cause">This checkpoint does not load on the current architecture: ${esc(detail.reason)}. It cannot be evaluated or recorded.</span></div>`);
+    if (detail.loadable === false) parts.push(errorBlock(`This checkpoint does not load on the current architecture: ${detail.reason}. It cannot be evaluated or recorded.`));
 
     const traceLink = detail.loadable ? `<a class="btn btn--sm" href="${esc(Links.recordTraces(this.run, detail.reports[0] === undefined ? null : detail.reports[0], null))}">Record traces</a>` : "";
-    parts.push(this.panel("Findings", detail.reports.length ? `Rules over report seed ${detail.reports[0]}, its traces and the training curves.` : "Rules over the training curves. Report and trace rules need an evaluation.", FindingsList.html(findings.findings, { actions: { report: detail.loadable ? `<a class="btn btn--sm" href="${esc(Links.evaluate(this.run))}">Evaluate this run</a>` : "", traces: traceLink, verdicts: traceLink }, columns: true })));
+    parts.push(`<div class="runs__findings" data-hint="${detail.reports.length ? `Rules over report seed ${detail.reports[0]}, its traces and the training curves.` : "Rules over the training curves. Report and trace rules need an evaluation."}">${FindingsList.strip(findings.findings, { actions: { report: detail.loadable ? `<a class="btn btn--sm" href="${esc(Links.evaluate(this.run))}">Evaluate this run</a>` : "", traces: traceLink, verdicts: traceLink }, columns: true })}</div>`);
 
     if (health && health.kind === "pretrain") {
       const accuracy = health.charts.find((chart) => chart.key === "accuracy");
-      const tiles = accuracy ? accuracy.series.filter((series) => series.values.length).map((series) => ({ label: `${series.label} head accuracy`, value: fmtPct(series.values[series.values.length - 1], 1), note: `last of ${plural(series.values.length, "epoch")}`, title: series.tag })) : [];
-      parts.push(this.panel("Behaviour cloning accuracy", "Last logged agreement with the teacher on held-out pairs, per head.", tiles.length ? kpiRow(tiles) : `<p class="muted">pretrain/accuracy is not logged in this run.</p>`, ' data-role="accuracy"'));
+      const tiles = accuracy ? accuracy.series.filter((series) => series.values.length).map((series) => ({ label: `${series.label} head`, value: fmtPct(series.values[series.values.length - 1], 1), note: `last of ${plural(series.values.length, "epoch")}`, title: `Behaviour cloning accuracy: last logged agreement with the teacher on held-out pairs, ${series.label} head. Tag ${series.tag}.` })) : [];
+      parts.unshift(tiles.length ? `<div data-role="accuracy">${kpiRow(tiles)}</div>` : `<p class="muted" data-role="accuracy">pretrain/accuracy is not logged in this run.</p>`);
     }
 
     reports.forEach((report, index) => {
-      parts.push(`<section class="panel"><header class="panel__head"><h3 class="panel__title">Evaluation, seed ${report.meta.seed}</h3><span class="panel__help">${plural(report.meta.episodes, "episode")}, ${report.meta.greedy ? "greedy" : "sampled"} policy.</span><span class="panel__actions"><a class="btn btn--sm" href="${esc(Links.diagnose(this.run, report.meta.seed))}">Open in Diagnose</a></span></header><div class="panel__body"><div data-role="agents" data-report="${index}"></div>
+      parts.push(`<section class="panel">${panelHead("Evaluation", { note: `seed ${report.meta.seed}, ${plural(report.meta.episodes, "episode")}, ${report.meta.greedy ? "greedy" : "sampled"}`, info: AgentTable.info(report) })}<div class="panel__body"><div data-role="agents" data-report="${index}"></div>
         <details class="disclosure"><summary>Report settings: reward weights, environment, caps</summary><div class="runs__meta3">
-          <div><h4 class="subhead">Reward</h4>${kvTable(Object.entries(report.meta.reward).map(([key, value]) => [key, esc(JSON.stringify(value))]))}</div>
-          <div><h4 class="subhead">Caps and run</h4>${kvTable([...Object.entries(report.meta.caps), ...Object.entries(report.meta).filter(([, value]) => typeof value !== "object")].map(([key, value]) => [key, esc(String(value))]))}</div>
-          <div><h4 class="subhead">Environment</h4>${kvTable(Object.entries(report.meta.environment).map(([key, value]) => [key, esc(JSON.stringify(value))]))}</div>
+          <div><h4 class="ctl__label">Reward</h4>${kvTable(Object.entries(report.meta.reward).map(([key, value]) => [key, esc(JSON.stringify(value))]))}</div>
+          <div><h4 class="ctl__label">Caps and run</h4>${kvTable([...Object.entries(report.meta.caps), ...Object.entries(report.meta).filter(([, value]) => typeof value !== "object")].map(([key, value]) => [key, esc(String(value))]))}</div>
+          <div><h4 class="ctl__label">Environment</h4>${kvTable(Object.entries(report.meta.environment).map(([key, value]) => [key, esc(JSON.stringify(value))]))}</div>
         </div></details></div></section>`);
     });
     if (!reports.length) parts.push(this.panel("Evaluation", "", emptyBlock(detail.loadable ? "This run has no evaluation report. The teacher dominates the time: about 30 s per episode at 3 rounds, about 150 s at 5." : "This run has no evaluation report.", detail.loadable ? `<a class="btn btn--primary" href="${esc(Links.evaluate(this.run))}">Evaluate this run</a>` : "")));
@@ -299,7 +300,7 @@ export class RunsView {
   }
 
   smoothingControl() {
-    return `<label class="fieldlabel runs__slider"><span>Smoothing (EMA)</span><input type="range" min="0" max="0.95" step="0.05" value="${this.smoothing}" data-role="smoothing" aria-label="Smoothing"><output>${fmtFixed(this.smoothing, 2)}</output></label>`;
+    return `<label class="ctl runs__slider"><span class="ctl__label">Smoothing</span><input type="range" min="0" max="0.95" step="0.05" value="${this.smoothing}" data-role="smoothing" aria-label="Smoothing"><output>${fmtFixed(this.smoothing, 2)}</output></label>`;
   }
 
   static dedupe(series) {
@@ -335,13 +336,13 @@ export class RunsView {
       const series = RunsView.dedupe(chart.series);
       const split = series.length > 3;
       const sparse = chart.series.length > 0 && chart.series.every((entry) => entry.values.length <= 1);
-      const frames = sparse ? kpiRow(chart.series.filter((entry) => entry.values.length).map((entry) => ({ label: entry.label, value: fmtFixed(entry.values[0], 3), unit: chart.unit, note: `one value, step ${entry.steps[0]}`, title: entry.tag }))) : split ? series.map((entry, s) => `<div class="runs__multi"><h4 class="subhead">${esc(entry.label)}</h4><div data-chart="${index}" data-series="${s}"></div></div>`).join("") : `<div data-chart="${index}"></div>`;
+      const frames = sparse ? kpiRow(chart.series.filter((entry) => entry.values.length).map((entry) => ({ label: entry.label, value: fmtFixed(entry.values[0], 3), unit: chart.unit, note: `step ${entry.steps[0]}`, title: `${entry.tag}: one logged value` })), { strip: true }) : split ? series.map((entry, s) => `<div class="runs__multi"><h4 class="ctl__label">${esc(entry.label)}</h4><div data-chart="${index}" data-series="${s}"></div></div>`).join("") : `<div data-chart="${index}"></div>`;
       const points = chart.series.length ? Math.max(...chart.series.map((entry) => entry.steps.length)) : 0;
       const merged = series.filter((entry) => entry.merged.length > 1).map((entry) => `${entry.merged.join(", ")} are identical`).join("; ");
-      blocks.push(`<section class="panel" data-health="${esc(chart.key)}"><header class="panel__head"><h3 class="panel__title">${esc(chart.title)}</h3><span class="panel__help">${points ? `n = ${plural(points, "point")}` : ""}${merged && (sparse || split) ? `. ${esc(merged)}` : ""}</span></header><div class="panel__body">${frames}</div></section>`);
+      blocks.push(`<section class="panel" data-health="${esc(chart.key)}">${panelHead(chart.title, { note: points ? `n = ${plural(points, "point")}` : "", info: merged && (sparse || split) ? infoText(`${merged}.`) : "" })}<div class="panel__body">${frames}</div></section>`);
     });
     this.body.innerHTML = `
-      <div class="runs__controls"><span class="muted">${health.kind === "ppo" ? "PPO training" : "Behaviour cloning"}: fixed charts. Charts on the same step axis share the crosshair.</span><span class="diag__spacer"></span>${this.smoothingControl()}</div>
+      <div class="runs__controls"><span class="state state--plain" data-hint="Fixed charts. Charts on the same step axis share the crosshair.">${health.kind === "ppo" ? "PPO training" : "behaviour cloning"}</span><span class="diag__spacer"></span>${this.smoothingControl()}</div>
       <div class="runs__charts">${blocks.join("")}</div>`;
 
     health.charts.forEach((chart, index) => {
@@ -371,7 +372,7 @@ export class RunsView {
         <label class="runs__search">${icon("search")}<input class="input" type="search" placeholder="Search tags" aria-label="Search tags" data-role="curve-search" value="${esc(this.curveState.search)}"></label>
         <label class="check"><input type="checkbox" data-role="curve-log"${this.curveState.log ? " checked" : ""}><span>Log scale</span></label>
         ${this.smoothingControl()}
-        <label class="fieldlabel"><span>Overlay run</span><select class="select" data-role="curve-overlay"><option value="">none</option>${others.map((run) => `<option value="${esc(run.name)}"${run.name === this.curveState.overlay ? " selected" : ""}>${esc(run.name)}</option>`).join("")}</select></label>
+        <label class="ctl"><span class="ctl__label">Overlay run</span><select class="select" data-role="curve-overlay"><option value="">none</option>${others.map((run) => `<option value="${esc(run.name)}"${run.name === this.curveState.overlay ? " selected" : ""}>${esc(run.name)}</option>`).join("")}</select></label>
         <span class="diag__spacer"></span>
         <span class="runs__pager"><button type="button" class="btn btn--sm" data-action="page-prev">Previous</button><span data-role="page-label" class="muted"></span><button type="button" class="btn btn--sm" data-action="page-next">Next</button></span>
       </div>
@@ -423,10 +424,10 @@ export class RunsView {
       const group = pinned ? "Pinned" : CurveSet.group(entry.key);
       if (group !== lastGroup) {
         if (lastGroup !== null) html.push("</div>");
-        html.push(`<h3 class="diag__section">${esc(group)}</h3><div class="runs__charts">`);
+        html.push(`<div class="sechead"><h2>${esc(group)}</h2></div><div class="runs__charts">`);
         lastGroup = group;
       }
-      html.push(`<section class="panel" data-curve="${esc(entry.key)}"><header class="panel__head"><h3 class="panel__title runs__tag" title="${esc(entry.title)}">${esc(entry.title)}</h3><span class="panel__help"></span><span class="panel__actions"><button type="button" class="btn btn--sm" data-action="pin" data-key="${esc(entry.key)}" aria-pressed="${pinned}">${pinned ? "Pinned" : "Pin"}</button></span></header><div class="panel__body"><div data-chart="${index}"></div></div></section>`);
+      html.push(`<section class="panel" data-curve="${esc(entry.key)}">${panelHead(entry.title, { titleClass: "runs__tag", titleAttrs: ` title="${esc(entry.title)}"`, actions: `<button type="button" class="tbtn tbtn--sm" data-action="pin" data-key="${esc(entry.key)}" aria-pressed="${pinned}" aria-label="${pinned ? "Unpin" : "Pin"} ${esc(entry.title)}" title="${pinned ? "Unpin" : "Pin"}">${icon("flag")}</button>` })}<div class="panel__body"><div data-chart="${index}"></div></div></section>`);
     });
     html.push("</div>");
     grid.innerHTML = html.join("");
@@ -439,7 +440,7 @@ export class RunsView {
         }
         if (series.length > entry.series.length && entry.series.length === 1) series[0].label = this.run;
       }
-      this.mountChart(grid.querySelector(`[data-chart="${index}"]`), series, { height: 180, log: state.log, xLabel: "step", yLabel: "logged value", domain: CurveSet.group(entry.key) });
+      this.mountChart(grid.querySelector(`[data-chart="${index}"]`), series, { height: 180, log: state.log, xLabel: "step", yLabel: "", domain: CurveSet.group(entry.key) });
     });
   }
 
@@ -453,14 +454,13 @@ export class RunsView {
     if (!logs.some((log) => log.name === state.file)) state.file = logs[0].name;
     this.body.innerHTML = `
       <div class="runs__controls">
-        <label class="fieldlabel"><span>File</span><select class="select" data-role="log-file">${logs.map((log) => `<option${log.name === state.file ? " selected" : ""}>${esc(log.name)}</option>`).join("")}</select></label>
+        <label class="ctl"><span class="ctl__label">File</span><select class="select" data-role="log-file">${logs.map((log) => `<option${log.name === state.file ? " selected" : ""}>${esc(log.name)}</option>`).join("")}</select></label>
         <label class="runs__search">${icon("search")}<input class="input" type="search" placeholder="Search in log" aria-label="Search in log" data-role="log-search" value="${esc(state.search)}"></label>
         <span class="muted" data-role="log-count"></span>
         <span class="diag__spacer"></span>
         <label class="check"><input type="checkbox" data-role="log-follow"${state.follow ? " checked" : ""}><span>Follow</span></label>
-        <span class="muted">last 256 KB</span>
       </div>
-      <pre class="job__log runs__log" data-role="log" tabindex="0" aria-label="Log text"></pre>`;
+      <pre class="job__log runs__log" data-role="log" tabindex="0" aria-label="Log text" title="Last 256 KB of the file"></pre>`;
     this.fillLog(true);
     this.syncFollow();
   }
@@ -499,13 +499,13 @@ export class RunsView {
   renderFiles() {
     const files = this.detail.files;
     const total = files.reduce((sum, file) => sum + file.size, 0);
-    const rows = files.map((file) => `<tr><td><code>${esc(file.rel)}</code></td><td class="num">${esc(fmtBytes(file.size))}</td></tr>`).join("");
-    this.body.innerHTML = this.panel("Files", `${plural(files.length, "file")}, ${fmtBytes(total)} in runs/${this.run}`, files.length ? `<div class="dtable dtable--dense dtable--static"><table><thead><tr><th>Path</th><th class="num">Size</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyBlock("The run directory is empty."));
+    const rows = files.map((file) => `<tr><td class="mono">${esc(file.rel)}</td><td class="num">${esc(fmtBytes(file.size))}</td></tr>`).join("");
+    this.body.innerHTML = panelHtml("Files", files.length ? `<div class="dtable dtable--dense dtable--static"><table><thead><tr><th>Path</th><th class="num">Size</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyBlock("The run directory is empty."), { note: `${plural(files.length, "file")}, ${fmtBytes(total)}`, info: infoText(`Every file under runs/${this.run}.`), flush: files.length > 0 });
   }
 
   renderGallery() {
     const images = this.detail.analysis;
-    this.body.innerHTML = this.panel("Gallery", "Images written to the analysis folder of the run.", images.length ? `<div class="runs__gallery">${images.map((image) => `<button type="button" class="runs__thumb" data-action="lightbox" data-src="${esc(image.url)}" data-name="${esc(image.name)}"><img src="${esc(image.url)}" alt="${esc(image.name)}" loading="lazy"><span>${esc(image.name)}</span></button>`).join("")}</div>` : `<div class="emptyblock">${Figure.html("drawer")}<p>This run has no analysis images.</p></div>`);
+    this.body.innerHTML = this.panel("Gallery", "Images written to the analysis folder of the run.", images.length ? `<div class="runs__gallery">${images.map((image) => `<button type="button" class="runs__thumb" data-action="lightbox" data-src="${esc(image.url)}" data-name="${esc(image.name)}"><img src="${esc(image.url)}" alt="${esc(image.name)}" loading="lazy"><span>${esc(image.name)}</span></button>`).join("")}</div>` : `<div class="figure-empty">${Figure.html("drawer")}<p class="figure-empty__text">This run has no analysis images.</p></div>`);
   }
 
   onClick(event) {
@@ -513,6 +513,14 @@ export class RunsView {
     if (record) this.app.setContext(this.run, this.detail.reports.length ? this.detail.reports[0] : null);
     const button = event.target.closest("button[data-action]");
     if (!button) return;
+    if (button.dataset.action === "actions") {
+      const menu = Popover.toggle(button, Popover.menu(this.actionItems), { label: "Run actions" });
+      if (menu) menu.addEventListener("click", (pick) => {
+        if (pick.target.closest('a[href="#/episode"]')) this.app.setContext(this.run, this.detail.reports.length ? this.detail.reports[0] : null);
+        Popover.close();
+      });
+      return;
+    }
     const action = button.dataset.action;
     if (action === "page-prev" || action === "page-next") {
       this.curveState.page += action === "page-next" ? 1 : -1;
