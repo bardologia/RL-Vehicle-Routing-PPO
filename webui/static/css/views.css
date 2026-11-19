@@ -253,6 +253,7 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .decision .kv { width: 100%; }
 .decision .kv th { width: 42%; white-space: normal; }
 .decision .kv td { font-size: 12px; }
+.decision .sbar__label { font-size: 12px; line-height: 1.55; }
 .opbar { display: grid; grid-template-columns: 104px minmax(0, 1fr) 52px 124px; align-items: center; column-gap: var(--sp-8); min-height: 24px; }
 .opbar__name { font-family: var(--mono); font-size: 12px; font-weight: 700; line-height: 1.45; color: var(--ink-dim); white-space: nowrap; }
 .opbar.is-chosen .opbar__name { color: var(--ink); }

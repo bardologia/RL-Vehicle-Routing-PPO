@@ -158,8 +158,8 @@ export class StartPage {
     const lanes = StartPage.LANES.map((lane) => `<th class="num"><span class="lanekey lanekey--${lane.agent}"><i></i>${esc(lane.label)}</span></th>`).join("");
     const rows = recent.length ? recent.map((episode, index) => `
       <tr data-recent="${index}" data-href="${esc(this.href(episode))}">
-        <td class="nowrap"><a href="${esc(this.href(episode))}">${esc(fmtAge(episode.created))}</a></td>
-        <td title="${esc(StartPage.sourceText(episode.source))}">${esc(StartPage.sourceShort(episode.source))}</td>
+        <td class="nowrap mono"><a href="${esc(this.href(episode))}">${esc(fmtAge(episode.created))}</a></td>
+        <td class="mono" title="${esc(StartPage.sourceText(episode.source))}">${esc(StartPage.sourceShort(episode.source))}</td>
         <td>${esc(this.runsOf(episode))}</td>
         ${StartPage.LANES.map((lane) => this.laneCell(episode, lane.agent)).join("")}
       </tr>`).join("") : `<tr class="dtable__empty"><td colspan="7">No recordings yet.</td></tr>`;

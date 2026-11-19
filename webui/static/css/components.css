@@ -342,6 +342,7 @@ a.chip--fail:hover, button.chip--fail:hover { color: var(--ink); border-color: v
 .dtable thead th .icon { width: 10px; height: 10px; stroke-width: 2.4; }
 .dtable td.num, .dtable th.num { text-align: right; }
 .dtable tbody td.num { font-family: var(--mono); color: var(--ink); }
+.dtable tbody td.mono { font-family: var(--mono); }
 .dtable tbody td a { text-decoration-color: var(--line); transition: text-decoration-color var(--t-ctl) var(--ease); }
 .dtable tbody td a:hover { text-decoration-color: var(--accent); }
 .dtable tbody tr[data-key], .dtable tbody tr[data-href] { cursor: pointer; }
