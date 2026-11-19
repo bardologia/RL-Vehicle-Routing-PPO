@@ -10,10 +10,10 @@ import { MarkdownTable } from "../ui/markdown_table.js";
 import { PageHead } from "../ui/page_head.js";
 import { infoText, panelHead, panelHtml } from "../ui/panel.js";
 import { Popover } from "../ui/popover.js";
-import { EMPTY_FIGURES, emptyBlock, errorBlock, failView, skeleton, statusChip } from "../ui/status.js";
+import { EMPTY_FIGURES, emptyBlock, errorBlock, failView, skeleton, statusChip, statusTone } from "../ui/status.js";
 import { FigureStates } from "../ui/figure_states.js";
 import { kvTable } from "../ui/table.js";
-import { Tabs } from "../ui/tabs.js";
+import { Segmented, Tabs } from "../ui/tabs.js";
 
 const SECTIONS = [
   { value: "summary", label: "Summary" },
@@ -37,6 +37,12 @@ export class RunStatus {
   static chip(run) {
     const hint = run.loadable === false && run.reason ? ` data-hint="${esc(run.reason)}"` : "";
     return `<span${hint}>${statusChip(RunStatus.word(run))}</span>`;
+  }
+
+  static dot(run) {
+    const word = RunStatus.word(run);
+    const hint = [word.toLowerCase(), run.loadable === false && run.reason ? run.reason : null].filter((part) => part).join(": ");
+    return `<span class="state state--${statusTone(word)}" data-hint="${esc(hint)}"><i></i><span class="sr-only">${esc(word.toLowerCase())}</span></span>`;
   }
 
   static rewardLine(run) {
@@ -177,10 +183,12 @@ export class RunsView {
       this.cache = {};
       this.curveState.page = 0;
       this.logState.file = null;
+      this.openFolders = [];
       this.ensureShell();
       this.shell.title.textContent = name;
       this.shell.date.innerHTML = "";
       this.shell.controls.innerHTML = "";
+      this.shell.kpis.innerHTML = "";
       this.shell.tabs.innerHTML = "";
       this.shell.section.innerHTML = skeleton(5);
       this.writeShelf();
@@ -207,10 +215,8 @@ export class RunsView {
     const shown = this.runs.filter((run) => !this.filter || run.name.toLowerCase().includes(this.filter) || run.kind.includes(this.filter));
     this.list.innerHTML = shown.length ? shown.map((run) => `
       <a class="runs__item" href="${esc(Links.runs(run.name, this.section))}"${run.name === this.run ? ' aria-current="true"' : ""}>
-        <span class="runs__name">${esc(run.name)}</span>
-        <span class="runs__meta"><span>${esc(run.kind)}</span><span>${esc(fmtAge(run.mtime))}</span></span>
-        <span class="runs__meta">${RunStatus.chip({ ...run, reason: null })}</span>
-        <span class="runs__meta runs__reward">${esc(RunStatus.rewardLine(run))}</span>
+        <span class="runs__line">${RunStatus.dot(run)}<span class="runs__name">${esc(run.name)}</span><span class="runs__age">${esc(fmtAge(run.mtime).replace(/ ago$/, ""))}</span></span>
+        <span class="runs__sub">${esc(`${run.kind}, ${RunStatus.rewardLine(run)}`)}</span>
       </a>`).join("") : `<p class="muted runs__none">No run matches "${esc(this.filter)}".</p>`;
   }
 
@@ -218,12 +224,11 @@ export class RunsView {
     if (this.shell) return;
     this.main.innerHTML = `
       <div class="view__pad">
-        ${PageHead.html({ title: "", form: "narrow", figure: HairlineFigure.html("checkpoint") })}
-        <div data-role="tabs" class="runs__tabs"></div>
+        ${PageHead.html({ title: "", form: "narrow", after: `<div data-role="tabs" class="runs__tabs"></div>`, figure: HairlineFigure.html("checkpoint") })}
         <div data-role="section" class="runs__section"></div>
       </div>`;
     const find = (selector) => this.main.querySelector(selector);
-    this.shell = { title: find("[data-role=title]"), date: find(".view-head__date"), controls: find("[data-role=controls]"), tabs: find("[data-role=tabs]"), section: find("[data-role=section]"), figure: find("hairline-figure[name=checkpoint]") };
+    this.shell = { title: find("[data-role=title]"), date: find(".view-head__date"), controls: find("[data-role=controls]"), kpis: find("[data-role=kpis]"), tabs: find("[data-role=tabs]"), section: find("[data-role=section]"), figure: find("hairline-figure[name=checkpoint]") };
   }
 
   headFigure(name, intensity) {
@@ -255,6 +260,7 @@ export class RunsView {
     this.ensureShell();
     this.shell.title.textContent = detail.name;
     this.shell.date.innerHTML = `<span data-role="dateline">${esc(`${detail.kind}${info ? `, ${fmtAge(info.mtime)}` : ""}`)}</span>${RunStatus.chip(detail)}`;
+    this.writeHeadKpis(detail.name);
     this.shell.controls.innerHTML = `${seed !== undefined ? `<a class="btn btn--primary" href="${esc(Links.diagnose(detail.name, seed))}">Open in Diagnose</a>` : ""}${detail.loadable ? `<button type="button" class="btn btn--sm btn--quiet" data-action="actions" aria-haspopup="dialog" aria-expanded="false">Actions</button>` : ""}`;
     this.writeShelf();
     new Tabs(this.shell.tabs, SECTIONS.map((entry) => ({ ...entry, count: entry.value === "logs" ? detail.logs.length : entry.value === "files" ? detail.files.length : entry.value === "gallery" ? detail.analysis.length : undefined })), this.section, (value) => this.app.router.go(Links.runs(this.run, value)));
@@ -269,6 +275,25 @@ export class RunsView {
   async cached(key, url) {
     if (!this.cache[key]) this.cache[key] = await api.get(url);
     return this.cache[key];
+  }
+
+  async writeHeadKpis(name) {
+    const detail = this.detail;
+    if (!detail.has_events) return;
+    let health;
+    try {
+      health = await this.cached("health", `/api/runs/${encodeURIComponent(name)}/health`);
+    } catch (error) {
+      return;
+    }
+    if (!this.shell || this.run !== name || this.detail !== detail) return;
+    if (health.kind !== "pretrain") {
+      this.shell.kpis.innerHTML = "";
+      return;
+    }
+    const accuracy = health.charts.find((chart) => chart.key === "accuracy");
+    const tiles = accuracy ? accuracy.series.filter((series) => series.values.length).map((series) => ({ label: `${series.label} head`, value: fmtPct(series.values[series.values.length - 1], 1), note: `last of ${plural(series.values.length, "epoch")}`, title: `Behaviour cloning accuracy: last logged agreement with the teacher on held-out pairs, ${series.label} head. Tag ${series.tag}.` })) : [];
+    this.shell.kpis.innerHTML = tiles.length ? kpiRow(tiles, { columns: Math.max(3, tiles.length) }) : `<p class="muted">pretrain/accuracy is not logged in this run.</p>`;
   }
 
   async renderSection(token) {
@@ -319,9 +344,8 @@ export class RunsView {
   async renderSummary(token) {
     const detail = this.detail;
     const base = `/api/runs/${encodeURIComponent(this.run)}`;
-    const [findings, health, ...reports] = await Promise.all([
+    const [findings, ...reports] = await Promise.all([
       this.cached("findings", `${base}/findings`),
-      detail.has_events ? this.cached("health", `${base}/health`) : Promise.resolve(null),
       ...detail.reports.map((seed) => this.cached(`evaluation.${seed}`, `${base}/evaluation/${seed}`)),
     ]);
     if (token !== this.token) return;
@@ -330,17 +354,12 @@ export class RunsView {
     if (detail.loadable === false) parts.push(errorBlock(`This checkpoint does not load on the current architecture: ${detail.reason}. It cannot be evaluated or recorded.`));
 
     const traceLink = detail.loadable ? `<a class="btn btn--sm" href="${esc(Links.recordTraces(this.run, detail.reports[0] === undefined ? null : detail.reports[0], null))}">Record traces</a>` : "";
-    parts.push(`<div class="runs__findings" data-hint="${detail.reports.length ? `Rules over report seed ${detail.reports[0]}, its traces and the training curves.` : "Rules over the training curves. Report and trace rules need an evaluation."}">${FindingsList.strip(findings.findings, { actions: { report: detail.loadable ? `<a class="btn btn--sm" href="${esc(Links.evaluate(this.run))}">Evaluate this run</a>` : "", traces: traceLink, verdicts: traceLink }, columns: true })}</div>`);
-
-    if (health && health.kind === "pretrain") {
-      const accuracy = health.charts.find((chart) => chart.key === "accuracy");
-      const tiles = accuracy ? accuracy.series.filter((series) => series.values.length).map((series) => ({ label: `${series.label} head`, value: fmtPct(series.values[series.values.length - 1], 1), note: `last of ${plural(series.values.length, "epoch")}`, title: `Behaviour cloning accuracy: last logged agreement with the teacher on held-out pairs, ${series.label} head. Tag ${series.tag}.` })) : [];
-      parts.unshift(tiles.length ? `<div data-role="accuracy">${kpiRow(tiles)}</div>` : `<p class="muted" data-role="accuracy">pretrain/accuracy is not logged in this run.</p>`);
-    }
+    const scope = detail.reports.length ? `Rules over report seed ${detail.reports[0]}, its traces and the training curves.` : "Rules over the training curves. Report and trace rules need an evaluation.";
+    parts.push(`<div class="runs__findings">${FindingsList.strip(findings.findings, { actions: { report: detail.loadable ? `<a class="btn btn--sm" href="${esc(Links.evaluate(this.run))}">Evaluate this run</a>` : "", traces: traceLink, verdicts: traceLink }, tail: Popover.infoButton("Findings", infoText(scope)) })}</div>`);
 
     reports.forEach((report, index) => {
-      parts.push(`<section class="panel">${panelHead("Evaluation", { note: `seed ${report.meta.seed}, ${plural(report.meta.episodes, "episode")}, ${report.meta.greedy ? "greedy" : "sampled"}`, info: AgentTable.info(report) })}<div class="panel__body"><div data-role="agents" data-report="${index}"></div>
-        <details class="disclosure"><summary>Report settings: reward weights, environment, caps</summary><div class="runs__meta3">
+      parts.push(`<section class="panel" data-region="evaluation">${panelHead("Evaluation", { note: `seed ${report.meta.seed}, ${plural(report.meta.episodes, "episode")}, ${report.meta.greedy ? "greedy" : "sampled"}`, info: AgentTable.info(report), actions: `<span data-role="agent-set" data-report="${index}"></span>` })}<div class="panel__body"><div data-role="agents" data-report="${index}"></div>
+        <details class="disclosure runs__settings"><summary>Report settings: reward weights, environment, caps</summary><div class="runs__meta3">
           <div><h4 class="ctl__label">Reward</h4>${kvTable(Object.entries(report.meta.reward).map(([key, value]) => [key, esc(JSON.stringify(value))]))}</div>
           <div><h4 class="ctl__label">Caps and run</h4>${kvTable([...Object.entries(report.meta.caps), ...Object.entries(report.meta).filter(([, value]) => typeof value !== "object")].map(([key, value]) => [key, esc(String(value))]))}</div>
           <div><h4 class="ctl__label">Environment</h4>${kvTable(Object.entries(report.meta.environment).map(([key, value]) => [key, esc(JSON.stringify(value))]))}</div>
@@ -349,17 +368,18 @@ export class RunsView {
     if (!reports.length) parts.push(this.panel("Evaluation", "", emptyBlock(detail.loadable ? "This run has no evaluation report. The teacher dominates the time: about 30 s per episode at 3 rounds, about 150 s at 5." : "This run has no evaluation report.", detail.loadable ? `<a class="btn btn--primary" href="${esc(Links.evaluate(this.run))}">Evaluate this run</a>` : "")));
 
     const docs = Object.entries(detail.markdown);
-    if (docs.length) parts.push(this.panel("Model documents", "Written by the training script.", docs.map(([file, text]) => `<details class="disclosure" data-doc="${esc(file)}"><summary>${esc(file)}</summary>${MarkdownTable.render(text)}</details>`).join("")));
+    if (docs.length) parts.push(this.panel("Model documents", "Written by the training script.", docs.map(([file, text]) => `<details class="disclosure" data-doc="${esc(file)}"><summary>${esc(file)}</summary>${MarkdownTable.render(text)}</details>`).join(""), "", `${plural(docs.length, "file")}`));
 
     this.body.innerHTML = parts.join("");
     this.reports = reports;
+    for (const host of this.body.querySelectorAll("[data-role=agent-set]")) AgentTable.switcher(host, () => this.drawAgentTables());
     this.drawAgentTables();
   }
 
   drawAgentTables() {
     if (this.section !== "summary" || !this.reports) return;
     this.reports.forEach((report, index) => {
-      const node = this.body.querySelector(`[data-report="${index}"]`);
+      const node = this.body.querySelector(`[data-role=agents][data-report="${index}"]`);
       if (node) AgentTable.render(node, report);
     });
   }
@@ -389,6 +409,15 @@ export class RunsView {
     return chart;
   }
 
+  static readsHtml(groups) {
+    if (!groups.length) return "";
+    return `<div class="runs__reads">${groups.map((group) => `<div class="reads" data-hint="${esc(group.hint)}"><span class="ctl__label">${esc(group.title)}</span>${group.reads.map((read) => `<span class="read"><span class="read__name">${esc(read.label)}</span><b>${esc(read.value)}</b>${read.note ? `<small>${esc(read.note)}</small>` : ""}</span>`).join("")}</div>`).join("")}</div>`;
+  }
+
+  controlsInfo() {
+    return Popover.infoButton("Charts", infoText("Fixed charts. Charts on the same step axis share the crosshair.", "A tag with a single logged value is listed as a value above the charts."));
+  }
+
   async renderHealth(token) {
     if (!this.detail.has_events) {
       this.body.innerHTML = this.panel("Training health", "", emptyBlock("No TensorBoard events in this run."));
@@ -397,17 +426,24 @@ export class RunsView {
     const health = await this.cached("health", `/api/runs/${encodeURIComponent(this.run)}/health`);
     if (token !== this.token) return;
     const blocks = [];
+    const sparse = [];
     health.charts.forEach((chart, index) => {
       const series = RunsView.dedupe(chart.series);
+      if (chart.series.length > 0 && chart.series.every((entry) => entry.values.length <= 1)) {
+        const shown = chart.series.filter((entry) => entry.values.length);
+        const steps = [...new Set(shown.map((entry) => entry.steps[0]))];
+        sparse.push({ title: chart.title, hint: `${chart.title}: one logged value per tag${steps.length === 1 ? `, step ${steps[0]}` : ""}`, reads: shown.map((entry) => ({ label: entry.label, value: `${fmtFixed(entry.values[0], 3)}${chart.unit ? ` ${chart.unit}` : ""}`, note: steps.length === 1 ? "" : `step ${entry.steps[0]}` })).concat(steps.length === 1 ? [{ label: "step", value: String(steps[0]) }] : []) });
+        return;
+      }
       const split = series.length > 3;
-      const sparse = chart.series.length > 0 && chart.series.every((entry) => entry.values.length <= 1);
-      const frames = sparse ? kpiRow(chart.series.filter((entry) => entry.values.length).map((entry) => ({ label: entry.label, value: fmtFixed(entry.values[0], 3), unit: chart.unit, note: `step ${entry.steps[0]}`, title: `${entry.tag}: one logged value` })), { strip: true }) : split ? series.map((entry, s) => `<div class="runs__multi"><h4 class="ctl__label">${esc(entry.label)}</h4><div data-chart="${index}" data-series="${s}"></div></div>`).join("") : `<div data-chart="${index}"></div>`;
+      const frames = split ? series.map((entry, s) => `<div class="runs__multi"><h4 class="ctl__label">${esc(entry.label)}</h4><div data-chart="${index}" data-series="${s}"></div></div>`).join("") : `<div data-chart="${index}"></div>`;
       const points = chart.series.length ? Math.max(...chart.series.map((entry) => entry.steps.length)) : 0;
       const merged = series.filter((entry) => entry.merged.length > 1).map((entry) => `${entry.merged.join(", ")} are identical`).join("; ");
-      blocks.push(`<section class="panel" data-health="${esc(chart.key)}">${panelHead(chart.title, { note: points ? `n = ${plural(points, "point")}` : "", info: merged && (sparse || split) ? infoText(`${merged}.`) : "" })}<div class="panel__body">${frames}</div></section>`);
+      blocks.push(`<section class="panel" data-health="${esc(chart.key)}">${panelHead(chart.title, { note: points ? `n = ${plural(points, "point")}` : "", info: merged && split ? infoText(`${merged}.`) : "" })}<div class="panel__body">${frames}</div></section>`);
     });
     this.body.innerHTML = `
-      <div class="runs__controls"><span class="state state--plain" data-hint="Fixed charts. Charts on the same step axis share the crosshair.">${health.kind === "ppo" ? "PPO training" : "behaviour cloning"}</span><span class="diag__spacer"></span>${this.smoothingControl()}</div>
+      <div class="runs__controls"><span class="diag__spacer"></span>${this.smoothingControl()}${this.controlsInfo()}</div>
+      ${RunsView.readsHtml(sparse)}
       <div class="runs__charts">${blocks.join("")}</div>`;
     this.writeTraining();
 
@@ -436,20 +472,32 @@ export class RunsView {
     this.body.innerHTML = `
       <div class="runs__controls">
         <label class="runs__search">${icon("search")}<input class="input" type="search" placeholder="Search tags" aria-label="Search tags" data-role="curve-search" value="${esc(this.curveState.search)}"></label>
-        <label class="check"><input type="checkbox" data-role="curve-log"${this.curveState.log ? " checked" : ""}><span>Log scale</span></label>
+        <span class="runs__count" data-role="page-count"></span>
+        <span class="ctl"><span class="ctl__label">Scale</span><span data-role="curve-scale"></span></span>
         ${this.smoothingControl()}
-        <label class="ctl"><span class="ctl__label">Overlay run</span><select class="select" data-role="curve-overlay"><option value="">none</option>${others.map((run) => `<option value="${esc(run.name)}"${run.name === this.curveState.overlay ? " selected" : ""}>${esc(run.name)}</option>`).join("")}</select></label>
+        <label class="ctl"><span class="ctl__label">Overlay</span><select class="select" data-role="curve-overlay" aria-label="Overlay run"><option value="">none</option>${others.map((run) => `<option value="${esc(run.name)}"${run.name === this.curveState.overlay ? " selected" : ""}>${esc(run.name)}</option>`).join("")}</select></label>
         <span class="diag__spacer"></span>
-        <span class="runs__pager"><button type="button" class="btn btn--sm" data-action="page-prev">Previous</button><span data-role="page-label" class="muted"></span><button type="button" class="btn btn--sm" data-action="page-next">Next</button></span>
+        <span class="runs__pager" data-role="pager"><button type="button" class="btn btn--sm" data-action="page-prev">Previous</button><span data-role="page-label" class="muted"></span><button type="button" class="btn btn--sm" data-action="page-next">Next</button></span>
+        ${this.controlsInfo()}
       </div>
       <div data-role="curve-error"></div>
+      <div data-role="curve-reads"></div>
       <div data-role="curve-grid"></div>`;
+    new Segmented(this.body.querySelector("[data-role=curve-scale]"), [{ value: "linear", label: "linear" }, { value: "log", label: "log" }], this.curveState.log ? "log" : "linear", (value) => {
+      this.curveState.log = value === "log";
+      for (const chart of this.charts) chart.setOptions({ log: this.curveState.log });
+    }, "Scale");
     this.writeTraining();
     await this.drawCurves();
   }
 
   get pins() {
     return Store.read("runs.pins", []);
+  }
+
+  static leaf(key) {
+    const cut = key.indexOf("/");
+    return cut < 0 ? key : key.slice(cut + 1);
   }
 
   async drawCurves() {
@@ -469,19 +517,35 @@ export class RunsView {
     const pins = this.pins;
     const needle = state.search.toLowerCase();
     const matched = this.curveEntries.filter((entry) => !needle || entry.series.some((series) => series.tag.toLowerCase().includes(needle)));
-    const ordered = [...matched.filter((entry) => pins.includes(entry.key)), ...matched.filter((entry) => !pins.includes(entry.key))];
+    const single = matched.filter((entry) => entry.series.every((series) => tags[series.tag].values.length <= 1));
+    const charted = matched.filter((entry) => !single.includes(entry));
+    const ordered = [...charted.filter((entry) => pins.includes(entry.key)), ...charted.filter((entry) => !pins.includes(entry.key))];
     const pages = Math.max(1, Math.ceil(ordered.length / PAGE));
     state.page = Math.max(0, Math.min(pages - 1, state.page));
     const shown = ordered.slice(state.page * PAGE, (state.page + 1) * PAGE);
 
-    this.body.querySelector("[data-role=page-label]").textContent = `page ${state.page + 1} of ${pages}, ${plural(ordered.length, "chart")} from ${plural(Object.keys(tags).length, "tag")}`;
+    this.body.querySelector("[data-role=pager]").hidden = pages < 2;
+    this.body.querySelector("[data-role=page-label]").textContent = `page ${state.page + 1} of ${pages}`;
+    this.body.querySelector("[data-role=page-count]").textContent = `${plural(Object.keys(tags).length, "tag")}`;
+    this.body.querySelector("[data-role=page-count]").dataset.hint = `${plural(ordered.length, "chart")} and ${plural(single.length, "single value")} from ${plural(Object.keys(tags).length, "tag")}${pages > 1 ? `, page ${state.page + 1} of ${pages}` : ""}`;
     this.body.querySelector("[data-action=page-prev]").disabled = state.page === 0;
     this.body.querySelector("[data-action=page-next]").disabled = state.page >= pages - 1;
+
+    const groups = new Map();
+    for (const entry of single) {
+      const group = CurveSet.group(entry.key);
+      if (!groups.has(group)) groups.set(group, []);
+      for (const series of entry.series) {
+        const data = tags[series.tag];
+        if (data.values.length) groups.get(group).push({ label: RunsView.leaf(series.tag), value: fmtFixed(data.values[0], 3), note: `step ${data.steps[0]}` });
+      }
+    }
+    this.body.querySelector("[data-role=curve-reads]").innerHTML = RunsView.readsHtml([...groups].filter(([, reads]) => reads.length).map(([group, reads]) => ({ title: group, hint: `Tags under ${group}/ with a single logged value`, reads })));
 
     const grid = this.body.querySelector("[data-role=curve-grid]");
     this.charts = [];
     if (!shown.length) {
-      grid.innerHTML = `<p class="muted">No tag contains "${esc(state.search)}".</p>`;
+      grid.innerHTML = single.length ? "" : `<p class="muted">No tag contains "${esc(state.search)}".</p>`;
       return;
     }
     let lastGroup = null;
@@ -491,10 +555,11 @@ export class RunsView {
       const group = pinned ? "Pinned" : CurveSet.group(entry.key);
       if (group !== lastGroup) {
         if (lastGroup !== null) html.push("</div>");
-        html.push(`<div class="sechead"><h2>${esc(group)}</h2></div><div class="runs__charts">`);
+        html.push(`<div class="sechead runs__group"><h2>${esc(group)}</h2></div><div class="runs__charts">`);
         lastGroup = group;
       }
-      html.push(`<section class="panel" data-curve="${esc(entry.key)}">${panelHead(entry.title, { titleClass: "runs__tag", titleAttrs: ` title="${esc(entry.title)}"`, actions: `<button type="button" class="tbtn tbtn--sm" data-action="pin" data-key="${esc(entry.key)}" aria-pressed="${pinned}" aria-label="${pinned ? "Unpin" : "Pin"} ${esc(entry.title)}" title="${pinned ? "Unpin" : "Pin"}">${icon("flag")}</button>` })}<div class="panel__body"><div data-chart="${index}"></div></div></section>`);
+      const title = RunsView.leaf(entry.title);
+      html.push(`<section class="panel" data-curve="${esc(entry.key)}">${panelHead(title, { note: pinned ? CurveSet.group(entry.key) : "", titleClass: "runs__tag", titleAttrs: ` data-hint="${esc(entry.title)}"`, actions: `<button type="button" class="tbtn tbtn--sm" data-action="pin" data-key="${esc(entry.key)}" aria-pressed="${pinned}" aria-label="${pinned ? "Unpin" : "Pin"} ${esc(entry.title)}" data-hint="${pinned ? "Unpin" : "Pin"}">${icon("flag")}</button>` })}<div class="panel__body"><div data-chart="${index}"></div></div></section>`);
     });
     html.push("</div>");
     grid.innerHTML = html.join("");
@@ -521,13 +586,13 @@ export class RunsView {
     if (!logs.some((log) => log.name === state.file)) state.file = logs[0].name;
     this.body.innerHTML = `
       <div class="runs__controls">
-        <label class="ctl"><span class="ctl__label">File</span><select class="select" data-role="log-file">${logs.map((log) => `<option${log.name === state.file ? " selected" : ""}>${esc(log.name)}</option>`).join("")}</select></label>
+        <label class="ctl"><span class="ctl__label">File</span><select class="select" data-role="log-file" aria-label="Log file">${logs.map((log) => `<option${log.name === state.file ? " selected" : ""}>${esc(log.name)}</option>`).join("")}</select></label>
         <label class="runs__search">${icon("search")}<input class="input" type="search" placeholder="Search in log" aria-label="Search in log" data-role="log-search" value="${esc(state.search)}"></label>
-        <span class="muted" data-role="log-count"></span>
+        <span class="runs__count" data-role="log-count"></span>
         <span class="diag__spacer"></span>
-        <label class="check"><input type="checkbox" data-role="log-follow"${state.follow ? " checked" : ""}><span>Follow</span></label>
+        <button type="button" class="btn btn--sm" data-action="log-follow" aria-pressed="${state.follow}" data-hint="Reload the file every 3 s and keep the end in view">Follow</button>
       </div>
-      <pre class="job__log runs__log" data-role="log" tabindex="0" aria-label="Log text" title="Last 256 KB of the file"></pre>`;
+      <pre class="job__log runs__log" data-role="log" tabindex="0" aria-label="Log text" data-hint="The last 256 KB of the file"></pre>`;
     this.fillLog(true);
     this.syncFollow();
   }
@@ -537,7 +602,10 @@ export class RunsView {
     const node = this.body.querySelector("[data-role=log]");
     const log = this.detail.logs.find((entry) => entry.name === state.file);
     const count = LogText.fill(node, log.text, state.search);
-    this.body.querySelector("[data-role=log-count]").textContent = state.search ? plural(count, "match") : `${plural(log.text.split("\n").length, "line")}`;
+    const lines = plural(log.text.split("\n").length, "line");
+    const counter = this.body.querySelector("[data-role=log-count]");
+    counter.textContent = state.search ? plural(count, "match") : lines;
+    counter.dataset.hint = `${lines}, the last 256 KB of ${log.name}`;
     if (state.follow) node.scrollTop = node.scrollHeight;
     else if (jump && state.search) {
       const mark = node.querySelector("mark");
@@ -566,8 +634,26 @@ export class RunsView {
   renderFiles() {
     const files = this.detail.files;
     const total = files.reduce((sum, file) => sum + file.size, 0);
-    const rows = files.map((file) => `<tr><td class="mono">${esc(file.rel)}</td><td class="num">${esc(fmtBytes(file.size))}</td></tr>`).join("");
-    this.body.innerHTML = panelHtml("Files", files.length ? `<div class="dtable dtable--dense dtable--static"><table><thead><tr><th>Path</th><th class="num">Size</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyBlock("The run directory is empty."), { note: `${plural(files.length, "file")}, ${fmtBytes(total)}`, info: infoText(`Every file under runs/${this.run}.`), flush: files.length > 0 });
+    if (!files.length) {
+      this.body.innerHTML = panelHtml("Files", emptyBlock("The run directory is empty."), { info: infoText(`Every file under runs/${this.run}.`) });
+      return;
+    }
+    const groups = new Map();
+    for (const file of files) {
+      const cut = file.rel.lastIndexOf("/");
+      const folder = cut < 0 ? "" : file.rel.slice(0, cut + 1);
+      if (!groups.has(folder)) groups.set(folder, []);
+      groups.get(folder).push({ ...file, name: file.rel.slice(cut + 1) });
+    }
+    const open = new Set(this.openFolders || []);
+    const bodies = [...groups].sort(([a], [b]) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b))).map(([folder, entries]) => {
+      const rows = entries.map((file) => `<tr><td class="mono files__name">${esc(file.name)}</td><td class="num">${esc(fmtBytes(file.size))}</td></tr>`).join("");
+      if (!folder) return `<tbody>${rows}</tbody>`;
+      const size = entries.reduce((sum, file) => sum + file.size, 0);
+      const shown = open.has(folder);
+      return `<tbody class="files__group${shown ? " is-open" : ""}" data-folder="${esc(folder)}"><tr class="files__head"><td class="mono"><button type="button" class="files__toggle" data-action="folder" aria-expanded="${shown}">${icon("chevron-right")}<span>${esc(folder)}</span></button></td><td class="num">${plural(entries.length, "file")}, ${esc(fmtBytes(size))}</td></tr>${rows}</tbody>`;
+    }).join("");
+    this.body.innerHTML = panelHtml("Files", `<div class="dtable dtable--dense dtable--static files"><table><thead><tr><th>Path</th><th class="num">Size</th></tr></thead>${bodies}</table></div>`, { note: `${plural(files.length, "file")}, ${fmtBytes(total)}`, info: infoText(`Every file under runs/${this.run}. A folder row opens its files.`), flush: true, className: "files__panel" });
   }
 
   renderGallery() {
@@ -600,6 +686,19 @@ export class RunsView {
       this.drawCurves();
     } else if (action === "lightbox") {
       this.app.openLightbox(button.dataset.src, button.dataset.name);
+    } else if (action === "folder") {
+      const group = button.closest("[data-folder]");
+      const shown = group.classList.toggle("is-open");
+      button.setAttribute("aria-expanded", String(shown));
+      const open = new Set(this.openFolders || []);
+      if (shown) open.add(group.dataset.folder);
+      else open.delete(group.dataset.folder);
+      this.openFolders = [...open];
+    } else if (action === "log-follow") {
+      this.logState.follow = !this.logState.follow;
+      button.setAttribute("aria-pressed", String(this.logState.follow));
+      this.fillLog(false);
+      this.syncFollow();
     }
   }
 
@@ -616,9 +715,6 @@ export class RunsView {
       this.curveState.search = input.value.trim();
       this.curveState.page = 0;
       this.drawCurves();
-    } else if (role === "curve-log" && event.type === "change") {
-      this.curveState.log = input.checked;
-      for (const chart of this.charts) chart.setOptions({ log: this.curveState.log });
     } else if (role === "curve-overlay" && event.type === "change") {
       this.curveState.overlay = input.value;
       this.drawCurves();
@@ -628,10 +724,6 @@ export class RunsView {
     } else if (role === "log-search" && event.type === "input") {
       this.logState.search = input.value.trim();
       this.fillLog(true);
-    } else if (role === "log-follow" && event.type === "change") {
-      this.logState.follow = input.checked;
-      this.fillLog(false);
-      this.syncFollow();
     }
   }
 }
