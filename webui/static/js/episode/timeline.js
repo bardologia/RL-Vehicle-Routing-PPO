@@ -1,7 +1,7 @@
 import { esc, fmtFixed, fmtSigned, icon, signClass } from "../format.js";
 import { statusChip } from "../ui/status.js";
 import { tooltip, Tooltip } from "../ui/tooltip.js";
-import { Agents, OPERATORS, Sentences, TERMS } from "./encoding.js";
+import { Agents, Sentences, TERMS } from "./encoding.js";
 
 export class Timeline {
   static LABEL_W = 208;
@@ -52,7 +52,7 @@ export class Timeline {
     }
     const decision = frame.decision;
     const flags = [];
-    if (decision.wasted) flags.push("WASTED edit");
+    if (decision.wasted) flags.push("wasted edit");
     if (Timeline.workLeft(frame)) flags.push("commit with unassigned jobs and edits remaining");
     return Tooltip.rows(`${esc(Agents.label(laneKey))}: ${esc(Sentences.action(decision.action))}`, [
       ["round, edit", `${frame.round + 1}, ${frame.edit + 1}`],
@@ -82,19 +82,26 @@ export class Timeline {
     return { slots, cell, roundX, end: x - Timeline.GAP };
   }
 
+  static eventMark(event) {
+    if (!event) return "";
+    const kind = event.type === "new_vehicle" || event.type === "remove_vehicle" ? "vehicle" : "job";
+    const sign = event.type === "new_job" || event.type === "new_vehicle" ? "+" : "-";
+    return `<span class="timeline__event">${icon(kind)}${sign}${event.count}</span>`;
+  }
+
   headerCell(round, lanes, divergence, selected, x, width) {
     const open = lanes.map((lane) => lane.trace.roundOpen(round)).find((frame) => frame);
     if (!open) return "";
     const selectedLane = lanes.find((lane) => lane.key === selected.lane);
     const own = (selectedLane && selectedLane.trace.roundOpen(round)) || open;
     const info = own.round_open;
-    const parts = [`<b>Round ${round + 1}</b>`];
-    if (round > 0) parts.push(`gap ${Math.round(info.gap_s / 60)} min`);
-    parts.push(esc(Sentences.event(info.event)));
-    if (round > 0) parts.push(esc(Sentences.executed(info.executed)));
+    const full = [round > 0 ? `gap ${Math.round(info.gap_s / 60)} min` : "episode start", Sentences.event(info.event)];
+    if (round > 0) full.push(Sentences.executed(info.executed));
     const diverges = divergence.filter((entry) => entry.round === round);
-    const mark = diverges.length ? `<span class="timeline__diverge" title="${esc(diverges.map((entry) => `${entry.kind === "event_ids" ? "event ids" : "pickup outcomes"} differ between ${entry.agents.map(Agents.label).join(", ")}`).join("; "))}">${icon("warning")}differs</span>` : "";
-    return `<div class="timeline__round" style="left:${x}px;width:${width}px" title="${esc(parts.join(", ").replace(/<\/?b>/g, ""))}">${mark}<span>${parts.join('<i class="timeline__sep"></i>')}</span></div>`;
+    for (const entry of diverges) full.push(`${entry.kind === "event_ids" ? "event ids" : "pickup outcomes"} differ between ${entry.agents.map(Agents.label).join(", ")}`);
+    const mark = diverges.length ? `<span class="timeline__diverge">${icon("warning")}</span>` : "";
+    const gap = round > 0 ? `<span>+${Math.round(info.gap_s / 60)} min</span>` : "";
+    return `<div class="timeline__round" style="left:${x}px;width:${width}px" data-hint-title="Round ${round + 1}" data-hint="${esc(full.join("; "))}."><b>R${round + 1}</b>${gap}${Timeline.eventMark(info.event)}${mark}</div>`;
   }
 
   render(state) {
@@ -124,7 +131,6 @@ export class Timeline {
     const cumHi = Math.max(...totals);
 
     const header = slots.map((count, round) => this.headerCell(round, lanes, divergence, selected, roundX[round], count * cell)).join("");
-    const legend = `<div class="timeline__legend">${OPERATORS.map((name, index) => `<span><i class="opmark opmark--op${index}"></i>${name}</span>`).join("")}</div>`;
 
     const bands = slots.map((count, round) => `<rect class="tl-round${selected.round === round ? " is-current" : ""}" x="${roundX[round]}" y="0" width="${count * cell}" height="${svgH}"></rect>`).join("");
 
@@ -160,8 +166,8 @@ export class Timeline {
             const barW = Math.max(3, Math.min(18, cell * 0.56));
             const side = decision.reward >= 0 ? "gain" : "loss";
             parts.push(`<rect class="tl-bar tl-bar--${side}" x="${cx - barW / 2}" y="${decision.reward >= 0 ? mid - size : mid}" width="${barW}" height="${size}"></rect>`);
-            parts.push(`<rect class="tl-op tl-op--op${decision.action.operator}" x="${cx - glyph / 2}" y="${top + 3}" width="${glyph}" height="${glyph}"></rect>`);
-            if (decision.wasted || Timeline.workLeft(frame)) parts.push(`<path class="tl-warn" d="M${cx - 4} ${top + laneH - 2}h8l-4 -7z"></path>`);
+            const flagged = decision.wasted || Timeline.workLeft(frame);
+            parts.push(`<rect class="tl-op tl-op--op${decision.action.operator}${flagged ? " is-flagged" : ""}" x="${cx - glyph / 2}" y="${top + 3}" width="${glyph}" height="${glyph}"></rect>`);
             cumPoints.push([cx, decision.cumulative]);
             if (decision.ends_round || decision.is_commit) previousCommitX = cx;
           }
@@ -198,7 +204,7 @@ export class Timeline {
 
     this.container.innerHTML = `
       <div class="timeline__inner" style="height:${Timeline.HEAD_H + svgH}px">
-        ${legend}${header}
+        ${header}
         <svg class="timeline__svg" width="${width}" height="${svgH}" style="top:${Timeline.HEAD_H}px" role="img" aria-label="Decisions of every recorded agent, grouped by round">${bands}${rows}</svg>
         ${heads}
         <div class="timeline__axis" style="left:${end + 8}px">return</div>
