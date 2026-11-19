@@ -244,6 +244,35 @@ class FxPolyline {
   }
 }
 
+class FxLap {
+  static arc(arcs, total, lap, hold, t) {
+    const n     = arcs.length;
+    const moves = lap - n * hold;
+    let left    = t;
+    let s       = 0;
+    for (let k = 0; k <= n; k++) {
+      const target = k < n ? arcs[k] : total;
+      const travel = ((target - s) / total) * moves;
+      if (left < travel) return { s: s + (left / travel) * (target - s), at: -1 };
+      left        -= travel;
+      s            = target;
+      if (k === n) break;
+      if (left < hold) return { s, at: k };
+      left        -= hold;
+    }
+    return { s: total, at: -1 };
+  }
+
+  static heading(line, s) {
+    const lengths = line.lengths;
+    let k         = 1;
+    while (k < lengths.length - 1 && s > lengths[k]) k++;
+    const [ax, ay] = line.points[k - 1];
+    const [bx, by] = line.points[k];
+    return Math.abs(bx - ax) > Math.abs(by - ay) ? (bx > ax ? "x+" : "x-") : by > ay ? "y+" : "y-";
+  }
+}
+
 class FxRank {
   static terciles(values) {
     const live = values.map((v, i) => [v, i]).filter(([v]) => v > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
@@ -617,91 +646,82 @@ class FxDoor {
 
 class FxPlansFigure extends HairlineFigureBase {
   static NAME    = "plans";
-  static RANGE   = [0.4, 0.6, 0.9];
-  static SCALE   = 3.45;
-  static ARM     = 34;
-  static POST    = 40;
-  static STRING  = 18;
-  static PAD     = 9.5;
-  static ALONG   = [Math.SQRT1_2, -Math.SQRT1_2];
-  static ACROSS  = [Math.SQRT1_2, Math.SQRT1_2];
-  static VAN     = 1.35;
-  static CRATE   = [1.7, 2.6, 2.9];
-  static CRATES  = 6;
-  static ROW     = 3;
-  static SPACING = 3.9;
-  static TILT    = 9;
-  static SWAY_S  = 4.2;
-  static DROP_S  = 2.2;
-  static FALL    = 0.5;
-  static HOLD    = 0.9;
-  static FADE    = 0.4;
-  static DROP_H  = 12;
+  static RANGE   = [1.5, 3, 5];
+  static SCALE   = 4.4;
+  static SPREAD  = 22;
+  static PAD     = 16;
+  static RING    = 10;
+  static DEPOT   = [4, 3.6, 6.5];
+  static OUTSET  = 2.6;
+  static SLOTS   = [0.07, 0.18, 0.32, 0.43, 0.57, 0.68];
+  static POST_H  = 4;
+  static GAP     = 0.08;
+  static DROP    = 3;
+  static VAN     = 1.5;
+  static LAP_S   = 7.5;
+  static HOLD_S  = 0.45;
+  static REST    = 0.5;
   static DEFAULT = { mine: 1200000, others: 1150000, alarm: false };
 
   constructor({ stage, svg }, value) {
     super(svg, value, FxPlansFigure.SCALE);
     this.light  = new FxLight();
     this.clock  = 0;
-    this.drop   = { pan: null, born: -1e9, drawn: "" };
-    this.next   = 0.8;
-    this._camera(this._extent(), 150);
-    this.shift  = new FxShift(this.P);
+    this._camera(this._extent(), 160);
     this.vanKit = new FxVan(this.P, this.front, FxPlansFigure.VAN);
-    const half  = FxPlansFigure.CRATE[0];
-    this.crate  = FxParts.shape(this.P, this.front, -half, -half, half, half, 0.5, 0.4);
-    this._buildStand();
-    this._buildPans();
-    this._buildBeam();
+    this.post   = FxParts.shape(this.P, this.front, -0.8, -0.8, 0.8, 0.8, 0.5, 0.3);
+    this.depth  = new FxDepth(this.g);
+    this.sides  = [-1, 1].map((sign, k) => this._buildSide(sign, k));
+    this.g.appendChild(this.depth.layer);
     this._apply(FxPlansFigure.DEFAULT);
-    this.tilt   = HL.spring(this.theta, { k: 60, c: 9 });
-    this.drawn  = NaN;
     this._start(stage, svg);
     this._retarget(performance.now());
   }
 
   _extent() {
-    const reach    = FxPlansFigure.ARM + FxPlansFigure.PAD;
-    const [ax, ay] = FxPlansFigure.ALONG;
-    const swing    = HL.rad(FxPlansFigure.TILT + FxPlansFigure.RANGE[2]);
-    const low      = FxPlansFigure.POST - FxPlansFigure.STRING - FxPlansFigure.ARM * Math.sin(swing) - 2;
-    return [[-14, -14, -4], [14, 14, -4], [ax * reach, ay * reach, low], [-ax * reach, -ay * reach, low], [ax * reach, ay * reach, FxPlansFigure.POST + 10], [-ax * reach, -ay * reach, FxPlansFigure.POST + 10]];
+    const d = FxPlansFigure.SPREAD;
+    const r = FxPlansFigure.PAD;
+    const h = FxPlansFigure.DEPOT[2] + 1.6;
+    return [[-d - r, -r, -3], [-d - r, r, -3], [-d + r, r, -3], [-d + r, -r, -3], [d - r, -r, -3], [d + r, -r, -3], [d + r, r, -3], [d - r, r, -3], [-d, 0, h], [d, 0, h], [-d - r, -r, 4]];
   }
 
-  _buildStand() {
-    FxParts.depot(this.P, this.front, this.g, -11, -11, 11, 11, 6);
-    const [ring, inner] = HL.rings(-1.8, -1.8, 1.8, 1.8, 1.2, 0.5);
-    HL.put(HL.solid(this.g), HL.prism(this.P, this.front, ring, inner, 7.6, FxPlansFigure.POST));
+  _corners(cx, cy, sign) {
+    const r       = FxPlansFigure.RING;
+    const corners = [[cx - r, cy - r], [cx + r, cy - r], [cx + r, cy + r], [cx - r, cy + r]];
+    const ring    = sign < 0 ? corners : corners.slice(1).concat(corners.slice(0, 1));
+    return ring.concat([ring[0]]);
   }
 
-  _buildPans() {
-    const [dx, dy] = FxPlansFigure.ALONG;
-    const [ex, ey] = FxPlansFigure.ACROSS;
-    const pivot    = FxPlansFigure.POST + 2;
-    const r        = FxPlansFigure.PAD;
-    const [ring, inner] = HL.rings(-r, -r, r, r, 2.4, 1);
-    this.pans      = [-1, 1].map((side, k) => {
-      const group   = HL.mk("g", {}, this.g);
-      const x       = side * FxPlansFigure.ARM * dx;
-      const y       = side * FxPlansFigure.ARM * dy;
-      const z       = pivot - FxPlansFigure.STRING;
-      const top     = this.P(x, y, pivot - 1.4);
-      const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => this.P(x + u * (r - 1.6), y + v * (r - 1.6), z));
-      HL.mk("path", { class: "nf", d: corners.map((c) => HL.seg(top, c)).join("") }, group);
-      const el      = HL.solid(group);
-      HL.put(el, HL.prism(this._shifted(x, y, 0), this.front, ring, inner, z - 1.4, z));
-      const stackAt = [x - 0.42 * r * ex, y - 0.42 * r * ey];
-      const crates  = Array.from({ length: FxPlansFigure.CRATES + 1 }, () => HL.solid(group));
-      const van     = this.vanKit.make(group);
-      this.vanKit.pose(van, "x+", x + 0.36 * r * ex, y + 0.36 * r * ey, z);
-      return { side, k, group, el, van, crates, stackAt, z, count: -1, shift: "" };
+  _buildSide(sign, k) {
+    const cx              = sign * FxPlansFigure.SPREAD;
+    const cy              = 0;
+    const pad             = FxPlansFigure.PAD;
+    const [dx, dy, dh]    = FxPlansFigure.DEPOT;
+    const ground          = HL.mk("g", {}, this.g);
+    FxParts.box(this.P, this.front, ground, cx - pad, cy - pad, cx + pad, cy + pad, -3, 0, 4, 1.6);
+    const points          = this._corners(cx, cy, sign);
+    const spur            = sign < 0 ? [[cx - dx, cy], [cx - FxPlansFigure.RING, cy]] : [[cx, cy - dy], [cx, cy - FxPlansFigure.RING]];
+    const road            = HL.mk("path", { class: "nf", d: FxParts.flat(this.P, points.slice(0, 4), 0) + FxParts.line(this.P, spur, 0) }, ground);
+    const line            = new FxPolyline(points);
+    const depotItem       = this.depth.add(cx + cy);
+    FxParts.depot(this.P, this.front, depotItem.group, cx - dx, cy - dy, cx + dx, cy + dy, dh);
+    const posts           = FxPlansFigure.SLOTS.map((share) => {
+      const [px, py]  = line.at(share);
+      const [ax, ay]  = line.at(Math.max(0, share - 0.01));
+      const [bx, by]  = line.at(Math.min(1, share + 0.01));
+      const len       = Math.hypot(bx - ax, by - ay) || 1;
+      const x         = px + (FxPlansFigure.OUTSET * (by - ay)) / len;
+      const y         = py - (FxPlansFigure.OUTSET * (bx - ax)) / len;
+      const item      = this.depth.add(x + y);
+      const solid     = HL.solid(item.group);
+      this.post.put(solid, x, y, 0, FxPlansFigure.POST_H);
+      const led       = HL.mk("circle", { r: 1.2, class: "dot m", display: "none" }, item.group);
+      HL.place(led, this.P(x, y, FxPlansFigure.POST_H));
+      return { share, x, y, solid, led, served: null, lit: "" };
     });
-  }
-
-  _buildBeam() {
-    this.beam      = HL.solid(this.g);
-    this.beamRing  = HL.rrect(-FxPlansFigure.ARM - 3, -2.2, FxPlansFigure.ARM + 3, 2.2, 1.6, 4);
-    this.beamInner = HL.rrect(-FxPlansFigure.ARM - 2.2, -1.4, FxPlansFigure.ARM + 2.2, 1.4, 1, 4);
+    const vanItem         = this.depth.add(cx + cy);
+    const van             = this.vanKit.make(vanItem.group);
+    return { k, sign, cx, cy, road, line, spur, posts, van, vanItem, count: -1, arcs: [], lap: FxPlansFigure.LAP_S, lift: HL.tween(0), phase: k * 0.37, at: this.P(cx, cy, 0) };
   }
 
   setState(state) {
@@ -716,104 +736,81 @@ class FxPlansFigure extends HairlineFigureBase {
 
   _apply(state) {
     const big    = Math.max(Math.abs(state.mine), Math.abs(state.others), 1e-9);
-    const crates = (v) => Math.min(FxPlansFigure.CRATES, Math.round((Math.max(0, v) / big) * FxPlansFigure.CRATES));
+    const slots  = FxPlansFigure.SLOTS.length;
+    const served = (v) => Math.min(slots, Math.round((Math.max(0, v) / big) * slots));
+    const drop   = Math.round(Math.min(1, Math.abs(state.mine - state.others) / (FxPlansFigure.GAP * big)) * FxPlansFigure.DROP);
     this.data    = state;
-    this.counts  = [crates(state.mine), crates(state.others)];
-    this.theta   = HL.clamp((state.mine - state.others) / (0.08 * big), -1, 1) * HL.rad(FxPlansFigure.TILT);
-    this.heavier = this.theta > 0 ? 0 : this.theta < 0 ? 1 : this.counts[1] > this.counts[0] ? 1 : 0;
-    for (const pan of this.pans) {
-      this.vanKit.dash(pan.van, pan.k === 0 && state.alarm);
-      if (pan.count === this.counts[pan.k]) continue;
-      pan.count = this.counts[pan.k];
-      this._stack(pan);
+    this.leader  = state.mine > state.others ? 0 : state.others > state.mine ? 1 : 0;
+    this.counts  = [served(state.mine), served(state.others)].map((count, k) => (k === this.leader ? count : Math.min(count, slots - drop)));
+    for (const side of this.sides) {
+      this.vanKit.dash(side.van, side.k === 0 && state.alarm);
+      if (side.count === this.counts[side.k]) continue;
+      side.count = this.counts[side.k];
+      this._placePosts(side);
     }
   }
 
-  _slot(pan, i) {
-    const [dx, dy]          = FxPlansFigure.ALONG;
-    const [, , pitch]       = FxPlansFigure.CRATE;
-    const col               = (i % FxPlansFigure.ROW) - (FxPlansFigure.ROW - 1) / 2;
-    const layer             = Math.floor(i / FxPlansFigure.ROW);
-    return [pan.stackAt[0] + col * FxPlansFigure.SPACING * dx, pan.stackAt[1] + col * FxPlansFigure.SPACING * dy, pan.z + layer * pitch];
-  }
-
-  _stack(pan) {
-    const [, height] = FxPlansFigure.CRATE;
-    pan.crates.forEach((crate, i) => {
-      if (i === FxPlansFigure.CRATES) return;
-      const [x, y, z0] = this._slot(pan, i);
-      HL.put(crate, i < pan.count ? this.crate.path(x, y, z0, z0 + height) : FxPrism.EMPTY);
+  _placePosts(side) {
+    const total = side.line.total;
+    side.arcs   = FxPlansFigure.SLOTS.slice(0, side.count).map((share) => share * total);
+    side.lap    = FxPlansFigure.LAP_S + side.count * FxPlansFigure.HOLD_S;
+    side.posts.forEach((post, i) => {
+      const served = i < side.count;
+      if (served === post.served) return;
+      post.served = served;
+      post.solid.sil.classList.toggle("dash", !served);
+      post.solid.cr.setAttribute("display", served ? "inline" : "none");
+      FxParts.show(post.led, served);
     });
+    FxParts.set(side.road, side.count ? "nf" : "nf dash");
   }
 
   _tick(dt, now) {
     const still = HL.reducedMotion();
     if (!still) this.clock += dt;
-    const sway  = still ? 0 : HL.rad(this.amount) * Math.sin((2 * Math.PI * this.clock) / FxPlansFigure.SWAY_S);
-
-    this.tilt.t = this.theta + sway;
-
-    const moving = HL.stepS(this.tilt, dt);
-    if (this.tilt.x !== this.drawn) {
-      this.drawn = this.tilt.x;
-      this._drawBeam(this.tilt.x);
-    }
-    if (!still) this._drop();
+    let moving  = false;
+    for (const side of this.sides) moving = this._drawSide(side, now, still) || moving;
+    this.light.set(this.sides[this.chosen === null ? this.leader : this.chosen].van.body.sil);
+    this.depth.sort();
     return still ? moving : true;
   }
 
-  _drawBeam(theta) {
-    const [dx, dy] = FxPlansFigure.ALONG;
-    const [ex, ey] = FxPlansFigure.ACROSS;
-    const c        = Math.cos(theta);
-    const s        = Math.sin(theta);
-    const pivot    = FxPlansFigure.POST + 2;
-    const at       = (u, v, w) => this.P(u * c * dx + v * ex - w * s * dx, u * c * dy + v * ey - w * s * dy, pivot + u * s + w * c);
-    const keep     = (q) => this.front({ nu: q.nu * dx + q.nv * ex, nv: q.nu * dy + q.nv * ey });
-    const top      = this.beamRing.map((q) => at(q.u, q.v, 1.4));
-    const bottom   = this.beamRing.map((q) => at(q.u, q.v, -1.4));
-    HL.put(this.beam, { sil: HL.poly(HL.hull(top.concat(bottom))), crease: HL.open(HL.run(this.beamInner, keep).map((q) => at(q.u, q.v, 1.4))) });
-    for (const pan of this.pans) {
-      const u     = pan.side * FxPlansFigure.ARM;
-      const shift = this.shift.of((u * c - u) * dx, (u * c - u) * dy, u * s);
-      if (shift === pan.shift) continue;
-      pan.shift   = shift;
-      pan.group.setAttribute("transform", shift);
+  _drawSide(side, now, still) {
+    const lift = HL.tval(side.lift, now);
+    const busy = !HL.tdone(side.lift, now);
+    if (!side.count) {
+      const [[x0, y0], [x1, y1]] = side.spur;
+      const heading = Math.abs(x1 - x0) > Math.abs(y1 - y0) ? (x1 > x0 ? "x+" : "x-") : y1 > y0 ? "y+" : "y-";
+      const x       = HL.lerp(x0, x1, 0.55);
+      const y       = HL.lerp(y0, y1, 0.55);
+      this.vanKit.pose(side.van, heading, x, y, lift);
+      this.depth.move(side.vanItem, x + y);
+      return busy;
     }
-  }
-
-  _drop() {
-    if (this.clock >= this.next) {
-      this.next      = this.clock + FxPlansFigure.DROP_S;
-      this.drop.pan  = this.pans[this.heavier];
-      this.drop.born = this.clock;
-      for (const pan of this.pans) HL.put(pan.crates[FxPlansFigure.CRATES], FxPrism.EMPTY);
-    }
-    const pan = this.drop.pan;
-    if (!pan) return;
-    const age                 = this.clock - this.drop.born;
-    const [, height, pitch]   = FxPlansFigure.CRATE;
-    const full                = pan.count >= FxPlansFigure.CRATES;
-    const [x, y, z0]          = this._slot(pan, full ? FxPlansFigure.CRATES - 1 : pan.count);
-    const rest                = full ? z0 + pitch : z0;
-    const fall                = HL.clamp(age / FxPlansFigure.FALL, 0, 1);
-    const fade                = HL.clamp((age - FxPlansFigure.FALL - FxPlansFigure.HOLD) / FxPlansFigure.FADE, 0, 1);
-    const z                   = rest + FxPlansFigure.DROP_H * (1 - fall * fall);
-    const h                   = height * (1 - fade);
-    const key                 = `${z}|${h}`;
-    if (key === this.drop.drawn) return;
-    this.drop.drawn           = key;
-    HL.put(pan.crates[FxPlansFigure.CRATES], h < 0.1 ? FxPrism.EMPTY : this.crate.path(x, y, z, z + h));
+    const t         = still ? 0 : (this.clock + side.phase * side.lap) % side.lap;
+    const { s, at } = FxLap.arc(side.arcs, side.line.total, side.lap, FxPlansFigure.HOLD_S, t);
+    const [x, y]    = side.line.at(s / side.line.total);
+    this.vanKit.pose(side.van, FxLap.heading(side.line, Math.min(s, side.line.total - 0.01)), x, y, lift);
+    this.depth.move(side.vanItem, x + y);
+    side.posts.forEach((post, i) => {
+      if (!post.served) return;
+      const lit = i === at ? "dot" : "dot m";
+      if (lit === post.lit) return;
+      post.lit = lit;
+      post.led.setAttribute("class", lit);
+    });
+    return busy;
   }
 
   _move(p) {
-    const centre = this.P(0, 0, FxPlansFigure.POST)[0];
+    const centre = this.P(0, 0, 0)[0];
     this._choose(p[0] < centre ? 0 : 1);
   }
 
-  _retarget() {
-    const lit = this.chosen === null ? this.heavier : this.chosen;
-    this.light.set(this.pans[lit].van.body.sil);
+  _retarget(now) {
+    const lit = this.chosen === null ? this.leader : this.chosen;
+    for (const side of this.sides) HL.tset(side.lift, side.k !== lit ? 0 : this.chosen === null ? this.amount * FxPlansFigure.REST : this.amount, now, 0);
+    this.light.set(this.sides[lit].van.body.sil);
     this.loop.wake();
   }
 }
@@ -1014,34 +1011,6 @@ class FxFleetFigure extends HairlineFigureBase {
     });
   }
 
-  _lapArc(loop, t) {
-    const total = loop.line.total;
-    const n     = loop.arcs.length;
-    const moves = loop.lap - n * FxFleetFigure.HOLD_S;
-    let left    = t;
-    let s       = 0;
-    for (let k = 0; k <= n; k++) {
-      const target = k < n ? loop.arcs[k] : total;
-      const travel = ((target - s) / total) * moves;
-      if (left < travel) return { s: s + (left / travel) * (target - s), at: -1 };
-      left        -= travel;
-      s            = target;
-      if (k === n) break;
-      if (left < FxFleetFigure.HOLD_S) return { s, at: k };
-      left        -= FxFleetFigure.HOLD_S;
-    }
-    return { s: total, at: -1 };
-  }
-
-  _heading(loop, s) {
-    const lengths = loop.line.lengths;
-    let k         = 1;
-    while (k < lengths.length - 1 && s > lengths[k]) k++;
-    const [ax, ay] = loop.points[k - 1];
-    const [bx, by] = loop.points[k];
-    return Math.abs(bx - ax) > Math.abs(by - ay) ? (bx > ax ? "x+" : "x-") : by > ay ? "y+" : "y-";
-  }
-
   _tick(dt, now) {
     const still = HL.reducedMotion();
     if (!still && !this.data.solving) this.clock += dt;
@@ -1062,9 +1031,9 @@ class FxFleetFigure extends HairlineFigureBase {
       return busy;
     }
     const t         = still ? 0 : (this.clock + loop.phase * loop.lap) % loop.lap;
-    const { s, at } = this._lapArc(loop, t);
+    const { s, at } = FxLap.arc(loop.arcs, loop.line.total, loop.lap, FxFleetFigure.HOLD_S, t);
     const [x, y]    = loop.line.at(s / loop.line.total);
-    this.vanKit.pose(loop.van, this._heading(loop, Math.min(s, loop.line.total - 0.01)), x, y, lift);
+    this.vanKit.pose(loop.van, FxLap.heading(loop.line, Math.min(s, loop.line.total - 0.01)), x, y, lift);
     this.depth.move(loop.item, x + y);
     loop.posts.forEach((post, k) => {
       if (!post.shown) return;
@@ -3438,7 +3407,7 @@ class RoutingFigures {
     confusion:  "Model operators against teacher operators as a three by three block of columns.",
     terms:      "Reward terms ranked on a podium.",
     ranking:    "Mean job rank on a staircase of priorities.",
-    plans:      "The model plan and the teacher plan weighed on a beam over the depot, each pan a van with its served jobs.",
+    plans:      "Two depots, the model plan on the left and the teacher plan on the right, each with a van lapping its route and stopping at the jobs it serves.",
     checkpoint: "Checkpoints on a rack, lit when they load and carry a report.",
     training:   "A training curve as a row of slats.",
     queue:      "Jobs on a belt through the running gate to the finished stack.",
