@@ -162,6 +162,7 @@
 .map__caption b { font-weight: 700; color: var(--ink); }
 .map__controls { position: absolute; z-index: 1000; right: var(--sp-8); top: var(--sp-8); display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-4); }
 .map__controls .btn { height: 30px; justify-content: flex-start; background: var(--glass-solid); }
+.map .btn:disabled, .map .btn:disabled:hover { opacity: 1; border-color: var(--line-card); color: var(--ink-hint); }
 .map__controls .btn[aria-pressed="true"] { background: linear-gradient(var(--accent-wash), var(--accent-wash)), var(--glass-solid); color: var(--accent); border-color: var(--accent); }
 .map__legend { position: absolute; z-index: 1000; left: var(--sp-8); bottom: var(--sp-8); display: flex; flex-direction: column-reverse; align-items: flex-start; gap: var(--sp-4); }
 .map__legend > .btn { height: 30px; background: var(--glass-solid); }
