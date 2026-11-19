@@ -2,7 +2,7 @@ import { api } from "../api.js";
 import { el, esc, fmtAge, icon, plural, Store } from "../format.js";
 import { keys } from "../keys.js";
 import { AgentPicker } from "../episode/agent_picker.js";
-import { Vehicles } from "../episode/encoding.js";
+import { Checks, Vehicles } from "../episode/encoding.js";
 import { KpiStrip } from "../episode/kpi_strip.js";
 import { MapView } from "../episode/map_view.js";
 import { infoText } from "../ui/panel.js";
@@ -17,14 +17,6 @@ const TOOLS = [
   { key: "vehicle", label: "Add vehicle", iconName: "vehicle", hint: "Click the map to place a vehicle." },
   { key: "depot", label: "Move depot", iconName: "depot", hint: "Click the map to move the depot." },
 ];
-
-const CHECK_TEXT = {
-  job_on_vehicle: (check) => `job ${check.job_id} ends on vehicle ${check.vehicle_id}`,
-  job_assigned: (check) => `job ${check.job_id} is assigned`,
-  job_unassigned: (check) => `job ${check.job_id} stays unassigned`,
-  job_not_on_vehicle: (check) => `job ${check.job_id} is not on vehicle ${check.vehicle_id}`,
-  max_edits: (check) => `at most ${plural(check.count, "edit")} in the first round`,
-};
 
 export class LabView {
   constructor(app, root) {
@@ -239,7 +231,7 @@ export class LabView {
     const scenario = this.scenario;
     const template = this.template();
     const templateOptions = (this.templates || []).map((entry) => `<option value="${esc(entry.key)}"${scenario.template === entry.key ? " selected" : ""}>${esc(entry.title)}</option>`).join("");
-    const checks = template ? template.expectation.map((check) => CHECK_TEXT[check.kind](check)).join("; ") : "";
+    const checks = template ? template.expectation.map((check) => Checks.text(check)).join("; ") : "";
     const info = template ? Popover.infoButton(template.title, infoText(template.description, `Checked after a run: ${checks}.`, scenario.pristine ? null : "The scenario was edited, so the check may no longer apply.")) : "";
 
     this.sourceNode.innerHTML = `

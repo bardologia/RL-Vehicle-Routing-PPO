@@ -27,6 +27,20 @@ export class Vehicles {
   }
 }
 
+export class Checks {
+  static TEXT = {
+    job_on_vehicle: (check) => `job ${check.job_id} ends on vehicle ${check.vehicle_id}`,
+    job_assigned: (check) => `job ${check.job_id} is assigned`,
+    job_unassigned: (check) => `job ${check.job_id} stays unassigned`,
+    job_not_on_vehicle: (check) => `job ${check.job_id} is not on vehicle ${check.vehicle_id}`,
+    max_edits: (check) => `at most ${plural(check.count, "edit")} in the first round`,
+  };
+
+  static text(check) {
+    return Checks.TEXT[check.kind](check);
+  }
+}
+
 export class Sources {
   static text(source) {
     if (source.kind === "seed") return `Seed ${source.seed}`;
