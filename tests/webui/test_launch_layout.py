@@ -104,6 +104,15 @@ def test_a_number_widget_without_bounds_is_refused(leaves, monkeypatch):
         LaunchLayout().build("infer", leaves)
 
 
+@pytest.mark.parametrize("key", SCRIPTS)
+def test_entries_that_load_a_checkpoint_require_the_run_name(key, leaves):
+    """Evaluate, infer and diagnose mark io.run_name as required; the training entries leave it optional."""
+    widgets  = LaunchLayout().build(key, leaves)["widgets"]
+    required = "io.run_name" in widgets and widgets["io.run_name"].get("required") is True
+
+    assert required is (key in ("evaluate", "infer", "diagnose"))
+
+
 def test_an_unknown_script_has_no_layout(leaves):
     """A script without a declared layout is refused by name."""
     with pytest.raises(LayoutError, match="no launch layout declared for nope"):

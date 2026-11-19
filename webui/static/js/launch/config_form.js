@@ -254,6 +254,11 @@ export class ConfigForm {
     row.appendChild(name);
 
     const spec = leaf.editable ? this.widgetSpec(leaf) : null;
+    if (spec && spec.required) {
+      row.classList.add("cfg-row--required");
+      name.insertAdjacentHTML("beforeend", `<small class="cfg-row__required">required</small>`);
+      name.dataset.hint = `${name.dataset.hint} Required: the launch stays disabled until it is set.`;
+    }
     const kind = spec ? spec.kind : null;
     const choices = Array.isArray(leaf.choices) && leaf.choices.length ? leaf.choices : kind === "choice" ? spec.options : null;
     let control;

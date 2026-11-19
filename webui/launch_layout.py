@@ -46,6 +46,7 @@ class LaunchLayout:
     CH_VERDICT    = {"kind": "choice", "options": ["none", "insertions", "full"]}
     MULTI_AGENTS  = {"kind": "multi", "empty": "select at least one agent", "choices": [["model", "model"], ["teacher", "teacher"], ["insertion_only", "insertion only"], ["do_nothing", "do nothing"]]}
     PICK_RUN      = {"kind": "run"}
+    NEED_RUN      = {"kind": "run", "required": True}
 
     GROUP_RUN       = {"title": "Run", "fields": ["io.runs_dir", "io.logdir", "io.checkpoint_filename"]}
     GROUP_SERVICES  = {"title": "Services", "fields": ["service.vroom_url", "service.osrm_url", "service.solve_cache_limit", "service.options"]}
@@ -126,7 +127,7 @@ class LaunchLayout:
             "hidden_sections": ["pretrain", "evaluation", "inference", "diagnostics"],
         },
         "evaluate": {
-            "essentials": [{"path": "io.run_name", "widget": PICK_RUN}, {"path": "evaluation.episodes", "widget": NUM_EVAL}],
+            "essentials": [{"path": "io.run_name", "widget": NEED_RUN}, {"path": "evaluation.episodes", "widget": NUM_EVAL}],
             "sections": [
                 {"key": "run", "title": "Run", "panels": [{"kind": "fields", "groups": [GROUP_RUN]}, {"kind": "hidden", "fields": ["io.resume_from_run", "io.init_from_run"]}]},
                 {"key": "evaluation", "title": "Evaluation", "panels": [{"kind": "fields", "groups": [{"title": "Held-out set", "fields": [{"path": "evaluation.seed", "widget": NUM_SEED}, "evaluation.greedy"]}]}]},
@@ -139,7 +140,7 @@ class LaunchLayout:
             "hidden_sections": ["lr", "entropy", "model", "ppo", "pretrain", "telemetry", "inference", "monitor", "diagnostics"],
         },
         "infer": {
-            "essentials": [{"path": "io.run_name", "widget": PICK_RUN}, {"path": "inference.seed", "widget": NUM_SEED}],
+            "essentials": [{"path": "io.run_name", "widget": NEED_RUN}, {"path": "inference.seed", "widget": NUM_SEED}],
             "sections": [
                 {"key": "run", "title": "Run", "panels": [{"kind": "fields", "groups": [GROUP_RUN]}, {"kind": "hidden", "fields": ["io.resume_from_run", "io.init_from_run"]}]},
                 {"key": "inference", "title": "Inference", "panels": [{"kind": "fields", "groups": [{"title": "Policy", "fields": ["inference.greedy"]}]}]},
@@ -152,7 +153,7 @@ class LaunchLayout:
             "hidden_sections": ["lr", "entropy", "model", "ppo", "pretrain", "evaluation", "telemetry", "monitor", "diagnostics"],
         },
         "diagnose": {
-            "essentials": [{"path": "io.run_name", "widget": PICK_RUN}, {"path": "diagnostics.seed", "widget": NUM_SEED}, {"path": "diagnostics.episodes", "widget": NUM_DIAG}],
+            "essentials": [{"path": "io.run_name", "widget": NEED_RUN}, {"path": "diagnostics.seed", "widget": NUM_SEED}, {"path": "diagnostics.episodes", "widget": NUM_DIAG}],
             "sections": [
                 {"key": "run", "title": "Run", "panels": [{"kind": "fields", "groups": [GROUP_RUN]}, {"kind": "hidden", "fields": ["io.resume_from_run", "io.init_from_run"]}]},
                 {"key": "diagnostics", "title": "Diagnostics", "panels": [{"kind": "fields", "groups": [

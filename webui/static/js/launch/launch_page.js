@@ -204,10 +204,12 @@ export class LaunchPage extends ConfigForm {
     block.innerHTML = `
       <button type="button" class="btn btn--primary rail-action" data-role="launch">${icon("play")}<span>Launch run</span><small data-role="count"></small></button>
       <button type="button" class="btn rail-action" data-role="schedule" title="Queue this exact configuration to launch when the running job and any earlier queued runs end">${icon("then")}<span>Schedule after current</span><small data-role="count"></small></button>
-      <button type="button" class="btn rail-action" data-role="save" title="Store this exact configuration under Saved, to launch or schedule any time later">${icon("save")}<span>Save for later</span><small data-role="count"></small></button>`;
+      <button type="button" class="btn rail-action" data-role="save" title="Store this exact configuration under Saved, to launch or schedule any time later">${icon("save")}<span>Save for later</span><small data-role="count"></small></button>
+      <p class="rail-note rail-note--warn" data-role="required-note" hidden></p>`;
     this.launchBtn = block.querySelector("[data-role=launch]");
     this.scheduleBtn = block.querySelector("[data-role=schedule]");
     this.saveBtn = block.querySelector("[data-role=save]");
+    this.requiredNote = block.querySelector("[data-role=required-note]");
     this.launchBtn.addEventListener("click", () => this.launch(false));
     this.scheduleBtn.addEventListener("click", () => this.launch(true));
     this.saveBtn.addEventListener("click", () => this.save());
@@ -298,8 +300,24 @@ export class LaunchPage extends ConfigForm {
       this.followNote.textContent = this.detach ? "a detached run cannot chain a follow-up" : "";
     }
 
+    this.renderGate();
     this.renderManifest();
     this.writeDispatch();
+  }
+
+  missingRequired() {
+    const widgets = this.config && this.config.layout ? this.config.layout.widgets : {};
+    return Object.entries(widgets).filter(([path, widget]) => widget.required && this.byPath.has(path)).map(([path]) => path).filter((path) => ["", "none", "None"].includes(String(this.effective(this.byPath.get(path))).trim()));
+  }
+
+  renderGate() {
+    if (!this.launchBtn) return;
+    const missing = this.missingRequired();
+    const blocked = missing.length > 0;
+    this.launchBtn.disabled = this.launching || blocked;
+    this.scheduleBtn.disabled = this.launching || blocked;
+    this.requiredNote.hidden = !blocked;
+    this.requiredNote.textContent = blocked ? `Set ${missing.join(", ")} to launch: ${this.detail.title} loads the checkpoint of that run.` : "";
   }
 
   renderManifest() {
@@ -335,7 +353,7 @@ export class LaunchPage extends ConfigForm {
   }
 
   async launch(queue) {
-    if (!this.detail || this.launching) return;
+    if (!this.detail || this.launching || this.missingRequired().length) return;
     this.launching = true;
     this.launchBtn.disabled = true;
     this.scheduleBtn.disabled = true;
@@ -350,8 +368,7 @@ export class LaunchPage extends ConfigForm {
       this.app.toast.show(error.message || (queue ? "Schedule failed" : "Launch failed"), "error");
     } finally {
       this.launching = false;
-      this.launchBtn.disabled = false;
-      this.scheduleBtn.disabled = false;
+      this.renderGate();
     }
   }
 

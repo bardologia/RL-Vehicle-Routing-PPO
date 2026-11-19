@@ -35,7 +35,8 @@
 .rail-block__label { font-family: var(--sans); font-size: 11px; font-weight: 700; line-height: 1.25; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-hint); }
 .rail-input { width: 100%; min-width: 0; }
 .rail-note { display: flex; align-items: center; gap: 8px; margin: 0; font-family: var(--mono); font-size: 11.5px; font-weight: 600; line-height: 1.45; color: var(--ink-hint); }
-.rail-note:empty { display: none; }
+.rail-note:empty, .rail-note[hidden] { display: none; }
+.rail-note--warn { font-family: var(--sans); font-size: 13px; line-height: 1.5; color: var(--warn); }
 .rail-row { display: flex; align-items: center; gap: 8px; }
 .rail-row--head { justify-content: space-between; }
 .rail-wide { width: 100%; }
@@ -106,6 +107,7 @@
 .cfg-row__name { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .cfg-row__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1.5; color: var(--ink-dim); cursor: help; }
 .cfg-row.is-dirty .cfg-row__label { color: var(--warn); }
+.cfg-row__required { flex: none; font-family: var(--mono); font-size: 11px; font-weight: 600; line-height: 1.5; color: var(--ink-hint); }
 .cfg-row__reset { visibility: hidden; width: 22px; height: 22px; }
 .cfg-row.is-dirty .cfg-row__reset { visibility: visible; }
 .cfg-row--dependent { padding-left: 14px; }
