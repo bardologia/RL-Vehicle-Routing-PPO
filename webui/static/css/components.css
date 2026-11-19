@@ -311,7 +311,20 @@ a.chip--fail:hover, button.chip--fail:hover { color: var(--ink); border-color: v
 .drawer__toggle.btn:hover { border-color: var(--line); }
 .drawer__body { flex: 1; overflow: auto; min-height: 0; }
 
-.dtable { position: relative; overflow: auto; }
+.dtable {
+  --dtable-head: 31px;
+  position: relative;
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  -webkit-mask-image: linear-gradient(#000, #000), linear-gradient(90deg, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%);
+  mask-image: linear-gradient(#000, #000), linear-gradient(90deg, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%);
+  -webkit-mask-size: 100% var(--dtable-head), 100% 100%;
+  mask-size: 100% var(--dtable-head), 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  animation: scrollCue linear both;
+  animation-timeline: scroll(self inline);
+}
 .dtable:focus-visible { outline-offset: -2px; }
 .dtable table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .dtable th, .dtable td { height: var(--row); padding: 4px 8px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--line-soft); }
