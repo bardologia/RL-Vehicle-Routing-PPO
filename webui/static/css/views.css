@@ -390,7 +390,7 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 .atable thead th { vertical-align: top; padding-top: 6px; padding-bottom: 4px; }
 .atable__agent > .lanekey, .atable__agent > .state { vertical-align: middle; }
 .atable__agent > .state { margin-left: 6px; color: var(--ink-hint); }
-.atable tbody td { height: 34px; }
+.atable tbody td { height: 34px; border-bottom: 0; }
 .atable th.atable__strip, .atable td.atable__strip { padding: 0 6px; }
 .atable th.atable__strip { padding-top: 6px; padding-bottom: 2px; }
 .atable__axis { margin-top: 2px; }

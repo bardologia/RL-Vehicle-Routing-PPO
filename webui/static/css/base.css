@@ -55,6 +55,7 @@ svg { display: block; }
 .nowrap { white-space: nowrap; }
 .hidden { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+details:not([open]) > :not(summary) { display: none; }
 
 .glass { background: var(--glass); -webkit-backdrop-filter: var(--frost); backdrop-filter: var(--frost); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
