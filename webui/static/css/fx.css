@@ -51,7 +51,7 @@ hairline-figure {
   --hairline-stroke: 1.2;
 }
 
-.has-pagefig { position: relative; min-height: 112px; padding-right: 224px; }
+.has-pagefig { position: relative; min-height: 112px; padding-right: 224px; align-content: center; }
 .pagefig { position: absolute; right: 0; top: -24px; width: 200px; }
 
 @media (max-width: 1499px) {

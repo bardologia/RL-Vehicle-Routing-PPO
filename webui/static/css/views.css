@@ -370,12 +370,14 @@
 .job__log { margin: 0; padding: 10px 14px; height: 360px; overflow: auto; background: var(--well); border-top: 2px solid var(--line-card); color: var(--ink-dim); font-size: 12.5px; white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
 .job.is-collapsed .job__log, .job.is-collapsed .job__cmd { display: none; }
 
-.diag__bar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--sp-12) var(--sp-16); margin-bottom: var(--sp-12); }
-.diag__bar h2 { margin-right: var(--sp-8); align-self: center; }
+.diag__bar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-12) var(--sp-16); margin-bottom: var(--sp-12); }
+.diag__bar h2 { margin-right: var(--sp-8); }
+.diag__bar .select { max-width: 280px; }
 .diag__bar .fieldlabel { flex-direction: row; align-items: center; gap: var(--sp-8); }
-.diag__facts { display: flex; flex-direction: column; font: 600 11.5px/1.45 var(--mono); color: var(--ink-faint); flex: 1 1 320px; min-width: 0; }
+.diag__facts { order: 1; flex: 1 0 100%; min-width: 0; display: flex; flex-direction: column; font: 600 11.5px/1.45 var(--mono); color: var(--ink-faint); }
+.diag__facts:empty { display: none; }
 .diag__spacer { flex: 1; }
-.diag__flags { display: inline-flex; gap: var(--sp-4); text-decoration: none; align-self: center; }
+.diag__flags { display: inline-flex; gap: var(--sp-4); text-decoration: none; }
 .diag__content, .over { display: flex; flex-direction: column; gap: var(--gap); }
 .over > .diag__bar { margin-bottom: 0; }
 .diag__split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: var(--gap); align-items: start; }
