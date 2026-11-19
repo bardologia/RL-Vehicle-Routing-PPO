@@ -1,7 +1,7 @@
 import { esc, icon, isNum, NONE, Store } from "../format.js";
 
 export class DataTable {
-  constructor(container, { columns, rowKey, onSelect, onOpen, onHover, dense, storeKey, sort, emptyText, rowClass }) {
+  constructor(container, { columns, rowKey, onSelect, onOpen, onHover, dense, storeKey, sort, emptyText, rowClass, rowLink, sets }) {
     this.container = container;
     this.columns = columns;
     this.rowKey = rowKey;
@@ -11,6 +11,9 @@ export class DataTable {
     this.storeKey = storeKey;
     this.emptyText = emptyText || "No rows.";
     this.rowClass = rowClass;
+    this.rowLink = rowLink;
+    this.sets = sets || null;
+    this.set = sets ? Store.read(`${storeKey}.set`, sets[0].value) : null;
     this.rows = [];
     this.selected = null;
     this.sort = sort || null;
@@ -27,7 +30,13 @@ export class DataTable {
   }
 
   get visibleColumns() {
-    return this.columns.filter((column) => !this.hidden.has(column.key));
+    return this.columns.filter((column) => !this.hidden.has(column.key) && (!this.set || !column.sets || column.sets.includes(this.set)));
+  }
+
+  setColumnSet(value) {
+    this.set = value;
+    if (this.storeKey) Store.write(`${this.storeKey}.set`, value);
+    this.render();
   }
 
   setRows(rows) {
@@ -83,7 +92,7 @@ export class DataTable {
     const head = columns.map((column) => {
       const sorted = this.sort && this.sort.key === column.key;
       const label = `<span>${esc(column.label)}</span>${column.unit ? `<small>${esc(column.unit)}</small>` : ""}`;
-      const title = column.title ? ` title="${esc(column.title)}"` : "";
+      const title = column.title || column.full ? ` title="${esc(column.title || column.full)}"` : "";
       if (column.sortable === false) return `<th class="${column.numeric ? "num" : ""}"${title}>${label}</th>`;
       return `<th class="${column.numeric ? "num" : ""}" aria-sort="${sorted ? (this.sort.descending ? "descending" : "ascending") : "none"}"${title}><button type="button" data-sort="${esc(column.key)}">${label}${sorted ? icon(this.sort.descending ? "chevron-down" : "chevron-up") : ""}</button></th>`;
     }).join("");
@@ -98,7 +107,7 @@ export class DataTable {
     const hideable = this.columns.filter((column) => column.hideable);
     const menu = hideable.length ? `
       <details class="dtable__menu">
-        <summary aria-label="Choose columns">${icon("columns")}<span>Columns</span></summary>
+        <summary class="tbtn tbtn--sm" aria-label="Choose columns" title="Columns">${icon("columns")}</summary>
         <div class="dtable__menulist">${hideable.map((column) => `<label><input type="checkbox" data-column="${esc(column.key)}"${this.hidden.has(column.key) ? "" : " checked"}><span>${esc(column.label)}</span></label>`).join("")}</div>
       </details>` : "";
 
@@ -136,6 +145,7 @@ export class DataTable {
     if (key === null) return;
     this.setSelected(key);
     if (this.onSelect) this.onSelect(this.find(key));
+    if (this.rowLink) window.location.hash = this.rowLink(this.find(key));
   }
 
   onDouble(event) {
@@ -162,8 +172,9 @@ export class DataTable {
       event.stopPropagation();
       return;
     }
-    if (event.key === "Enter" && this.selected !== null && this.onOpen) {
-      this.onOpen(this.find(this.selected));
+    if (event.key === "Enter" && this.selected !== null && (this.onOpen || this.rowLink)) {
+      if (this.onOpen) this.onOpen(this.find(this.selected));
+      else window.location.hash = this.rowLink(this.find(this.selected));
       event.preventDefault();
       event.stopPropagation();
     }

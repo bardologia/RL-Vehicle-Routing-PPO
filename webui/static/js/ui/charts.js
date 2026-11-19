@@ -30,18 +30,18 @@ export class Scale {
       lo = Math.min(lo, 0);
       hi = Math.max(hi, 0);
     }
-    if (lo === hi) {
+    if (hi - lo <= 1e-6 * Math.max(Math.abs(lo), Math.abs(hi), 1e-12)) {
       lo -= 1;
       hi += 1;
     }
     return [lo, hi];
   }
 
-  static ticks(lo, hi, count = 5) {
+  static ticks(lo, hi, count = 4) {
     const span = hi - lo;
     const raw = span / Math.max(1, count);
     const power = 10 ** Math.floor(Math.log10(raw));
-    const step = [1, 2, 5, 10].map((m) => m * power).find((candidate) => span / candidate <= count);
+    const step = [1, 2, 5, 10].map((m) => m * power).find((candidate) => span / candidate <= count + 1);
     const out = [];
     for (let tick = Math.ceil(lo / step) * step; tick <= hi + step * 1e-9; tick += step) out.push(Math.abs(tick) < step * 1e-9 ? 0 : tick);
     return out;
@@ -66,7 +66,7 @@ class Frame {
     this.y1 = margin.top;
   }
 
-  axes(x, y, xTicks, yTicks, xLabel, yLabel) {
+  axes(x, y, xTicks, yTicks, xCaption, yCaption) {
     const parts = [];
     for (const tick of yTicks) {
       const py = y.map(tick);
@@ -74,11 +74,15 @@ class Frame {
     }
     for (const tick of xTicks) {
       const px = x.map(tick);
-      parts.push(`<line class="ch-tickmark" x1="${px}" x2="${px}" y1="${this.y0}" y2="${this.y0 + 4}"></line><text class="ch-tick" x="${px}" y="${this.y0 + 16}" text-anchor="middle">${Scale.tickText(tick, xTicks)}</text>`);
+      parts.push(`<text class="ch-tick" x="${px}" y="${this.y0 + 16}" text-anchor="middle">${Scale.tickText(tick, xTicks)}</text>`);
     }
-    parts.push(`<line class="ch-axis" x1="${this.x0}" x2="${this.x1}" y1="${this.y0}" y2="${this.y0}"></line>`);
-    if (xLabel) parts.push(`<text class="ch-label" x="${(this.x0 + this.x1) / 2}" y="${this.height - 4}" text-anchor="middle">${esc(xLabel)}</text>`);
-    if (yLabel) parts.push(`<text class="ch-label" x="${this.x0 - this.m.left + 2}" y="${this.y1 - 8}" text-anchor="start">${esc(yLabel)}</text>`);
+    return parts.join("") + this.captions(xCaption, yCaption);
+  }
+
+  captions(xCaption, yCaption) {
+    const parts = [];
+    if (yCaption) parts.push(`<text class="ch-note" x="${this.x0}" y="${this.y1 - 8}" text-anchor="start">${esc(yCaption)}</text>`);
+    if (xCaption) parts.push(`<text class="ch-note" x="${this.x1 - 4}" y="${this.y0 - 6}" text-anchor="end">${esc(xCaption)}</text>`);
     return parts.join("");
   }
 
@@ -91,6 +95,10 @@ function measure(container, fallback) {
   return Math.max(160, Math.floor(container.clientWidth) || fallback);
 }
 
+const MARGIN = { left: 56, right: 14, top: 22, bottom: 24 };
+
+const SERIES_COLOUR = { solid: "var(--lane-model)", model: "var(--lane-model)", teacher: "var(--lane-teacher)", dashed: "var(--lane-insertion)", insertion_only: "var(--lane-insertion)", dotted: "var(--lane-nothing)", do_nothing: "var(--lane-nothing)", second: "var(--ink-faint)" };
+
 function emptyFrame(container, height, text) {
   container.innerHTML = `<div class="chart-empty" style="height:${height}px">${esc(text)}</div>`;
 }
@@ -102,6 +110,11 @@ export class LineChart {
     this.data = [];
     container.addEventListener("pointermove", (event) => this.hover(event));
     container.addEventListener("pointerleave", () => this.leave());
+  }
+
+  static isSingle(series) {
+    const drawn = series.filter((entry) => entry.values.length);
+    return drawn.length > 0 && drawn.every((entry) => entry.values.length === 1);
   }
 
   static smooth(values, alpha) {
@@ -122,7 +135,8 @@ export class LineChart {
 
   render(series) {
     this.data = series;
-    const { height = 200, xLabel = "step", yLabel = "", smoothing = 0, log = false, emptyText = "not logged", caption = "" } = this.options;
+    const { height = 200, xLabel = "", yLabel = "", smoothing = 0, log = false, emptyText = "not logged", caption = "" } = this.options;
+    this.single = LineChart.isSingle(series);
     const drawn = series.filter((entry) => entry.values.length).map((entry) => ({ ...entry, shown: LineChart.smooth(entry.values, smoothing) }));
     if (!drawn.length) {
       emptyFrame(this.container, height, emptyText);
@@ -136,7 +150,7 @@ export class LineChart {
     const head = legend ? this.container.firstElementChild.offsetHeight : 0;
 
     const width = measure(this.container, 480);
-    const frame = new Frame(width, Math.max(96, height - head), { left: 52, right: 16, top: 24, bottom: 34 });
+    const frame = new Frame(width, Math.max(96, height - head), MARGIN);
     const allX = drawn.flatMap((entry) => entry.steps);
     let allY = drawn.flatMap((entry) => entry.shown).filter(isNum);
     const useLog = log && allY.every((value) => value > 0);
@@ -151,14 +165,15 @@ export class LineChart {
     const y = new Scale([yLo, yHi], [frame.y0, frame.y1], useLog);
     const yTicks = useLog ? LineChart.logTicks(yLo, yHi) : Scale.ticks(yLo, yHi, 4);
 
-    const lines = drawn.map((entry) => {
+    const lines = drawn.map((entry, order) => {
       const points = entry.steps.map((step, i) => (isNum(entry.shown[i]) ? `${x.map(step).toFixed(1)},${y.map(entry.shown[i]).toFixed(1)}` : null)).filter((point) => point);
       const single = points.length === 1 ? `<circle class="ch-dot" cx="${points[0].split(",")[0]}" cy="${points[0].split(",")[1]}" r="4"></circle>` : "";
-      return `<polyline class="ch-line ch-line--${entry.style || "solid"} ${entry.className || ""}" points="${points.join(" ")}"></polyline>${single}`;
+      return `<polyline class="ch-line ch-line--${entry.style || "solid"}${order > 1 ? " ch-line--minor" : ""} ${entry.className || ""}" points="${points.join(" ")}"></polyline>${single}`;
     }).join("");
 
-    this.container.innerHTML = `${legend}${frame.open()}${frame.axes(x, y, Scale.ticks(xLo, xHi, 5), yTicks, xLabel, yLabel)}${lines}<line class="ch-cross" y1="${frame.y1}" y2="${frame.y0}" x1="0" x2="0" visibility="hidden"></line></svg>`;
-    this.state = { frame, x, drawn, span: [xLo, xHi] };
+    const dots = drawn.map(() => `<circle class="ch-hover" r="3" cx="0" cy="0" visibility="hidden"></circle>`).join("");
+    this.container.innerHTML = `${legend}${frame.open()}${frame.axes(x, y, Scale.ticks(xLo, xHi, 5), yTicks, "", yLabel)}${xLabel && xLabel !== "step" ? `<text class="ch-note" x="${frame.x1}" y="${frame.y1 - 8}" text-anchor="end">by ${esc(xLabel)}</text>` : ""}${lines}<line class="ch-cross" y1="${frame.y1}" y2="${frame.y0}" x1="0" x2="0" visibility="hidden"></line>${dots}</svg>`;
+    this.state = { frame, x, y, drawn, span: [xLo, xHi] };
   }
 
   static logTicks(lo, hi) {
@@ -171,8 +186,9 @@ export class LineChart {
 
   hover(event) {
     if (!this.state) return;
-    const { frame, x, drawn } = this.state;
+    const { frame, x, y, drawn } = this.state;
     const svg = this.container.querySelector("svg");
+    const marks = svg.querySelectorAll(".ch-hover");
     const box = svg.getBoundingClientRect();
     const px = (event.clientX - box.left) * (frame.width / box.width);
     if (px < frame.x0 || px > frame.x1) {
@@ -182,12 +198,18 @@ export class LineChart {
     const step = x.invert(px);
     const rows = [];
     let snapped = null;
-    for (const entry of drawn) {
+    drawn.forEach((entry, order) => {
       let best = 0;
       for (let i = 1; i < entry.steps.length; i += 1) if (Math.abs(entry.steps[i] - step) < Math.abs(entry.steps[best] - step)) best = i;
       if (snapped === null) snapped = entry.steps[best];
-      rows.push([esc(entry.label), fmtFixed(entry.shown[best], 4)]);
-    }
+      rows.push([esc(entry.label), fmtFixed(entry.shown[best], 4), SERIES_COLOUR[entry.style || "solid"]]);
+      const mark = marks[order];
+      if (isNum(entry.shown[best])) {
+        mark.setAttribute("cx", x.map(entry.steps[best]));
+        mark.setAttribute("cy", y.map(entry.shown[best]));
+        mark.setAttribute("visibility", "visible");
+      } else mark.setAttribute("visibility", "hidden");
+    });
     const cross = svg.querySelector(".ch-cross");
     cross.setAttribute("x1", x.map(snapped));
     cross.setAttribute("x2", x.map(snapped));
@@ -218,6 +240,7 @@ export class LineChart {
     tooltip.hide();
     const cross = this.container.querySelector(".ch-cross");
     if (cross) cross.setAttribute("visibility", "hidden");
+    for (const mark of this.container.querySelectorAll(".ch-hover")) mark.setAttribute("visibility", "hidden");
     if (this.options.onHover) this.options.onHover(null);
   }
 }
@@ -244,16 +267,16 @@ export class IntervalPlot {
   static render(container, rows, { xLabel = "", height, zeroLine = false, digits = 2 } = {}) {
     const width = measure(container, 420);
     const rowHeight = 26;
-    const total = height || rows.length * rowHeight + 46;
+    const total = height || rows.length * rowHeight + 30;
     const labelWidth = Math.min(150, 16 + 7 * Math.max(...rows.map((row) => row.label.length)));
-    const frame = new Frame(width, total, { left: labelWidth, right: 64, top: 6, bottom: 34 });
+    const frame = new Frame(width, total, { left: labelWidth, right: 64, top: 6, bottom: 24 });
     const values = rows.flatMap((row) => [row.mean, row.lo, row.hi]).filter(isNum);
     let [lo, hi] = Scale.extent(values, zeroLine);
     const pad = (hi - lo) * 0.08;
     lo -= pad;
     hi += pad;
     const x = new Scale([lo, hi], [frame.x0, frame.x1]);
-    const ticks = Scale.ticks(lo, hi, 5);
+    const ticks = Scale.ticks(lo, hi, 4);
 
     const grid = ticks.map((tick) => `<line class="ch-grid" x1="${x.map(tick)}" x2="${x.map(tick)}" y1="${frame.y1}" y2="${frame.y0}"></line><text class="ch-tick" x="${x.map(tick)}" y="${frame.y0 + 16}" text-anchor="middle">${Scale.tickText(tick, ticks)}</text>`).join("");
     const zero = zeroLine && lo < 0 && hi > 0 ? `<line class="ch-zero" x1="${x.map(0)}" x2="${x.map(0)}" y1="${frame.y1}" y2="${frame.y0}"></line>` : "";
@@ -265,7 +288,7 @@ export class IntervalPlot {
       return `<g data-tip="${esc(tip)}"><rect class="ch-hit" x="0" y="${cy - rowHeight / 2}" width="${width}" height="${rowHeight}"></rect><text class="ch-rowlabel" x="${frame.x0 - 10}" y="${cy + 4}" text-anchor="end">${esc(row.label)}</text>${whisker}${dot}<text class="ch-value" x="${frame.x1 + 8}" y="${cy + 4}">${fmtFixed(row.mean, digits)}</text></g>`;
     }).join("");
 
-    container.innerHTML = `${frame.open()}${grid}${zero}${marks}<text class="ch-label" x="${(frame.x0 + frame.x1) / 2}" y="${total - 4}" text-anchor="middle">${esc(xLabel)}</text></svg>`;
+    container.innerHTML = `${frame.open(xLabel ? ` aria-label="${esc(xLabel)}"` : "")}${grid}${zero}${marks}</svg>`;
     bindTips(container);
   }
 }
@@ -308,11 +331,11 @@ export class ColumnChart {
       return;
     }
     const width = measure(container, 360);
-    const frame = new Frame(width, height, { left: 44, right: 12, top: 24, bottom: 36 });
+    const frame = new Frame(width, height, MARGIN);
     const [lo, hi] = Scale.extent(usable.map((row) => row.value), true);
     const y = new Scale([lo, hi], [frame.y0, frame.y1]);
     const band = (frame.x1 - frame.x0) / rows.length;
-    const yTicks = Scale.ticks(lo, hi, 3);
+    const yTicks = Scale.ticks(lo, hi, 4);
     const grid = yTicks.map((tick) => `<line class="ch-grid" x1="${frame.x0}" x2="${frame.x1}" y1="${y.map(tick)}" y2="${y.map(tick)}"></line><text class="ch-tick" x="${frame.x0 - 6}" y="${y.map(tick) + 4}" text-anchor="end">${Scale.tickText(tick, yTicks)}</text>`).join("");
     const every = Math.max(1, Math.ceil(rows.length / Math.max(1, Math.floor((frame.x1 - frame.x0) / 28))));
     const bars = rows.map((row, index) => {
@@ -326,7 +349,7 @@ export class ColumnChart {
       return `${label}<rect class="ch-bar${onClick ? " is-link" : ""}" x="${cx - barWidth / 2}" y="${top}" width="${barWidth}" height="${size}" data-index="${index}" data-tip="${esc(tip)}"${onClick ? ` tabindex="0" role="link"` : ""}></rect>`;
     }).join("");
     const zero = `<line class="ch-zero" x1="${frame.x0}" x2="${frame.x1}" y1="${y.map(0)}" y2="${y.map(0)}"></line>`;
-    const labels = `<text class="ch-label" x="${(frame.x0 + frame.x1) / 2}" y="${height - 4}" text-anchor="middle">${esc(xLabel)}</text><text class="ch-label" x="2" y="${frame.y1 - 8}">${esc(yLabel)}</text>`;
+    const labels = frame.captions("", [yLabel, xLabel].filter((part) => part).join(" by "));
     container.innerHTML = `${frame.open()}${grid}${bars}${zero}${labels}${note ? `<text class="ch-note" x="${frame.x1}" y="${frame.y1 - 8}" text-anchor="end">${esc(note)}</text>` : ""}</svg>`;
     bindTips(container);
     if (onClick) {
@@ -350,15 +373,23 @@ export class Scatter {
       return;
     }
     const width = measure(container, 420);
-    const frame = new Frame(width, height, { left: 52, right: 16, top: 24, bottom: 36 });
-    let [lo, hi] = Scale.extent(usable.flatMap((point) => [point.x, point.y]));
-    const pad = (hi - lo) * 0.06;
-    lo -= pad;
-    hi += pad;
-    const x = new Scale([lo, hi], [frame.x0, frame.x1]);
-    const y = new Scale([lo, hi], [frame.y0, frame.y1]);
-    const ticks = Scale.ticks(lo, hi, 5);
-    const line = diagonal ? `<line class="ch-diagonal" x1="${x.map(lo)}" y1="${y.map(lo)}" x2="${x.map(hi)}" y2="${y.map(hi)}"></line>` : "";
+    const frame = new Frame(width, height, MARGIN);
+    const padded = (values) => {
+      const [low, high] = Scale.extent(values);
+      const pad = (high - low) * 0.06;
+      return [low - pad, high + pad];
+    };
+    const shared = padded(usable.flatMap((point) => [point.x, point.y]));
+    const own = [padded(usable.map((point) => point.x)), padded(usable.map((point) => point.y))];
+    const narrow = own.some((domain) => domain[1] - domain[0] < 0.25 * (shared[1] - shared[0]));
+    const [xDomain, yDomain] = narrow ? own : [shared, shared];
+    const x = new Scale(xDomain, [frame.x0, frame.x1]);
+    const y = new Scale(yDomain, [frame.y0, frame.y1]);
+    const xTicks = Scale.ticks(xDomain[0], xDomain[1], 4);
+    const yTicks = Scale.ticks(yDomain[0], yDomain[1], 4);
+    const lo = Math.max(xDomain[0], yDomain[0]);
+    const hi = Math.min(xDomain[1], yDomain[1]);
+    const line = diagonal && hi > lo ? `<line class="ch-diagonal" x1="${x.map(lo)}" y1="${y.map(lo)}" x2="${x.map(hi)}" y2="${y.map(hi)}"></line>` : "";
 
     let binned = "";
     if (bins > 1) {
@@ -376,7 +407,7 @@ export class Scatter {
 
     const dots = usable.map((point, index) => `<circle class="ch-point${onClick ? " is-link" : ""}" cx="${x.map(point.x).toFixed(1)}" cy="${y.map(point.y).toFixed(1)}" r="4" data-index="${index}" data-tip="${esc(Tooltip.rows(esc(point.title || ""), [[esc(xLabel), fmtFixed(point.x, digits)], [esc(yLabel), fmtFixed(point.y, digits)]]))}"${onClick ? ` tabindex="0" role="link"` : ""}></circle>`).join("");
 
-    container.innerHTML = `${frame.open()}${frame.axes(x, y, ticks, ticks, xLabel, yLabel)}${line}${binned}${dots}<text class="ch-note" x="${frame.x1}" y="${frame.y1 - 8}" text-anchor="end">n = ${usable.length}</text></svg>`;
+    container.innerHTML = `${frame.open()}${frame.axes(x, y, xTicks, yTicks, xLabel, yLabel)}${line}${binned}${dots}<text class="ch-note" x="${frame.x1}" y="${frame.y1 - 8}" text-anchor="end">n = ${usable.length}</text></svg>`;
     bindTips(container);
     if (onClick) {
       container.onclick = (event) => {
@@ -399,7 +430,7 @@ export class Histogram {
       return;
     }
     const width = measure(container, 360);
-    const frame = new Frame(width, height, { left: 44, right: 12, top: 24, bottom: 36 });
+    const frame = new Frame(width, height, MARGIN);
     const [lo, hi] = domain || Scale.extent(usable);
     const count = integer ? Math.round(hi - lo) + 1 : bins;
     const span = integer ? count : hi - lo;
@@ -408,7 +439,7 @@ export class Histogram {
     for (const value of usable) counts[Math.max(0, Math.min(count - 1, Math.floor(((value - start) / span) * count)))] += 1;
     const x = new Scale([start, start + span], [frame.x0, frame.x1]);
     const y = new Scale([0, Math.max(...counts)], [frame.y0, frame.y1]);
-    const yTicks = Scale.ticks(0, Math.max(...counts), 3).filter((tick) => Number.isInteger(tick));
+    const yTicks = Scale.ticks(0, Math.max(...counts), 4).filter((tick) => Number.isInteger(tick));
     const xTicks = integer ? counts.map((_, index) => lo + index) : Scale.ticks(lo, hi, 5);
     const bars = counts.map((value, index) => {
       const left = x.map(start + (span * index) / count) + 1;
@@ -417,7 +448,7 @@ export class Histogram {
       const label = integer ? String(lo + index) : `${fmtFixed(from, 2)} to ${fmtFixed(from + span / count, 2)}`;
       return `<rect class="ch-bar" x="${left}" y="${y.map(value)}" width="${Math.max(1, right - left)}" height="${frame.y0 - y.map(value)}" data-tip="${esc(Tooltip.rows(esc(xLabel), [[label, `${value} of ${usable.length}`]]))}"></rect>`;
     }).join("");
-    container.innerHTML = `${frame.open()}${frame.axes(x, y, xTicks, yTicks, xLabel, "count")}${bars}<text class="ch-note" x="${frame.x1}" y="${frame.y1 - 8}" text-anchor="end">n = ${usable.length}</text></svg>`;
+    container.innerHTML = `${frame.open()}${frame.axes(x, y, xTicks, yTicks, "", xLabel ? `count by ${xLabel}` : "count")}${bars}<text class="ch-note" x="${frame.x1}" y="${frame.y1 - 8}" text-anchor="end">n = ${usable.length}</text></svg>`;
     bindTips(container);
   }
 }

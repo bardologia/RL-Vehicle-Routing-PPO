@@ -1,7 +1,7 @@
 export class Tooltip {
   constructor() {
     this.node = document.createElement("div");
-    this.node.className = "tooltip glass";
+    this.node.className = "viz-tip glass";
     this.node.setAttribute("role", "tooltip");
     document.body.appendChild(this.node);
   }
@@ -41,8 +41,14 @@ export class Tooltip {
   }
 
   static rows(title, pairs) {
-    const body = pairs.filter((pair) => pair).map(([label, value]) => `<div class="tooltip__row"><span>${label}</span><b>${value}</b></div>`).join("");
-    return `${title ? `<div class="tooltip__title">${title}</div>` : ""}${body}`;
+    const shown = pairs.filter((pair) => pair);
+    const keyed = shown.some((pair) => pair[2]);
+    const body = shown.map(([label, value, swatch]) => `<span class="viz-tip__row${keyed ? "" : " viz-tip__row--plain"}">${keyed ? `<i${swatch ? ` style="--sw:${swatch}"` : ""}></i>` : ""}<span>${label}</span><b>${value}</b></span>`).join("");
+    return `${title ? `<span class="viz-tip__title">${title}</span>` : ""}${body}`;
+  }
+
+  static text(title, sentence) {
+    return `${title ? `<span class="viz-tip__title">${title}</span>` : ""}<span class="viz-tip__text">${sentence}</span>`;
   }
 }
 
