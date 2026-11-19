@@ -730,6 +730,7 @@ export class EpisodeView {
     if (stored && (stored.scope === "full" || stored.scope === scope)) return;
 
     this.verdicts.set(key, { status: "running", scope });
+    this.decision.reveal("teacher");
     this.decision.render({ trace: lane.trace, seq: frame.seq, verdictState: this.verdictState() });
     try {
       frame.decision.verdict = await api.post(`${this.traceUrl(lane.key)}/verdict`, { seq: frame.seq, scope });
