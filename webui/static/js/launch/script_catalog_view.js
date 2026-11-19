@@ -66,8 +66,7 @@ export class ScriptCatalogView {
       if (!items.length) return "";
       return `
         <section class="catalog__section">
-          <div class="catalog__sectionhead"><h2 class="catalog__sectiontitle">${esc(section.category)}</h2><span class="catalog__count">${items.length} ${items.length === 1 ? "entry point" : "entry points"}</span></div>
-          <p class="catalog__blurb">${esc(section.blurb)}</p>
+          <div class="catalog__sectionhead"><h2 class="catalog__sectiontitle" data-hint-title="${esc(section.category)}" data-hint="${esc(section.blurb)}">${esc(section.category)}</h2><span class="catalog__count">${items.length} ${items.length === 1 ? "entry point" : "entry points"}</span></div>
           <div class="catalog__grid">${items.map((script) => this.card(script)).join("")}</div>
         </section>`;
     }).join("");
@@ -87,7 +86,6 @@ export class ScriptCatalogView {
         <h3 class="script-card__title"><a class="script-card__link" href="#/launch/${esc(script.key)}">${esc(script.title)}</a></h3>
         <p class="script-card__purpose" title="${esc(script.purpose)}">${esc(script.purpose)}</p>
         <div class="script-card__foot">
-          <span class="script-card__class">${esc(script.config_class)}</span>
           <button type="button" class="btn btn--sm script-card__seq" data-role="sequence" data-key="${esc(script.key)}" data-title="${esc(script.title)}" title="Add this entry as a block to the active sequence">Add to sequence</button>
           <span class="script-card__go" aria-hidden="true">Configure</span>
         </div>

@@ -7,9 +7,9 @@
 .catalog__filters .chip b { margin-left: 2px; font-weight: 700; color: var(--ink-hint); }
 .catalog__filters .chip[aria-pressed="true"] b { color: var(--accent); }
 .catalog__section + .catalog__section { margin-top: 36px; }
-.catalog__sectionhead { display: flex; align-items: baseline; gap: 12px; }
+.catalog__sectionhead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
 .catalog__count { font-family: var(--mono); font-size: 11.5px; font-weight: 600; line-height: 1.45; color: var(--ink-hint); }
-.catalog__blurb { margin: 4px 0 16px; max-width: 80ch; font-size: 13px; line-height: 1.5; color: var(--ink-faint); }
+
 .catalog__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 .catalog__none { font-size: 13px; color: var(--ink-faint); }
 
@@ -24,8 +24,7 @@
 .script-card__link:focus-visible { outline: none; }
 .script-card:has(.script-card__link:focus-visible) { border-color: var(--accent); }
 .script-card__purpose { flex: 1; font-size: 13px; line-height: 1.5; color: var(--ink-faint); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
-.script-card__foot { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
-.script-card__class { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11.5px; font-weight: 600; line-height: 1.45; color: var(--ink-hint); }
+.script-card__foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 .script-card__seq { position: relative; z-index: 1; }
 .script-card__go { font-family: var(--sans); font-size: 12.5px; font-weight: 700; color: var(--accent); }
 
