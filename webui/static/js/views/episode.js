@@ -563,6 +563,8 @@ export class EpisodeView {
   }
 
   syncCover() {
+    if (!this.map) return;
+
     const overlay = getComputedStyle(this.drawer.root).position === "absolute";
     const cover = overlay ? this.map.root.getBoundingClientRect().bottom - this.drawer.root.getBoundingClientRect().top : 0;
     this.map.setCover(Math.max(0, Math.round(cover)));
