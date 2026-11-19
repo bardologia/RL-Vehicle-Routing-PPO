@@ -81,6 +81,7 @@ hairline-figure {
 .decision hairline-figure, .lab__right hairline-figure { --hairline-plate: var(--well); }
 .lab__band { height: 220px; border-bottom: 2px solid var(--line-card); }
 @media (max-height: 899px) { .lab__band { height: 160px; } }
+.lab__band > hairline-figure { width: min(100cqw, 125cqh); }
 .decision__band { border-bottom: 2px solid var(--line-card); }
 .sechead__figures hairline-figure[data-panel] { cursor: pointer; }
 .figure-empty--fail { gap: 12px; }
