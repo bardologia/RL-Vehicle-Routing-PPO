@@ -161,6 +161,8 @@ The console is a dark instrument for one researcher. Its standard is the Mercado
 
 Density rule: a 1920x1080 viewport holds about 100 to 230 words, of which fewer than 55 are in sentences, and fewer than 40 bordered boxes. Explanations are delivered through an info popover per card, tooltips, row expansion and the key sheet, never as a sentence beside a title.
 
+How the density rule is measured, re-baselined against the reference consoles. The share of characters set at 13px or above stays inside the range Mercado's own views measure (16 to 64 percent); on data views monospace carries at least 40 percent of the characters (Mercado measures 44 to 79). A table row rule is drawn once per row, on the row, and counts once; map data glyphs (stop, depot and label markers) are content, not boxes. The Launch catalogue and the Launch form follow the DLR consoles, where each entry point's purpose and each field's help are the content, so their prose and monospace shares are those of the DLR pages rather than of the data views.
+
 Layout is structural, not fluid: the two reference viewports are 1920x1080 and 1366x768; below 1100px wide the mast stacks and figures move under the text; nothing is hidden by a width or height breakpoint.
 
 ## Colors
