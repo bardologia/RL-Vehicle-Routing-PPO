@@ -68,7 +68,7 @@ export class BoardMarkup {
       [`${Math.round(limits.interval)} s`, "interval"],
       [`${Math.round(limits.cooldown)} s`, "kill cooldown"],
     ].map(([value, key]) => `<div class="sb-tile"><dt>${esc(key)}</dt><dd>${esc(value)}</dd></div>`).join("");
-    const info = infoText("The watchdog samples CPU, load, RAM and disk every interval and raises an alert when a reading crosses its limit.", "When RAM passes the kill limit and console jobs hold more than the own RAM share, it stops the largest console job, then waits the cooldown before it may stop another.", "Launch politeness sets the priority every new launch starts under. Auto-throttle lowers the priority of running console jobs once an alert blames them.");
+    const info = infoText("The watchdog samples CPU, load, RAM and disk every interval and raises an alert when a reading crosses its limit.", "When RAM passes the kill limit and your processes hold more than the own RAM share, it stops every running console job, then waits the cooldown before it may stop them again.", "Launch politeness sets the priority every new launch starts under. Auto-throttle lowers the priority of running console jobs once an alert blames them.", `Auto-nuke, when armed, runs Nuke jobs once a danger alert you cause has stood for ${Math.round(limits.nuke_after)} s, then waits ${Math.round(limits.nuke_cooldown)} s before it may fire again. Only the RAM alert at the kill limit with your share above the own RAM share counts as yours.`);
     return `
       <section class="panel span-4 sb-card sb-card--watch" aria-label="Watchdog">
         ${panelHead("Watchdog", { info, actions: `<span class="sb-light" data-role="wd-light" aria-hidden="true"></span><span class="sb-mode" data-role="wd-mode">--</span>` })}
@@ -81,6 +81,7 @@ export class BoardMarkup {
           <button type="button" class="btn btn--sm" data-role="detach" title="Detach the console server from this terminal and login session into its own systemd scope, so it survives logout and a closed terminal">Keep alive: off</button>
           <label class="ctl"><span class="ctl__label">Launch</span><select class="select" data-role="politeness" aria-label="Launch politeness" title="Priority every new launch starts under. Running jobs keep theirs."><option value="off">off</option><option value="polite">polite</option><option value="background">background</option></select></label>
           <button type="button" class="btn btn--sm" data-role="throttle" aria-pressed="false" title="When on, the first alert that blames console jobs drops them to nice 19 and idle I/O. Priorities only go down, so a throttled job stays throttled until it ends.">Auto-throttle</button>
+          <button type="button" class="btn btn--sm" data-role="auto-nuke" aria-pressed="false" title="When armed, nukes every console job and project script of yours once a danger alert you cause persists">Auto-nuke</button>
         </div>
       </section>`;
   }
@@ -418,6 +419,7 @@ export class StatusBoard {
     this.node("detach").addEventListener("click", () => this.detach());
     this.node("politeness").addEventListener("change", (event) => this.sendPoliteness({ level: event.target.value }, event.target));
     this.node("throttle").addEventListener("click", (event) => this.sendPoliteness({ auto_throttle: !this.politeness.auto_throttle }, event.currentTarget));
+    this.node("auto-nuke").addEventListener("click", (event) => this.armNuke(event.currentTarget));
     this.node("svc-check").addEventListener("click", () => this.app.pollHealth());
   }
 
@@ -459,6 +461,8 @@ export class StatusBoard {
     const rows = active.map((alert) => ({ level: alert.level, message: alert.message, time: alert.since })).concat(recent.map((event) => ({ level: event.level, message: event.message, time: event.time })));
     this.node("wd-alerts").innerHTML = rows.map((row) => `<div class="sb-alert sb-alert--${esc(row.level)}"><span class="sb-alert__time">${esc(row.time.slice(11, 19))}</span><span class="sb-alert__msg">${esc(row.message)}</span></div>`).join("");
 
+    this.renderAutoNuke(alerts.auto_nuke);
+
     const kinds = new Set(active.map((alert) => alert.kind));
     const lim = alerts.limits;
     const ratio = sys.cpu.count ? sys.cpu.load[0] / sys.cpu.count : 0;
@@ -466,6 +470,14 @@ export class StatusBoard {
     const limits = [lim.cpu_alert / 100, 0.8, lim.ram_warn / 100, 1 - lim.disk_warn / 100];
     const flags = [kinds.has("cpu"), kinds.has("load"), kinds.has("ram") || kinds.has("ram_kill"), kinds.has("disk")];
     FigureStates.write(this.node("wd-figure"), { armed: alerts.armed, gauges: levels.map((level, k) => ({ level: Math.round(level * 100) / 100, limit: limits[k], alert: flags[k] })) });
+  }
+
+  renderAutoNuke(armed) {
+    this.autoNuke = armed;
+    const button = this.node("auto-nuke");
+    button.setAttribute("aria-pressed", String(armed));
+    button.classList.toggle("is-warn", armed);
+    button.textContent = armed ? "Auto-nuke: armed" : "Auto-nuke: off";
   }
 
   renderServer(server) {
@@ -765,6 +777,21 @@ export class StatusBoard {
       this.renderServer(res);
     } catch (error) {
       this.app.toast.show(`Detach failed: ${error.message}`, "error");
+      button.disabled = false;
+    }
+  }
+
+  async armNuke(button) {
+    const arming = !this.autoNuke;
+    if (arming && !window.confirm("Arm auto-nuke: once a danger alert you cause has stood for about 30 s (RAM at the kill limit with most of it yours), this stops every console job and every project entry script running under your user, and clears the launch queue. The console itself is spared. Arm it?")) return;
+    button.disabled = true;
+    try {
+      const res = await api.post("/api/impact/arm", { armed: arming });
+      this.renderAutoNuke(res.auto_nuke);
+      this.app.toast.show(`Auto-nuke ${res.auto_nuke ? "armed" : "disarmed"}`, res.auto_nuke ? "warn" : "ok");
+    } catch (error) {
+      this.app.toast.show(`Auto-nuke toggle failed: ${error.message}`, "error");
+    } finally {
       button.disabled = false;
     }
   }

@@ -2,7 +2,7 @@
 
 Serves the machine snapshot enriched with the watchdog, politeness and server
 state, the GPU activity and host histories, the server's own log, and the
-nuke, keep-alive and shutdown controls.
+nuke, auto-nuke, keep-alive and shutdown controls.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ class SystemRouter(SubRouter):
         super().__init__(("/api/system", "/api/gpu-activity", "/api/host-history", "/api/impact", "/api/server-log"))
 
     def declare(self, table: RouteTable) -> None:
-        """Registers the snapshot, history, server-log, lifecycle and politeness routes."""
+        """Registers the snapshot, history, server-log, lifecycle, politeness and auto-nuke routes."""
         table.add("GET",  "/api/system",            self.snapshot)
         table.add("GET",  "/api/gpu-activity",      self.gpu_activity)
         table.add("GET",  "/api/host-history",      self.host_history)
@@ -52,6 +52,7 @@ class SystemRouter(SubRouter):
         table.add("POST", "/api/system/detach",     self.detach)
         table.add("POST", "/api/system/shutdown",   self.shutdown)
         table.add("POST", "/api/impact/politeness", self.configure_politeness)
+        table.add("POST", "/api/impact/arm",        self.arm_nuke)
 
     def snapshot(self, exchange: HttpExchange) -> None:
         """Answers with the host snapshot enriched with the alert, politeness and server state."""
@@ -103,3 +104,7 @@ class SystemRouter(SubRouter):
     def configure_politeness(self, exchange: HttpExchange) -> None:
         """Sets the launch politeness level and the auto-throttle flag from the request body."""
         exchange.send_result(self.politeness.configure(exchange.body or {}))
+
+    def arm_nuke(self, exchange: HttpExchange) -> None:
+        """Arms or disarms the watchdog's automatic nuke from the request body's "armed" flag and answers with the watchdog state."""
+        exchange.send_json(self.watchdog.arm(bool((exchange.body or {}).get("armed"))))

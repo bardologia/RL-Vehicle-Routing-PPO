@@ -68,3 +68,15 @@ def test_the_system_snapshot_carries_the_merged_sections(server):
     assert {"cpu", "mem", "disk", "gpus", "procs", "history", "alerts", "politeness", "server"} <= set(snapshot)
     assert snapshot["politeness"]["level"] in ("off", "polite", "background")
     assert snapshot["server"]["detached"] is False
+
+
+def test_the_auto_nuke_route_arms_and_disarms_the_watchdog(server):
+    """POST /api/impact/arm flips the watchdog's auto-nuke flag, and the system snapshot reports it."""
+    for armed in (True, False):
+        body    = json.dumps({"armed": armed}).encode("utf-8")
+        handler = FakeHandler("POST", "/api/impact/arm", body, {"Content-Type": "application/json"})
+        server.router.route(handler)
+
+        assert handler.status == 200
+        assert handler.payload()["auto_nuke"] is armed
+        assert json.loads(_get(server, "/api/system").wfile.getvalue())["alerts"]["auto_nuke"] is armed

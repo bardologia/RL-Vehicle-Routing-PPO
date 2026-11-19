@@ -122,7 +122,7 @@ class WebUIServer:
         self.throttle    = JobThrottle(self.nuke, self.logger)
         self.detacher    = ServerDetacher(self.paths, self.logger)
         self.system      = SystemMonitor(self.paths, self.logger)
-        self.watchdog    = ResourceWatchdog(self.processes, self.politeness, self.throttle, self.logger, self.paths)
+        self.watchdog    = ResourceWatchdog(self.processes, self.politeness, self.throttle, self.nuke, self.logger, self.paths)
         self.energy      = JobEnergyMeter(self.system, self.processes, self.logger)
         self.launcher    = RunLauncher(self.paths, self.logger, self.processes)
         self.run_configs = RunConfigReader(self.logger)

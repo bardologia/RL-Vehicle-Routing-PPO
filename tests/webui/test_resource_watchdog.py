@@ -2,8 +2,9 @@
 
 Covers the sustain and clear-margin logic of alerts, the RAM kill switch with
 its sustain, cooldown and memory-attribution guard, the auto-throttle fired by
-a raised CPU or load alert, CPU percentage from counter deltas, the attributed
-memory share, and the bounded event log.
+a raised CPU or load alert, the auto-nuke switch with its arming, sustain,
+attribution and cooldown guards, CPU percentage from counter deltas, the
+attributed memory share, and the bounded event log.
 """
 from __future__ import annotations
 
@@ -59,6 +60,23 @@ class StubThrottle:
         return {"ok": True, "processes": 2, "renice": 0, "ionice": 0, "error": ""}
 
 
+class StubNuke:
+    """Process nuke stand-in counting how often it fires.
+
+    Attributes:
+        calls : How many times nuke has been called.
+    """
+
+    def __init__(self) -> None:
+        """Starts with no recorded calls."""
+        self.calls = 0
+
+    def nuke(self) -> dict:
+        """Records the call and reports one cancelled queue entry, three signalled and one killed process."""
+        self.calls += 1
+        return {"ok": True, "cancelled": 1, "signalled": 3, "killed": 1}
+
+
 class SharedWatchdog(ResourceWatchdog):
     """Watchdog whose attributed memory share is a settable attribute instead of a /proc sweep.
 
@@ -75,9 +93,9 @@ class SharedWatchdog(ResourceWatchdog):
 
 @pytest.fixture
 def watchdog(tmp_path):
-    """Returns a watchdog wired to stub processes reporting two running jobs, a 0.9 memory share and auto-throttle off."""
+    """Returns a watchdog wired to stub processes reporting two running jobs, a 0.9 memory share, auto-throttle off and auto-nuke disarmed."""
     paths = StubPaths(tmp_path)
-    return SharedWatchdog(StubProcesses(), JobPoliteness(paths, WebLogger()), StubThrottle(), WebLogger(), paths)
+    return SharedWatchdog(StubProcesses(), JobPoliteness(paths, WebLogger()), StubThrottle(), StubNuke(), WebLogger(), paths)
 
 
 def _alert(watchdog: ResourceWatchdog, kind: str) -> dict | None:
@@ -85,10 +103,10 @@ def _alert(watchdog: ResourceWatchdog, kind: str) -> dict | None:
     return next((entry for entry in watchdog.state()["active"] if entry["kind"] == kind), None)
 
 
-def _breach(watchdog: ResourceWatchdog, kind: str, times: int, level: str = "warn") -> None:
-    """Feeds `times` consecutive breaching samples of the given kind and level."""
+def _breach(watchdog: ResourceWatchdog, kind: str, times: int, level: str = "warn", mine: bool = False) -> None:
+    """Feeds `times` consecutive breaching samples of the given kind, level and attribution."""
     for _ in range(times):
-        watchdog._track(kind, level, True, False, f"{kind} is over the line")
+        watchdog._track(kind, level, True, False, mine, f"{kind} is over the line")
 
 
 def test_an_alert_needs_a_sustained_breach(watchdog):
@@ -103,7 +121,7 @@ def test_an_alert_needs_a_sustained_breach(watchdog):
 def test_a_single_calm_sample_resets_the_streak(watchdog):
     """One non-breaching sample resets the streak, so the alert never fires."""
     _breach(watchdog, "cpu", ResourceWatchdog.SUSTAIN["cpu"] - 1)
-    watchdog._track("cpu", "warn", False, False, "calm")
+    watchdog._track("cpu", "warn", False, False, False, "calm")
     _breach(watchdog, "cpu", ResourceWatchdog.SUSTAIN["cpu"] - 1)
 
     assert _alert(watchdog, "cpu") is None
@@ -114,7 +132,7 @@ def test_an_active_alert_is_updated_in_place(watchdog):
     _breach(watchdog, "ram", ResourceWatchdog.SUSTAIN["ram"])
     since = _alert(watchdog, "ram")["since"]
 
-    watchdog._track("ram", "danger", True, False, "ram is critical")
+    watchdog._track("ram", "danger", True, False, False, "ram is critical")
     updated = _alert(watchdog, "ram")
 
     assert len(watchdog.state()["active"]) == 1
@@ -127,10 +145,10 @@ def test_an_alert_survives_until_the_clear_margin_is_crossed(watchdog):
     """An alert clears only when the sample falls below the clear margin."""
     _breach(watchdog, "ram", ResourceWatchdog.SUSTAIN["ram"])
 
-    watchdog._track("ram", "warn", False, False, "still elevated")
+    watchdog._track("ram", "warn", False, False, False, "still elevated")
     assert _alert(watchdog, "ram") is not None
 
-    watchdog._track("ram", "warn", False, True, "back to normal")
+    watchdog._track("ram", "warn", False, True, False, "back to normal")
     assert _alert(watchdog, "ram") is None
 
 
@@ -318,7 +336,7 @@ def test_a_ram_alert_never_throttles(watchdog):
 def test_the_attributed_share_divides_this_users_memory_by_the_used_memory(tmp_path, monkeypatch):
     """The memory share sums the attributed memory of this user's processes over the host's used memory."""
     paths    = StubPaths(tmp_path)
-    watchdog = ResourceWatchdog(StubProcesses(), JobPoliteness(paths, WebLogger()), StubThrottle(), WebLogger(), paths)
+    watchdog = ResourceWatchdog(StubProcesses(), JobPoliteness(paths, WebLogger()), StubThrottle(), StubNuke(), WebLogger(), paths)
     rows     = [{"uid": watchdog.uid, "attributed": 300}, {"uid": watchdog.uid, "attributed": None}, {"uid": watchdog.uid + 1, "attributed": 500}]
 
     monkeypatch.setattr(MemInfo, "fields", staticmethod(lambda: {"MemTotal": 2000, "MemAvailable": 1000}))
@@ -364,3 +382,121 @@ def test_ample_disk_space_raises_nothing(watchdog, monkeypatch):
         watchdog._evaluate()
 
     assert _alert(watchdog, "disk") is None
+
+
+def _sample_nuke(watchdog: ResourceWatchdog, times: int) -> None:
+    """Runs the auto-nuke check `times` times against the standing alerts."""
+    for _ in range(times):
+        watchdog._check_nuke()
+
+
+def test_arming_auto_nuke_is_reported_in_the_state(watchdog):
+    """Arming and disarming flip the auto-nuke flag the state reports, and disarming resets the streak."""
+    assert watchdog.state()["auto_nuke"] is False
+
+    assert watchdog.arm(True)["auto_nuke"] is True
+    watchdog.nuke_streak = 3
+
+    assert watchdog.arm(False)["auto_nuke"] is False
+    assert watchdog.nuke_streak == 0
+
+
+def test_an_armed_auto_nuke_fires_after_the_sustain_on_a_danger_alert_of_this_user(watchdog):
+    """A danger alert this user causes fires the nuke once after NUKE_SUSTAIN samples and records the event."""
+    watchdog.arm(True)
+    _breach(watchdog, "ram", ResourceWatchdog.SUSTAIN["ram"], "danger", True)
+
+    _sample_nuke(watchdog, ResourceWatchdog.NUKE_SUSTAIN - 1)
+    assert watchdog.nuke.calls == 0
+
+    _sample_nuke(watchdog, 1)
+    events = watchdog.state()["events"]
+
+    assert watchdog.nuke.calls == 1
+    assert events[-1]["kind"]  == "auto_nuke"
+    assert events[-1]["level"] == "danger"
+    assert "cancelled 1 queued, terminated 3, force-killed 1" in events[-1]["message"]
+
+
+def test_a_disarmed_auto_nuke_never_fires(watchdog):
+    """With auto-nuke disarmed a standing danger alert of this user's never fires the nuke."""
+    _breach(watchdog, "ram", ResourceWatchdog.SUSTAIN["ram"], "danger", True)
+    _sample_nuke(watchdog, ResourceWatchdog.NUKE_SUSTAIN * 3)
+
+    assert watchdog.nuke.calls == 0
+    assert watchdog.nuke_streak == 0
+
+
+def test_a_danger_alert_this_user_does_not_cause_never_fires_auto_nuke(watchdog):
+    """A danger alert not attributed to this user, such as a full disk, never fires the nuke."""
+    watchdog.arm(True)
+    _breach(watchdog, "disk", ResourceWatchdog.SUSTAIN["disk"], "danger", False)
+    _sample_nuke(watchdog, ResourceWatchdog.NUKE_SUSTAIN * 2)
+
+    assert watchdog.nuke.calls == 0
+
+
+def test_a_warn_alert_of_this_user_never_fires_auto_nuke(watchdog):
+    """A warn-level alert this user causes never fires the nuke."""
+    watchdog.arm(True)
+    _breach(watchdog, "ram", ResourceWatchdog.SUSTAIN["ram"], "warn", True)
+    _sample_nuke(watchdog, ResourceWatchdog.NUKE_SUSTAIN * 2)
+
+    assert watchdog.nuke.calls == 0
+
+
+def test_a_cleared_alert_resets_the_auto_nuke_streak(watchdog):
+    """A sample without a severe alert resets the streak, so the nuke needs a fresh sustained run."""
+    watchdog.arm(True)
+    _breach(watchdog, "ram", ResourceWatchdog.SUSTAIN["ram"], "danger", True)
+    _sample_nuke(watchdog, ResourceWatchdog.NUKE_SUSTAIN - 1)
+
+    watchdog._track("ram", "warn", False, True, False, "back to normal")
+    _sample_nuke(watchdog, 1)
+    _breach(watchdog, "ram", ResourceWatchdog.SUSTAIN["ram"], "danger", True)
+    _sample_nuke(watchdog, ResourceWatchdog.NUKE_SUSTAIN - 1)
+
+    assert watchdog.nuke.calls == 0
+
+
+def test_a_second_auto_nuke_waits_for_its_cooldown(watchdog):
+    """After firing, the nuke fires again only once its cooldown has elapsed."""
+    watchdog.arm(True)
+    _breach(watchdog, "ram", ResourceWatchdog.SUSTAIN["ram"], "danger", True)
+    _sample_nuke(watchdog, ResourceWatchdog.NUKE_SUSTAIN * 3)
+
+    assert watchdog.nuke.calls == 1
+
+    watchdog.last_nuke = time.monotonic() - ResourceWatchdog.NUKE_COOLDOWN - 1.0
+    _sample_nuke(watchdog, ResourceWatchdog.NUKE_SUSTAIN)
+
+    assert watchdog.nuke.calls == 2
+
+
+def test_evaluate_attributes_the_ram_danger_alert_and_fires_an_armed_auto_nuke(watchdog, monkeypatch):
+    """RAM at the kill limit with this user's share marks the RAM alert as this user's, and an armed auto-nuke fires once it persists."""
+    monkeypatch.setattr(watchdog, "_cpu_percent", lambda: 0.0)
+    monkeypatch.setattr(watchdog, "_ram_percent", lambda: ResourceWatchdog.RAM_KILL + 2.0)
+    monkeypatch.setattr(watchdog, "_disk_free", lambda: (50.0, 800.0))
+    watchdog.arm(True)
+
+    for _ in range(ResourceWatchdog.SUSTAIN["ram"] + ResourceWatchdog.NUKE_SUSTAIN - 1):
+        watchdog._evaluate()
+
+    assert _alert(watchdog, "ram")["mine"] is True
+    assert watchdog.nuke.calls == 1
+
+
+def test_evaluate_leaves_a_neighbours_ram_alert_unattributed(watchdog, monkeypatch):
+    """RAM at the kill limit held mostly by other users leaves the RAM alert unattributed and auto-nuke idle."""
+    monkeypatch.setattr(watchdog, "_cpu_percent", lambda: 0.0)
+    monkeypatch.setattr(watchdog, "_ram_percent", lambda: ResourceWatchdog.RAM_KILL + 2.0)
+    monkeypatch.setattr(watchdog, "_disk_free", lambda: (50.0, 800.0))
+    watchdog.share = ResourceWatchdog.MINE_SHARE - 0.2
+    watchdog.arm(True)
+
+    for _ in range(ResourceWatchdog.SUSTAIN["ram"] + ResourceWatchdog.NUKE_SUSTAIN * 2):
+        watchdog._evaluate()
+
+    assert _alert(watchdog, "ram")["mine"] is False
+    assert watchdog.nuke.calls == 0
