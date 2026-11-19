@@ -22,6 +22,7 @@ class GpuShelfFigure extends HairlineFigureBase {
     this.rest    = GpuShelfFigure.REST;
     this._layout();
     this._start(stage, svg);
+    this._tick(0, performance.now());
   }
 
   _scale(count) {
@@ -120,7 +121,9 @@ class GpuShelfFigure extends HairlineFigureBase {
       card.led.setAttribute("class", GpuShelfFigure.LIGHT[this.devices[k].holder]);
       card.spin.t = this._spin(this.devices[k].util);
     });
-    this._retarget(performance.now());
+    const now = performance.now();
+    this._retarget(now);
+    this._tick(0, now);
   }
 
   _retarget(now) {
