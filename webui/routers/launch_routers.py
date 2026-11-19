@@ -1,0 +1,416 @@
+"""API routes for browsing entry points, launching runs and following jobs.
+
+Covers the project and script catalog with resolved configuration layouts, the
+job list with its per-job control endpoints, the page-wide live-output channel
+the job streams are multiplexed over, the saved-run store, the store of
+importable config templates and the recorded settings of finished runs.
+"""
+
+from __future__ import annotations
+
+import json
+
+from config_registry        import ConfigRegistry
+from config_template_store  import ConfigTemplateStore
+from launch_layout          import LaunchLayout, LayoutError
+from process_manager        import ProcessManager
+from project_paths          import ProjectPaths
+from routers.dispatch       import HttpExchange, RouteTable, SubRouter
+from run_config_reader      import RunConfigReader
+from run_launcher           import RunLauncher
+from saved_run_store        import SavedRunStore
+from script_catalog         import ScriptCatalog
+from script_config_resolver import ScriptConfigResolver
+from stream_hub             import StreamChannel, StreamHub
+
+
+class CatalogRouter(SubRouter):
+    """Serves the project card, the entry-point catalog and each entry's config layout.
+
+    Attributes:
+        paths    : Project paths used to check that an entry point exists.
+        catalog  : Script catalog holding the entry-point metadata.
+        resolver : Resolver that imports the configuration into leaves.
+        layout   : Layout builder turning config leaves into console panels.
+        registry : Config registry describing every field.
+        launcher : Run launcher providing the preferred interpreter per entry.
+    """
+
+    PROJECT = {
+        "name"        : "RL-Vehicle-Routing-PPO",
+        "tagline"     : "Routing policy control console",
+        "description" : "A graph policy trained with PPO edits vehicle routing plans under disruptions, warm-started by cloning a regret-insertion teacher and judged against the teacher and two baselines.",
+        "pipelines"   : ["Pretraining", "Training", "Evaluation", "Diagnostics"],
+    }
+
+    def __init__(self, paths: ProjectPaths, catalog: ScriptCatalog, resolver: ScriptConfigResolver, layout: LaunchLayout, registry: ConfigRegistry, launcher: RunLauncher) -> None:
+        """Stores the catalog collaborators and declares the routes."""
+        self.paths    = paths
+        self.catalog  = catalog
+        self.resolver = resolver
+        self.layout   = layout
+        self.registry = registry
+        self.launcher = launcher
+
+        super().__init__(("/api/project", "/api/scripts"))
+
+    def declare(self, table: RouteTable) -> None:
+        """Registers the project card, script listing, detail and config routes."""
+        table.add("GET", "/api/project", self.project)
+        table.add("GET", "/api/scripts", self.scripts)
+        table.wildcard("GET", "/api/scripts/", "/config", self.script_config)
+        table.wildcard("GET", "/api/scripts/", "",        self.script_detail)
+
+    def project(self, exchange: HttpExchange) -> None:
+        """Answers with the project card: repo root, interpreters and counts."""
+        interpreters = self.paths.discover_interpreters()
+
+        exchange.send_json({
+            **self.PROJECT,
+            "repo_root"    : str(self.paths.repo_root),
+            "roots"        : {"runs": str(self.paths.runs_dir)},
+            "interpreters" : interpreters,
+            "preferred"    : self.paths.preferred_interpreter(interpreters),
+            "counts"       : {"scripts": len(self.catalog.list_scripts()), "pipelines": len(self.PROJECT["pipelines"])},
+        })
+
+    def scripts(self, exchange: HttpExchange) -> None:
+        """Answers with the catalog of available entry points."""
+        exchange.send_json({"scripts": self.catalog.list_scripts()})
+
+    def script_config(self, exchange: HttpExchange, key: str) -> None:
+        """Answers with one entry point's resolved config leaves, their descriptions and the console layout.
+
+        Args:
+            exchange : Request being answered.
+            key      : Entry-point key taken from the wildcard path segment.
+
+        Returns:
+            None. Answers 404 for an unknown entry point and a failed result when the layout cannot be built from the resolved leaves.
+        """
+        if not self.paths.has_script(key):
+            exchange.send_json({"error": f"unknown script '{key}'"}, 404)
+            return
+
+        result = self.resolver.resolve(key, self.launcher.preferred_interpreter(key))
+        if result.get("ok"):
+            try:
+                result = {**result, "layout": self.layout.build(key, result["leaves"]), "descriptions": self.registry.leaf_descriptions(result["leaves"])}
+            except LayoutError as exc:
+                result = {"ok": False, "error": str(exc)}
+
+        exchange.send_result(result)
+
+    def script_detail(self, exchange: HttpExchange, key: str) -> None:
+        """Answers with one entry point's metadata and source, or 404 when unknown."""
+        if not self.paths.has_script(key):
+            exchange.send_json({"error": f"unknown script '{key}'"}, 404)
+            return
+
+        detail = self.catalog.get_script(key)
+        if detail is None:
+            exchange.not_found()
+            return
+
+        exchange.send_json(detail)
+
+
+class RunConfigRouter(SubRouter):
+    """Serves the recorded settings of finished runs for the copy-from-run control.
+
+    Attributes:
+        reader : Reader mapping evaluation report meta blocks onto config paths.
+    """
+
+    def __init__(self, reader: RunConfigReader) -> None:
+        """Stores the run-config reader and declares the routes."""
+        self.reader = reader
+
+        super().__init__(("/api/run-config",))
+
+    def declare(self, table: RouteTable) -> None:
+        """Registers the copyable-run listing and the per-run config route."""
+        table.add("GET", "/api/run-config/runs", self.runs)
+        table.add("GET", "/api/run-config",      self.config)
+
+    def runs(self, exchange: HttpExchange) -> None:
+        """Answers with the runs below `base` that hold an evaluation report."""
+        exchange.send_result(self.reader.list_runs(exchange.text("base")))
+
+    def config(self, exchange: HttpExchange) -> None:
+        """Answers with the recorded settings of the run directory in `path`."""
+        exchange.send_result(self.reader.read(exchange.text("path")))
+
+
+class JobRouter(SubRouter):
+    """Serves the job list, the per-job control endpoints and the live-output channel.
+
+    A page follows any number of jobs over one server-sent-events channel,
+    subscribing and unsubscribing streams through the channel's POST routes.
+
+    Attributes:
+        paths     : Project paths used to validate entry-point keys.
+        processes : Process manager owning the jobs.
+        launcher  : Run launcher executing and queueing runs.
+        hub       : Stream hub multiplexing job streams onto page channels.
+    """
+
+    KEEPALIVE_S = 15.0
+
+    def __init__(self, paths: ProjectPaths, processes: ProcessManager, launcher: RunLauncher, hub: StreamHub) -> None:
+        """Stores the process manager, launcher and stream hub, then declares the routes."""
+        self.paths     = paths
+        self.processes = processes
+        self.launcher  = launcher
+        self.hub       = hub
+
+        super().__init__(("/api/run", "/api/jobs", "/api/stream"))
+
+    def declare(self, table: RouteTable) -> None:
+        """Registers the job listing, launch, per-job control and stream channel routes."""
+        table.add("GET",  "/api/jobs",   self.jobs)
+        table.add("POST", "/api/run",    self.run)
+        table.add("GET",  "/api/stream", self.stream)
+        table.wildcard("GET",  "/api/jobs/",   "/log",         self.log)
+        table.wildcard("POST", "/api/jobs/",   "/stop",        self.stop)
+        table.wildcard("POST", "/api/stream/", "/subscribe",   self.subscribe)
+        table.wildcard("POST", "/api/stream/", "/unsubscribe", self.unsubscribe)
+
+    def jobs(self, exchange: HttpExchange) -> None:
+        """Adopts orphaned entry scripts and answers with every job, newest first."""
+        self.processes.adopt_orphans()
+        exchange.send_json({"jobs": self.processes.list_jobs()})
+
+    def run(self, exchange: HttpExchange) -> None:
+        """Launches or queues the entry point described in the request body."""
+        body = exchange.body
+        key  = body.get("script_key", "")
+
+        if not self.paths.has_script(key):
+            exchange.send_json({"error": f"unknown script '{key}'"}, 404)
+            return
+
+        interpreter = body.get("interpreter") or self.launcher.preferred_interpreter(key)
+        result      = self.launcher.execute(key, interpreter, body.get("overrides", {}), body.get("follow_up") or None, bool(body.get("detach")), bool(body.get("queue")))
+        exchange.send_result(result)
+
+    def log(self, exchange: HttpExchange, job_id: str) -> None:
+        """Answers with the flattened transcript of one job's log."""
+        exchange.send_result(self.processes.job_log(job_id))
+
+    def stream(self, exchange: HttpExchange) -> None:
+        """Opens the page's live-output channel and pumps its events as server-sent events.
+
+        The page names its channel with the ``channel`` query parameter and
+        subscribes jobs to it through the channel's POST routes. The first frame
+        is a ``hello`` carrying the server's boot token, so a page that reconnects
+        can tell a restarted server, whose event ids started over, from a dropped
+        connection. A keepalive comment goes out after every KEEPALIVE_S seconds
+        of silence. The channel is released when the client leaves, unless a
+        reconnect has already replaced it.
+
+        Args:
+            exchange : Request being answered.
+
+        Returns:
+            None. Answers 400 when the channel parameter is missing.
+        """
+        channel_id = exchange.text("channel")
+
+        if not channel_id:
+            exchange.send_json({"ok": False, "error": "missing channel parameter"}, 400)
+            return
+
+        channel = self.hub.open(channel_id)
+        handler = exchange.handler
+
+        exchange.status = 200
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.send_header("Cache-Control", "no-cache")
+        handler.send_header("Connection", "keep-alive")
+        handler.end_headers()
+
+        try:
+            self._write_event(handler, {"type": "hello", "channel": channel_id, "boot": self.hub.boot})
+            self._pump_channel(handler, channel)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            self.hub.release(channel)
+
+    def _pump_channel(self, handler, channel: StreamChannel) -> None:
+        """Forwards the channel's events to the client until the channel closes."""
+        while True:
+            event = channel.next(self.KEEPALIVE_S)
+
+            if event is None:
+                handler.wfile.write(b": keepalive\n\n")
+                handler.wfile.flush()
+                continue
+
+            if event is StreamChannel.CLOSE:
+                return
+
+            self._write_event(handler, event)
+
+    @staticmethod
+    def _write_event(handler, event: dict) -> None:
+        """Writes one event as a server-sent-events data frame and flushes it."""
+        handler.wfile.write(f"data: {json.dumps(event)}\n\n".encode("utf-8"))
+        handler.wfile.flush()
+
+    def subscribe(self, exchange: HttpExchange, channel_id: str) -> None:
+        """Attaches a job's stream to the page's channel.
+
+        The body carries ``job_id``, ``unit`` (always null for routing jobs) and
+        ``after``, the last event id the page holds for that job.
+
+        Args:
+            exchange   : Request being answered.
+            channel_id : Channel id taken from the wildcard path segment.
+
+        Returns:
+            None. Answers 400 for a malformed body and 404 when the channel or the job is unknown.
+        """
+        request = self._channel_request(exchange)
+        if request is None:
+            return
+
+        job_id, unit = request
+        after        = exchange.body.get("after", -1)
+
+        if not isinstance(after, int) or isinstance(after, bool):
+            exchange.send_json({"ok": False, "error": f"after must be an integer event id, got {after!r}"}, 400)
+            return
+
+        exchange.send_result(self.hub.subscribe(channel_id, self.processes, job_id, unit, after), 404)
+
+    def unsubscribe(self, exchange: HttpExchange, channel_id: str) -> None:
+        """Detaches a job's stream from the page's channel; 400 for a malformed body, 404 for an unknown channel."""
+        request = self._channel_request(exchange)
+        if request is None:
+            return
+
+        job_id, unit = request
+        exchange.send_result(self.hub.unsubscribe(channel_id, job_id, unit), 404)
+
+    def _channel_request(self, exchange: HttpExchange) -> tuple[str, int | None] | None:
+        """Returns the job id and optional unit index of a channel request, or None after answering 400."""
+        job_id = exchange.body.get("job_id")
+        unit   = exchange.body.get("unit")
+
+        if not isinstance(job_id, str) or not job_id:
+            exchange.send_json({"ok": False, "error": "job_id must be a non-empty string"}, 400)
+            return None
+
+        if unit is not None and (not isinstance(unit, int) or isinstance(unit, bool)):
+            exchange.send_json({"ok": False, "error": f"unit must be an integer index or null, got {unit!r}"}, 400)
+            return None
+
+        return job_id, unit
+
+    def stop(self, exchange: HttpExchange, job_id: str) -> None:
+        """Stops the job addressed by the wildcard id."""
+        exchange.send_result(self.processes.stop(job_id))
+
+
+class SavedRunRouter(SubRouter):
+    """Serves the saved-run store: listing, saving, relaunching and deleting entries.
+
+    Attributes:
+        paths      : Project paths used to validate entry-point keys.
+        saved_runs : Store holding the saved run definitions.
+        launcher   : Run launcher validating interpreters and executing relaunches.
+    """
+
+    def __init__(self, paths: ProjectPaths, saved_runs: SavedRunStore, launcher: RunLauncher) -> None:
+        """Stores the saved-run store and launcher, then declares the routes."""
+        self.paths      = paths
+        self.saved_runs = saved_runs
+        self.launcher   = launcher
+
+        super().__init__(("/api/saved-runs",))
+
+    def declare(self, table: RouteTable) -> None:
+        """Registers the saved-run listing, save, launch and delete routes."""
+        table.add("GET",  "/api/saved-runs", self.listing)
+        table.add("POST", "/api/saved-runs", self.save)
+        table.wildcard("POST", "/api/saved-runs/", "/run",    self.launch)
+        table.wildcard("POST", "/api/saved-runs/", "/delete", self.remove)
+
+    def listing(self, exchange: HttpExchange) -> None:
+        """Answers with every saved run, newest first."""
+        exchange.send_json(self.saved_runs.list())
+
+    def save(self, exchange: HttpExchange) -> None:
+        """Saves the run definition in the body, filling in the preferred interpreter."""
+        body        = exchange.body
+        key         = body.get("script_key", "")
+        interpreter = body.get("interpreter", "")
+
+        if not interpreter and self.paths.has_script(key):
+            interpreter = self.launcher.preferred_interpreter(key)
+
+        error = self.launcher.interpreter_error(interpreter)
+        if error:
+            exchange.send_json({"ok": False, "error": error}, 400)
+            return
+
+        exchange.send_result(self.saved_runs.save({**body, "interpreter": interpreter}))
+
+    def launch(self, exchange: HttpExchange, saved_id: str) -> None:
+        """Relaunches a saved run, optionally through the queue; 404 when the entry is unknown or names a removed entry point."""
+        entry = self.saved_runs.get(saved_id)
+        if entry is None:
+            exchange.send_json({"ok": False, "error": "saved run not found"}, 404)
+            return
+
+        missing = [key for key in (entry["script"], entry["follow_up"]) if key and not self.paths.has_script(key)]
+        if missing:
+            exchange.send_json({"ok": False, "error": f"saved run points at removed entry point(s): {', '.join(missing)}"}, 404)
+            return
+
+        result = self.launcher.execute(entry["script"], entry["interpreter"], entry["overrides"], entry["follow_up"], entry["detach"], bool(exchange.body.get("queue")))
+        exchange.send_result(result)
+
+    def remove(self, exchange: HttpExchange, saved_id: str) -> None:
+        """Deletes the saved run addressed by the wildcard id."""
+        exchange.send_result(self.saved_runs.delete(saved_id))
+
+
+class ConfigTemplateRouter(SubRouter):
+    """Serves the config-template store: listing, saving, renaming and deleting templates.
+
+    Attributes:
+        templates : Store holding the config templates the forms import from.
+    """
+
+    def __init__(self, templates: ConfigTemplateStore) -> None:
+        """Stores the template store and declares the routes."""
+        self.templates = templates
+
+        super().__init__(("/api/config-templates",))
+
+    def declare(self, table: RouteTable) -> None:
+        """Registers the template listing, save, rename and delete routes."""
+        table.add("GET",  "/api/config-templates", self.listing)
+        table.add("POST", "/api/config-templates", self.save)
+        table.wildcard("POST", "/api/config-templates/", "/rename", self.rename)
+        table.wildcard("POST", "/api/config-templates/", "/delete", self.remove)
+
+    def listing(self, exchange: HttpExchange) -> None:
+        """Answers with every stored template, newest first."""
+        exchange.send_json(self.templates.list())
+
+    def save(self, exchange: HttpExchange) -> None:
+        """Stores the overrides in the body as a named template of its entry point."""
+        exchange.send_result(self.templates.save(exchange.body))
+
+    def rename(self, exchange: HttpExchange, template_id: str) -> None:
+        """Renames the template addressed by the wildcard id to the body's `name`."""
+        exchange.send_result(self.templates.rename(template_id, exchange.body.get("name", "")))
+
+    def remove(self, exchange: HttpExchange, template_id: str) -> None:
+        """Deletes the template addressed by the wildcard id."""
+        exchange.send_result(self.templates.delete(template_id))
