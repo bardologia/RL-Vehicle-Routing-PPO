@@ -68,14 +68,19 @@ export class LabView {
           <div class="segmented lab__tools" role="radiogroup" aria-label="Map tool"></div>
         </div>
         <aside class="lab__right">
-          <div class="fig-band lab__band">${HairlineFigure.html("fleet")}</div>
-          <section class="lab__block" data-role="editor"></section>
-          <section class="lab__block" data-role="summary"></section>
-          <section class="lab__block" data-role="run"></section>
-          <footer class="lab__foot" data-role="runfoot">
-            <button type="button" class="btn btn--primary" data-action="run" data-hint-title="Run agents" data-hint="Records one episode of this scenario with every selected agent and opens it in Episode.">${icon("play")}<span>Run agents</span></button>
-            <span class="lab__footnote" data-role="run-note"></span>
-          </footer>
+          <div class="lab__scroll">
+            <div class="fig-band lab__band">${HairlineFigure.html("fleet")}</div>
+            <section class="lab__block" data-role="editor"></section>
+            <section class="lab__block" data-role="summary"></section>
+          </div>
+          <div class="lab__dock">
+            <section class="lab__block" data-role="run"></section>
+            <footer class="lab__foot" data-role="runfoot">
+              <button type="button" class="btn btn--primary" data-action="run" data-hint-title="Run agents" data-hint="Records one episode of this scenario with every selected agent and opens it in Episode.">${icon("play")}<span>Run agents</span></button>
+              <button type="button" class="btn btn--sm btn--quiet" data-action="run-options" aria-haspopup="dialog" aria-expanded="false">Options</button>
+              <span class="lab__footnote" data-role="run-note"></span>
+            </footer>
+          </div>
         </aside>
       </div>`));
     const find = (role) => this.root.querySelector(`[data-role=${role}]`);
@@ -131,14 +136,11 @@ export class LabView {
       const more = event.target.closest("[data-action=plan-more]");
       if (more && this.plan) Popover.toggle(more, KpiStrip.planMoreHtml(this.plan.kpis), { label: "Plan measures" });
     });
-    this.runNode.addEventListener("click", (event) => {
-      const option = event.target.closest("button[data-disruption]");
-      if (!option) return;
-      for (const button of this.runNode.querySelectorAll("button[data-disruption]")) button.setAttribute("aria-checked", String(button === option));
-    });
     this.footNode.addEventListener("click", (event) => {
       const button = event.target.closest("[data-action=run]");
       if (button && !button.disabled) this.run();
+      const options = event.target.closest("[data-action=run-options]");
+      if (options) this.openRunOptions(options);
     });
     this.toolsNode.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-tool]");
@@ -666,36 +668,77 @@ export class LabView {
   }
 
   renderRun() {
+    if (!this.runOptions) this.runOptions = Store.read("lab.run", { rounds: 2, edits: 8, seed: 0, disruption: false });
     if (!this.runNode.querySelector("[data-role=picker]")) {
-      const saved = Store.read("lab.run", { rounds: 2, edits: 8, seed: 0, disruption: false });
-      const field = (name, label, value, ch) => `<label class="ctl"><span class="ctl__label">${label}</span><input class="input input--num" data-run="${name}" inputmode="numeric" style="--ch:${ch}" value="${value}"></label>`;
-      const option = (value, label) => `<button type="button" role="radio" data-disruption="${value}" aria-checked="${String(saved.disruption) === value}">${label}</button>`;
       this.runNode.innerHTML = `
-        <header class="lab__blockhead"><h3>Run agents</h3></header>
+        <span class="ctl__label">Agents</span>
         <div data-role="picker"></div>
-        <div class="ctls lab__runfields">
-          ${field("rounds", "Rounds", saved.rounds, 2)}${field("edits", "Edits", saved.edits, 2)}${field("seed", "Seed", saved.seed, 6)}
-          <span class="ctl" role="group" aria-label="Initial disruption"><span class="ctl__label" data-hint-title="Initial disruption" data-hint="Apply a disruption before the first round.">Disruption</span><span class="segmented" role="radiogroup" aria-label="Initial disruption">${option("false", "off")}${option("true", "on")}</span></span>
-        </div>
         <div data-role="run-error"></div>`;
       this.picker = new AgentPicker(this.runNode.querySelector("[data-role=picker]"), { checkpoints: this.checkpoints, preferredRun: this.app.context.run, storeKey: "lab.agents", teacherDefault: true });
     }
     const ready = this.solveState.status === "solved";
     this.footNode.querySelector("[data-action=run]").disabled = !ready;
-    this.footNode.querySelector("[data-role=run-note]").textContent = ready ? "" : "needs a solved plan";
+    this.writeRunNote();
+  }
+
+  writeRunNote() {
+    const options = this.runOptions;
+    const ready = this.solveState.status === "solved";
+    const summary = `${plural(options.rounds, "round")}, ${plural(options.edits, "edit")}, seed ${options.seed}${options.disruption ? ", disruption first" : ""}`;
+    this.footNode.querySelector("[data-role=run-note]").textContent = ready ? summary : "needs a solved plan";
+  }
+
+  runOptionsHtml() {
+    const options = this.runOptions;
+    const field = (name, label, value, ch) => `<label class="ctl"><span class="ctl__label">${label}</span><input class="input input--num" data-run="${name}" inputmode="numeric" style="--ch:${ch}" value="${value}"></label>`;
+    const option = (value, label) => `<button type="button" role="radio" data-disruption="${value}" aria-checked="${String(options.disruption) === value}">${label}</button>`;
+    return `
+      <header class="popover__head"><h3>Run options</h3></header>
+      <div class="ctls lab__runfields">
+        ${field("rounds", "Rounds", options.rounds, 2)}${field("edits", "Edits", options.edits, 2)}${field("seed", "Seed", options.seed, 6)}
+        <span class="ctl" role="group" aria-label="Initial disruption"><span class="ctl__label" data-hint-title="Initial disruption" data-hint="Apply a disruption before the first round.">Disruption</span><span class="segmented" role="radiogroup" aria-label="Initial disruption">${option("false", "off")}${option("true", "on")}</span></span>
+      </div>`;
+  }
+
+  openRunOptions(button) {
+    const node = Popover.toggle(button, this.runOptionsHtml(), { label: "Run options" });
+    if (!node) return;
+    node.addEventListener("input", (event) => {
+      const name = event.target.dataset.run;
+      if (!name) return;
+      this.runOptions = { ...this.runOptions, [name]: event.target.value.trim() === "" ? NaN : Number(event.target.value) };
+      this.saveRunOptions();
+    });
+    node.addEventListener("click", (event) => {
+      const option = event.target.closest("button[data-disruption]");
+      if (!option) return;
+      for (const other of node.querySelectorAll("button[data-disruption]")) other.setAttribute("aria-checked", String(other === option));
+      this.runOptions = { ...this.runOptions, disruption: option.dataset.disruption === "true" };
+      this.saveRunOptions();
+    });
+  }
+
+  saveRunOptions() {
+    const options = this.runOptions;
+    if (LabView.validRun(options)) Store.write("lab.run", options);
+    this.writeRunNote();
+  }
+
+  static validRun(options) {
+    return Number.isInteger(options.rounds) && options.rounds >= 1 && options.rounds <= 10 && Number.isInteger(options.edits) && options.edits >= 1 && options.edits <= 8 && Number.isInteger(options.seed) && options.seed >= 0;
   }
 
   async run() {
     const errorNode = this.runNode.querySelector("[data-role=run-error]");
     errorNode.innerHTML = "";
-    const read = (name) => this.runNode.querySelector(`[data-run=${name}]`);
-    const numbers = { rounds: Number(read("rounds").value), edits: Number(read("edits").value), seed: Number(read("seed").value) };
-    if (!Number.isInteger(numbers.rounds) || numbers.rounds < 1 || numbers.rounds > 10 || !Number.isInteger(numbers.edits) || numbers.edits < 1 || numbers.edits > 8 || !Number.isInteger(numbers.seed) || numbers.seed < 0) {
-      errorNode.innerHTML = errorBlock("Rounds are 1 to 10, edits per round 1 to 8, and the seed a whole number of zero or more.");
+    const options = this.runOptions;
+    if (!LabView.validRun(options)) {
+      errorNode.innerHTML = errorBlock("Rounds are 1 to 10, edits per round 1 to 8, and the seed a whole number of zero or more. Open Options to correct them.");
       return;
     }
-    const disruption = this.runNode.querySelector("button[data-disruption][aria-checked=true]").dataset.disruption === "true";
-    Store.write("lab.run", { ...numbers, disruption });
+    const numbers = { rounds: options.rounds, edits: options.edits, seed: options.seed };
+    const disruption = options.disruption;
+    Store.write("lab.run", options);
     const agents = this.picker.agents();
     if (!agents.length) {
       errorNode.innerHTML = errorBlock("Select at least one agent.");

@@ -302,7 +302,10 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 .lab { height: 100%; display: grid; grid-template-columns: clamp(280px, 20vw, 340px) minmax(0, 1fr) clamp(320px, 22vw, 400px); min-height: 0; background: var(--well); }
 .lab__left, .lab__right { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; background: var(--well); }
 .lab__left { border-right: 2px solid var(--line-card); }
-.lab__right { border-left: 2px solid var(--line-card); }
+.lab__right { border-left: 2px solid var(--line-card); overflow: hidden; }
+.lab__scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.lab__dock { flex: none; border-top: 2px solid var(--line-card); background: var(--well); }
+.lab__dock > .lab__block { border-bottom: 0; padding-bottom: 4px; }
 .lab__map { position: relative; min-height: 0; }
 .lab__block { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 16px; border-bottom: 2px solid var(--line-card); }
 .lab__block--grow { flex: 1 1 140px; min-height: 140px; padding-bottom: 0; }
@@ -336,7 +339,8 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 .lab__assign .chip { min-width: 34px; justify-content: center; }
 .lab__planactions { display: flex; flex-wrap: wrap; gap: var(--sp-8); }
 .lab__runfields { margin-top: 2px; }
-.lab__foot { position: sticky; bottom: 0; z-index: 2; flex: none; display: flex; align-items: center; gap: var(--sp-12); margin-top: auto; padding: 12px 14px; background: var(--well); border-top: 2px solid var(--line-card); }
+.lab__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px var(--sp-12); padding: 10px 14px 12px; }
+.lab__foot .lab__footnote { flex-basis: 100%; }
 .lab__footnote { font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1.5; color: var(--ink-faint); }
 .lab__tools { position: absolute; z-index: 1000; left: var(--sp-8); top: var(--sp-8); background: var(--glass-solid); }
 .lab__tools .icon { width: 13px; height: 13px; }
