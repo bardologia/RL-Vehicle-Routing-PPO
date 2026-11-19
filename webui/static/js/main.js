@@ -54,7 +54,8 @@ class App {
   bindHints() {
     let hinting = false;
     document.body.addEventListener("pointermove", (event) => {
-      const target = event.target instanceof Element ? event.target.closest("[data-hint]") : null;
+      const found = event.target instanceof Element ? event.target.closest("[data-hint]") : null;
+      const target = found && found.getAttribute("aria-expanded") !== "true" ? found : null;
       if (target) {
         tooltip.show(Tooltip.text(target.dataset.hintTitle ? esc(target.dataset.hintTitle) : "", esc(target.dataset.hint)), event.clientX, event.clientY);
         hinting = true;
