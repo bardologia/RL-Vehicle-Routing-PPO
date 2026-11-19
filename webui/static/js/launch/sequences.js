@@ -428,6 +428,8 @@ export class SequencesPage extends ConfigForm {
       const byId = new Map(this.current.blocks.filter((block) => block.block_id).map((block) => [block.block_id, block]));
       saved.entry.blocks.forEach((clean, index) => Object.assign(byId.get(clean.block_id) || this.current.blocks[index], clean));
       this.current.updated_at = saved.entry.updated_at;
+      const listed = this.sequences.find((entry) => entry.sequence_id === this.current.sequence_id);
+      if (listed) Object.assign(listed, { name: saved.entry.name, blocks: saved.entry.blocks, updated_at: saved.entry.updated_at });
       return true;
     } catch (error) {
       this.app.toast.show(error.message || "Save failed", "error");
