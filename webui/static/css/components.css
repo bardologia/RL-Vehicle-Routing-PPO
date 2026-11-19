@@ -385,6 +385,10 @@ a.chip--fail:hover, button.chip--fail:hover { color: var(--ink); border-color: v
 @property --fade-r { syntax: "<length>"; inherits: false; initial-value: 0px; }
 .scroll-x { overflow-x: auto; overscroll-behavior-x: contain; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%); animation: scrollCue linear both; animation-timeline: scroll(self inline); }
 @keyframes scrollCue { from { --fade-l: 0px; --fade-r: 36px; } to { --fade-l: 36px; --fade-r: 0px; } }
+@property --fade-t { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --fade-b { syntax: "<length>"; inherits: false; initial-value: 0px; }
+.scroll-y { overflow-y: auto; overscroll-behavior-y: contain; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 var(--fade-t), #000 calc(100% - var(--fade-b)), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 var(--fade-t), #000 calc(100% - var(--fade-b)), transparent 100%); animation: scrollCueY linear both; animation-timeline: scroll(self block); }
+@keyframes scrollCueY { from { --fade-t: 0px; --fade-b: 48px; } to { --fade-t: 48px; --fade-b: 0px; } }
 
 .kv { border-collapse: collapse; }
 .kv th { padding: 4px var(--sp-16) 4px 0; border-bottom: 1px solid var(--line-soft); font-size: 12.5px; font-weight: 600; line-height: 1.5; text-align: left; color: var(--ink-faint); white-space: nowrap; vertical-align: top; }

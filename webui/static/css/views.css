@@ -312,7 +312,7 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 .lab__dock > .lab__block { border-bottom: 0; padding-bottom: 4px; }
 .lab__map { position: relative; min-height: 0; }
 .lab__block { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 16px; border-bottom: 2px solid var(--line-card); }
-.lab__block--grow { flex: 1 1 140px; min-height: 140px; padding-bottom: 0; }
+.lab__block--grow { flex: 1 1 auto; min-height: 112px; padding-bottom: 0; }
 .lab__blockhead { display: flex; align-items: baseline; gap: var(--sp-8); min-width: 0; }
 .lab__blockhead h3 { flex: none; }
 .lab__blockhead .muted { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11.5px; font-weight: 600; line-height: 1.55; color: var(--ink-hint); }

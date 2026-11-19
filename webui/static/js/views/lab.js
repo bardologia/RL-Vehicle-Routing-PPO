@@ -46,6 +46,7 @@ export class LabView {
     this.root.appendChild(el(`
       <div class="lab">
         <aside class="lab__left">
+          <div class="fig-band lab__band">${HairlineFigure.html("fleet")}</div>
           <section class="lab__block" data-role="source"></section>
           <section class="lab__block lab__block--grow">
             <header class="lab__blockhead"><h3>Jobs</h3><span class="muted" data-role="job-count"></span></header>
@@ -60,8 +61,7 @@ export class LabView {
           <div class="segmented lab__tools" role="radiogroup" aria-label="Map tool"></div>
         </div>
         <aside class="lab__right">
-          <div class="lab__scroll">
-            <div class="fig-band lab__band">${HairlineFigure.html("fleet")}</div>
+          <div class="lab__scroll scroll-y">
             <section class="lab__block" data-role="editor"></section>
             <section class="lab__block" data-role="summary"></section>
           </div>
