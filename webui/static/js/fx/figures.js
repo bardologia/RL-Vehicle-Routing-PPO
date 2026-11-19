@@ -298,6 +298,7 @@ class FxTermsFigure extends HairlineFigureBase {
 
   constructor({ stage, svg }, value) {
     super(svg, value, FxTermsFigure.SCALE);
+    this.parked = true;
     this.light = new FxLight();
     this.clock = 0;
     this.tour  = { at: 0, since: 0, hop: null };
@@ -2525,6 +2526,8 @@ class FxCheckpointFigure extends HairlineFigureBase {
   static SCAN_S  = 1.1;
   static REST_S  = 4.6;
   static BUMP    = 0.6;
+  static BREATH  = 0.45;
+  static BREATH_S = 2.4;
   static STATES  = ["loadable", "incompatible", "none"];
   static KINDS   = ["ppo", "pretrain"];
   static DEFAULT = { slots: [{ state: "loadable", report: true, kind: "ppo" }, { state: "loadable", report: true, kind: "pretrain" }, { state: "loadable", report: false, kind: "ppo" }, { state: "incompatible", report: false, kind: "pretrain" }, { state: "none", report: false, kind: "pretrain" }, { state: "incompatible", report: false, kind: "ppo" }], selected: 0 };
@@ -2622,10 +2625,12 @@ class FxCheckpointFigure extends HairlineFigureBase {
     const period = B * FxCheckpointFigure.SCAN_S + FxCheckpointFigure.REST_S;
     const t      = this.clock % period;
     const pos    = still || t > B * FxCheckpointFigure.SCAN_S ? -1 : t / FxCheckpointFigure.SCAN_S - 0.5;
+    const lit    = this.chosen === null ? this.rest : this.chosen;
+    const breath = still ? 0 : FxCheckpointFigure.BREATH * (0.5 - 0.5 * Math.cos((2 * Math.PI * this.clock) / FxCheckpointFigure.BREATH_S));
     let moving   = false;
     for (const slot of this.slots) {
       if (!HL.tdone(slot.lw, now)) moving = true;
-      const bump = pos < -0.9 ? 0 : FxCheckpointFigure.BUMP * Math.max(0, 1 - Math.abs(pos - slot.b));
+      const bump = (pos < -0.9 ? 0 : FxCheckpointFigure.BUMP * Math.max(0, 1 - Math.abs(pos - slot.b))) + (slot.index === lit ? breath : 0);
       const at   = this.shift.of(0, HL.tval(slot.lw, now), bump);
       if (at === slot.at) continue;
       slot.at    = at;
