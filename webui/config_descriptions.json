@@ -1,0 +1,225 @@
+{
+  "sections": {
+    "service": "Connection to the two routing services the environment depends on: VROOM solves the vehicle routing plans and OSRM supplies the road travel times. The config names their endpoints, the size of the in-process cache of VROOM solutions and the solver options passed with every request.",
+    "io": "Filesystem layout of a run: where run directories live, what the run is called, where its logs go, which checkpoint file it writes, and which earlier run it resumes or warm-starts from.",
+    "environment": "The scenario generator and the disruption process. A scenario places a depot and a set of jobs and vehicles around a city centre; an episode then alternates disruption rounds (jobs and vehicles added or removed after an exponential gap) with edit bursts by the agent. The config sets the area, the job and fleet size distributions, service times, disruption gaps and event counts, and the base seed of the sampler.",
+    "learning": "Optimiser schedule of PPO training: one learning rate per network head with warmup and decay to a floor, and the annealed entropy bonus that keeps the operator, vehicle and job distributions exploratory early in training.",
+    "model": "Architecture of the graph policy: the input feature widths fixed by the state encoder, the operator and context embeddings, the graph neural network over jobs and vehicles, and the hidden widths of the actor heads and the critic.",
+    "training": "The PPO training loop and the episode caps shared by every entry point: device, number of updates, episodes collected per update, minibatching and epochs, the number of disruption rounds per episode and the edit cap per round.",
+    "reward": "The reward the agent maximises: weighted changes of route distance, unassigned jobs, idle vehicles and unassigned priority, minus a fixed cost per operator and a cost per job moved between vehicles, with unassigned work accruing a holding cost over the time until the next disruption.",
+    "ppo": "Proximal policy optimisation: discounting and advantage estimation, the clipped surrogate objective, value loss and gradient clipping, the KL threshold that stops an update early, and the annealed KL anchor to the initial policy that protects a behaviour-cloned warm start.",
+    "pretraining": "Behaviour cloning of the regret-insertion teacher: how many teacher episodes are collected, how they are rolled out in parallel, and the epochs, batch size and learning rate of the supervised fit that warm-starts the policy before PPO.",
+    "evaluation": "The held-out evaluation that writes a run's evaluation report: number of episodes, the base seed of the held-out band and whether the policy acts greedily.",
+    "telemetry": "Sampling gates of the TensorBoard telemetry written during training: how often step, episode, sample and per-layer gradient statistics are logged.",
+    "inference": "Single-episode inference: the scenario seed of the random episode and whether the policy acts greedily.",
+    "monitor": "Resource monitor running beside training: polling interval, whether it logs to TensorBoard, and the RAM, VRAM, swap and shared-memory levels that raise a warning.",
+    "diagnostics": "Trace recording for the Diagnose tab: the held-out episodes, the agents recorded on each, whether the model also records a sampled twin, and how much of the teacher's decision table is computed on every model decision."
+  },
+  "configs": {
+    "service::ServiceConfig": {
+      "summary": "Endpoints and solver options of the VROOM and OSRM services",
+      "fields": {
+        "vroom_url": "Base URL of the VROOM solver the environment sends every routing problem to",
+        "osrm_url": "Base URL of the OSRM server that answers travel-time tables and route geometry",
+        "solve_cache_limit": "Maximum number of VROOM solutions kept in the in-process cache before it is cleared",
+        "options": "Solver options sent with every VROOM request, such as g for returning route geometry; not overridable from the command line",
+        "_http_session": "Shared HTTP session with a pooled adapter, created on first use; internal, not a setting"
+      }
+    },
+    "io::IOConfig": {
+      "summary": "Run directory, log directory, checkpoint name and the run to resume or warm-start from",
+      "fields": {
+        "runs_dir": "Directory holding every run directory, relative to the repository root",
+        "run_name": "Run directory under runs_dir; empty picks a timestamped name for training and must name an existing run for evaluate, infer and diagnose",
+        "logdir": "Directory of the run's logs and TensorBoard events; empty uses the run directory",
+        "checkpoint_filename": "File name of the policy checkpoint inside the run directory",
+        "resume_from_run": "Run whose checkpoint and optimiser state training continues from; exclusive with init_from_run",
+        "init_from_run": "Run whose weights initialise a new training run, typically a behaviour-cloning pretrain; exclusive with resume_from_run"
+      }
+    },
+    "environment::EnvironmentConfig": {
+      "summary": "Scenario area, job and fleet distributions, service times and the disruption process",
+      "fields": {
+        "center": "City centre as longitude, latitude in degrees; jobs and the depot are placed around it",
+        "radius": "Radius in km of the disc jobs are sampled in, before the outlier multiplier",
+        "depot_radius": "Radius in km of the disc around the centre the depot is placed in",
+        "depot_service": "Unloading time in s at the depot after a repossession pickup; must match the value the console's VROOM client uses",
+        "repossession_fraction": "Share of jobs that are repossession pickups rather than support visits",
+        "repossession_success_probability": "Probability that a repossession pickup finds the motorcycle and returns it to the depot",
+        "support_service_min": "Lower bound in s of the uniform service time of a support visit",
+        "support_service_max": "Upper bound in s of the uniform service time of a support visit",
+        "repossession_service_min": "Lower bound in s of the uniform service time of a repossession pickup",
+        "repossession_service_max": "Upper bound in s of the uniform service time of a repossession pickup",
+        "job_setup_min": "Lower bound in s of the uniform setup time added before a job",
+        "job_setup_max": "Upper bound in s of the uniform setup time added before a job",
+        "disruption_gap_mean": "Mean in s of the exponential wait until the next disruption; vehicles execute their routes forward by the sampled wait",
+        "disruption_gap_min": "Lower clamp in s on the sampled wait between disruptions",
+        "disruption_gap_max": "Upper clamp in s on the sampled wait between disruptions",
+        "min_vehicles": "Smallest fleet a scenario may have",
+        "min_jobs": "Smallest number of jobs a scenario may start with",
+        "mean_jobs": "Mean of the normal distribution of the initial job count",
+        "std_jobs": "Standard deviation of the initial job count",
+        "mean_vehicles": "Mean of the normal distribution of the fleet size",
+        "std_vehicles": "Standard deviation of the fleet size",
+        "reset_max_attempts": "Number of scenarios sampled at reset before giving up when VROOM finds no solution",
+        "scenario_seed": "Base seed of inline scenario sampling; training episode i uses scenario_seed plus i",
+        "outlier_frequency": "One job in this many is an outlier placed farther out; 0 disables outliers",
+        "outlier_multiplier": "Factor applied to the radius for outlier jobs",
+        "job_insert_min": "Fewest jobs added by one job-insertion disruption",
+        "job_insert_max": "Most jobs added by one job-insertion disruption",
+        "job_remove_min": "Fewest jobs cancelled by one job-removal disruption",
+        "job_remove_max": "Most jobs cancelled by one job-removal disruption",
+        "vehicle_insert_min": "Fewest vehicles added by one vehicle-insertion disruption",
+        "vehicle_insert_max": "Most vehicles added by one vehicle-insertion disruption",
+        "vehicle_remove_min": "Fewest vehicles withdrawn by one vehicle-removal disruption",
+        "vehicle_remove_max": "Most vehicles withdrawn by one vehicle-removal disruption"
+      }
+    },
+    "learning::LearningRate": {
+      "summary": "Per-head learning rates with linear warmup and decay to a floor",
+      "fields": {
+        "lr_operator_actor": "Learning rate of the operator head that chooses insert, remove or do nothing",
+        "lr_vehicle_actor": "Learning rate of the vehicle head",
+        "lr_critic": "Learning rate of the value head",
+        "lr_embedding": "Learning rate of the graph encoder shared by all heads",
+        "lr_job_actor": "Learning rate of the job head",
+        "lr_operator_embedding": "Learning rate of the operator embedding that conditions the vehicle and job heads",
+        "lr_min": "Floor every learning rate decays to",
+        "lr_warmup_fraction": "Share of the projected optimiser steps spent warming up linearly from zero",
+        "lr_decay_fraction": "Share of the projected optimiser steps over which the rates decay to lr_min"
+      }
+    },
+    "learning::Entropy": {
+      "summary": "Annealed entropy bonus of the policy loss",
+      "fields": {
+        "entropy_start": "Entropy coefficient at the start of training",
+        "entropy_end": "Entropy coefficient at the end of the anneal",
+        "entropy_anneal_fraction": "Share of training over which the coefficient anneals from start to end"
+      }
+    },
+    "model::ModelConfig": {
+      "summary": "Input widths, embeddings and hidden sizes of the graph policy",
+      "fields": {
+        "job_input_dim": "Number of features per job node; fixed by the state encoder",
+        "vehicle_input_dim": "Number of features per vehicle node; fixed by the state encoder",
+        "edge_attr_dim": "Number of features per job-vehicle edge; fixed by the state encoder",
+        "context_input_dim": "Number of global context features; fixed by the state encoder",
+        "num_operators": "Number of operators the policy chooses from: insert, remove and do nothing",
+        "operator_embedding_dim": "Width of the embedding of the chosen operator",
+        "context_embedding_dim": "Width of the embedding of the global context",
+        "gnn_num_layers": "Number of message-passing layers of the graph encoder",
+        "policy_gnn_hidden_channels": "Hidden width of the graph encoder layers",
+        "policy_embedding_dim": "Width of the node embeddings the heads read",
+        "policy_actor_hidden_1": "First hidden width of the actor heads",
+        "policy_actor_hidden_2": "Second hidden width of the actor heads",
+        "value_critic_hidden_1": "First hidden width of the critic",
+        "value_critic_hidden_2": "Second hidden width of the critic"
+      }
+    },
+    "training::TrainingConfig": {
+      "summary": "Device, loop sizes and episode caps of training",
+      "fields": {
+        "device": "Torch device of the policy, cuda or cpu",
+        "max_disruptions_per_episode": "Number of disruption rounds per episode; each round is a disruption followed by the agent's edit burst",
+        "max_edits_per_round": "Most edits the agent may make at frozen time before the world advances; choosing do nothing ends the burst early",
+        "num_updates": "Number of PPO updates; each collects episodes_per_update fresh episodes",
+        "episodes_per_update": "Episodes collected per PPO update",
+        "minibatch_size": "Transitions per gradient step",
+        "expected_edits_per_round": "Expected edits per round, used only to project the number of optimiser steps for the learning-rate schedule",
+        "num_epochs": "Passes over the collected batch per update",
+        "use_mixed_precision": "Run the forward and backward passes in mixed precision",
+        "large_negative_value": "Logit given to masked actions so they get zero probability"
+      }
+    },
+    "reward::RewardConfig": {
+      "summary": "Weights of the plan cost terms and the costs of each edit",
+      "fields": {
+        "distance_weight": "Weight per km of planned route distance",
+        "unassigned_penalty_weight": "Penalty per unassigned job",
+        "idle_penalty_weight": "Penalty per vehicle with no stops",
+        "priority_penalty_weight": "Penalty per unit of priority left unassigned",
+        "add_job_cost": "Fixed cost of an insert edit",
+        "remove_job_cost": "Fixed cost of a remove edit",
+        "no_action_cost": "Fixed cost of choosing do nothing",
+        "disruption_cost": "Cost per job an edit moves to another vehicle",
+        "holding_reference_seconds": "Seconds over which an unassigned job accrues its full unassigned and priority cost while the world advances"
+      }
+    },
+    "ppo::PPOConfig": {
+      "summary": "Discounting, clipped objective, early stopping and the KL anchor",
+      "fields": {
+        "gamma": "Discount factor of returns; also discounts the teacher's plan value in pretraining",
+        "gae_lambda": "Lambda of generalised advantage estimation",
+        "clip_ratio": "Clip range of the probability ratio in the surrogate objective",
+        "value_loss_coef": "Weight of the value loss in the total loss",
+        "gradient_clip_max_norm": "Maximum global gradient norm",
+        "kl_divergence_threshold": "Approximate KL to the collecting policy at which an update stops its remaining epochs",
+        "anchor_kl_start": "Weight of the KL penalty to the initial policy at the start of training; 0 disables the anchor",
+        "anchor_kl_end": "Weight of the KL anchor at the end of its anneal",
+        "anchor_anneal_fraction": "Share of training over which the anchor weight anneals"
+      }
+    },
+    "pretraining::PretrainConfig": {
+      "summary": "Teacher rollouts and the supervised fit of behaviour cloning",
+      "fields": {
+        "episodes": "Number of teacher episodes collected as cloning data",
+        "bc_epochs": "Passes over the collected teacher decisions",
+        "minibatch_size": "Decisions per gradient step",
+        "lr": "Learning rate of the cloning fit",
+        "value_loss_coef": "Weight of the value regression on the teacher's returns",
+        "gradient_clip_max_norm": "Maximum global gradient norm",
+        "plan_horizon": "Number of insertions the teacher's greedy plan looks ahead, capped by the edits left in the round",
+        "collect_workers": "Fork workers for teacher rollouts; 0 means the CPU count minus 2",
+        "collect_batch_size": "Episodes handed to a worker at a time"
+      }
+    },
+    "evaluation::EvaluationConfig": {
+      "summary": "Held-out evaluation of a checkpoint against the baselines",
+      "fields": {
+        "episodes": "Number of held-out episodes",
+        "seed": "Base seed of the held-out band; must not overlap the training band starting at the scenario seed",
+        "greedy": "Take the most probable action; sampling is not comparable with the deterministic baselines"
+      }
+    },
+    "telemetry::TelemetryConfig": {
+      "summary": "How often training telemetry is logged",
+      "fields": {
+        "step_every": "Log step statistics every this many steps",
+        "episode_every": "Log episode statistics every this many episodes",
+        "sample_every": "Log sampled decision details every this many samples",
+        "layer_gradients_every": "Log per-layer gradient norms every this many gradient steps"
+      }
+    },
+    "inference::InferenceConfig": {
+      "summary": "Seed and action selection of a single inference episode",
+      "fields": {
+        "seed": "Scenario seed of the random episode",
+        "greedy": "Take the most probable action instead of sampling"
+      }
+    },
+    "monitor::MonitorConfig": {
+      "summary": "Resource monitor thresholds during training",
+      "fields": {
+        "enabled": "Run the resource monitor beside training",
+        "poll_interval_sec": "Seconds between two resource readings",
+        "log_to_tensorboard": "Write the readings to TensorBoard",
+        "warn_ram_pct": "RAM use in percent that raises a warning",
+        "warn_vram_pct": "GPU memory use in percent that raises a warning",
+        "warn_swap_pct": "Swap use in percent that raises a warning",
+        "warn_shm_pct": "Shared-memory use in percent that raises a warning",
+        "warn_cooldown_sec": "Seconds before the same warning may repeat"
+      }
+    },
+    "diagnostics::DiagnosticsConfig": {
+      "summary": "Episodes, agents and teacher verdicts of trace recording",
+      "fields": {
+        "seed": "Base seed of the episode band; when the run holds an evaluation report for this seed, environment, reward and caps are taken from it",
+        "episodes": "Number of episodes recorded",
+        "agents": "Agents recorded on every episode, a subset of model, teacher, insertion_only and do_nothing; a teacher trace takes 30 to 150 s per episode",
+        "greedy": "The model takes its most probable action",
+        "sampled_twin": "Also record the model sampling from its distribution, as agent model_sampled",
+        "teacher_verdict": "Teacher table computed on every model decision: none, insertions (0.5 to 3 s per decision) or full (up to 17 s)"
+      }
+    }
+  }
+}

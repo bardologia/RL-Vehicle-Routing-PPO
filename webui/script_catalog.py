@@ -1,218 +1,106 @@
-from dataclasses import fields
-from typing      import Union, get_args, get_origin
+"""Curated metadata of every console entry point.
 
-from configuration import Config
+Holds the title, category and purpose text shown for each routing entry
+script, lists the entries that exist on disk, and returns one entry's detail
+with its source for the launch page.
+"""
+
+from __future__ import annotations
+
+from project_paths          import ProjectPaths
+from script_config_resolver import ScriptConfigResolver
 
 
 class ScriptCatalog:
-    META = {
-        "training.device"            : {"label": "Device", "choices": ["cuda", "cpu"]},
-        "io.run_name"                : {"label": "Run name", "help": "Run directory under runs/. Empty picks a timestamped name."},
-        "io.runs_dir"                : {"label": "Runs directory"},
-        "io.checkpoint_filename"     : {"label": "Checkpoint file"},
-        "io.resume_from_run"         : {"label": "Resume from run", "help": "Continue this run with its optimizer state. Mutually exclusive with init."},
-        "io.init_from_run"           : {"label": "Init from run", "help": "Warm-start weights from this run (e.g. a BC pretrain). Mutually exclusive with resume."},
-        "training.num_updates"       : {"label": "Updates", "help": "Number of PPO updates; each collects episodes_per_update fresh episodes."},
-        "training.episodes_per_update" : {"label": "Episodes per update"},
-        "env.scenario_seed"          : {"label": "Scenario seed", "help": "Base seed for inline scenario sampling; episode i uses scenario_seed + i."},
-        "env.center"                 : {"label": "Center (lon, lat)"},
-        "training.max_disruptions_per_episode" : {"label": "Disruptions / episode", "help": "Number of disruption rounds per episode; each round is a disruption plus the agent's response burst."},
-        "training.max_edits_per_round"         : {"label": "Edit cap / round", "help": "Maximum edits the agent may make at frozen time before the world advances. Choosing operator 2 ends the burst early."},
-        "service.vroom_url"          : {"label": "VROOM URL"},
-        "service.osrm_url"           : {"label": "OSRM URL"},
-        "evaluation.episodes"        : {"label": "Episodes"},
-        "evaluation.seed"            : {"label": "Seed", "help": "Base seed for the held-out set. Must not overlap the training band starting at the scenario seed."},
-        "evaluation.greedy"          : {"label": "Greedy policy", "help": "Take the argmax action. Off samples the policy, which is not comparable with the deterministic baselines."},
-        "inference.seed"             : {"label": "Scenario seed"},
-        "inference.greedy"           : {"label": "Greedy policy"},
-        "reward.holding_reference_seconds" : {"label": "Holding reference (s)", "help": "Seconds over which an unassigned job accrues its full unassigned and priority cost."},
-        "pretrain.collect_workers"   : {"label": "Collection workers", "help": "Fork workers for teacher rollouts. 0 means cpu_count - 2."},
-        "pretrain.collect_batch_size": {"label": "Collection batch size"},
-        "service.solve_cache_limit"  : {"label": "Solve cache entries"},
-        "env.disruption_gap_mean"    : {"label": "Gap mean (s)", "help": "Mean of the exponential wait until the next disruption; vehicles execute forward by the sampled wait."},
-        "env.disruption_gap_min"     : {"label": "Gap min (s)", "help": "Lower clamp on the sampled wait between disruptions."},
-        "env.disruption_gap_max"     : {"label": "Gap max (s)", "help": "Upper clamp on the sampled wait between disruptions."},
-        "env.repossession_success_probability" : {"label": "Repossession success", "help": "Chance a pickup finds the motorcycle."},
-        "env.repossession_fraction"  : {"label": "Repossession share"},
-        "env.depot_radius"           : {"label": "Depot radius (km)"},
-        "env.depot_service"          : {"label": "Depot unload (s)"},
-        "diagnostics.seed"           : {"label": "Seed", "help": "Base seed of the episode band. When the run holds an evaluation report for this seed, environment, reward and caps are taken from it."},
-        "diagnostics.episodes"       : {"label": "Episodes"},
-        "diagnostics.agents"         : {"label": "Agents", "help": "Comma-separated subset of model, teacher, insertion_only, do_nothing. A teacher trace takes 30 to 150 s per episode."},
-        "diagnostics.greedy"         : {"label": "Greedy policy"},
-        "diagnostics.sampled_twin"   : {"label": "Sampled twin", "help": "Also record the model sampling from its distribution, as agent model_sampled."},
-        "diagnostics.teacher_verdict": {"label": "Teacher verdict", "choices": ["none", "insertions", "full"], "help": "Teacher table computed on every model decision. insertions costs 0.5 to 3 s per decision, full up to 17 s."},
-    }
+    """Lists the entry points that exist on disk, with their metadata.
 
-    SCRIPTS = {
+    Attributes:
+        paths    : Project paths resolving each entry key to a file.
+        resolver : Config resolver providing each entry's configuration class name.
+    """
+
+    META = {
         "pretrain": {
-            "title"      : "Pretrain (Behavior Cloning)",
-            "group"      : "Training",
-            "summary"    : "Clone the regret-insertion teacher into the policy as a warm start for PPO.",
-            "essentials" : ["io.run_name", "pretrain.episodes", "pretrain.bc_epochs"],
-            "sections"   : [
-                {"title": "Run",         "fields": ["io.run_name", "io.runs_dir"]},
-                {"title": "Pretraining", "fields": ["pretrain.episodes", "pretrain.bc_epochs", "pretrain.minibatch_size", "pretrain.lr", "pretrain.value_loss_coef", "pretrain.gradient_clip_max_norm", "pretrain.plan_horizon", "pretrain.collect_workers", "pretrain.collect_batch_size"]},
-                {"title": "Episode",     "fields": ["training.max_disruptions_per_episode", "training.max_edits_per_round", "env.disruption_gap_mean", "env.disruption_gap_min", "env.disruption_gap_max", "env.repossession_success_probability", "env.depot_service"]},
-                {"title": "Sampler",     "fields": ["env.mean_jobs", "env.std_jobs", "env.mean_vehicles", "env.std_vehicles", "env.radius", "env.scenario_seed"]},
-                {"title": "Reward",      "fields": ["reward.distance_weight", "reward.unassigned_penalty_weight", "reward.idle_penalty_weight", "reward.priority_penalty_weight", "reward.add_job_cost", "reward.remove_job_cost", "reward.no_action_cost", "reward.disruption_cost", "reward.holding_reference_seconds"]},
-                {"title": "Compute",     "fields": ["training.device"]},
-                {"title": "Services",    "fields": ["service.vroom_url", "service.solve_cache_limit"]},
-            ],
+            "title"    : "Pretrain",
+            "category" : "Training",
+            "purpose"  : "Clone the regret-insertion teacher into the policy by behaviour cloning, as the warm start for PPO.",
         },
         "train": {
-            "title"      : "Train (PPO)",
-            "group"      : "Training",
-            "summary"    : "PPO over inline-sampled episodes with per-head learning rates and anchored fine-tuning.",
-            "essentials" : ["io.run_name", "training.num_updates", "io.init_from_run"],
-            "sections"   : [
-                {"title": "Run",            "fields": ["io.run_name", "io.runs_dir", "io.resume_from_run", "io.init_from_run", "io.checkpoint_filename"]},
-                {"title": "Training",       "fields": ["training.device", "training.num_updates", "training.episodes_per_update", "env.scenario_seed", "training.max_disruptions_per_episode", "training.max_edits_per_round", "training.minibatch_size", "training.num_epochs", "training.expected_edits_per_round", "training.use_mixed_precision"]},
-                {"title": "Learning rates", "fields": ["lr.lr_operator_actor", "lr.lr_vehicle_actor", "lr.lr_job_actor", "lr.lr_critic", "lr.lr_embedding", "lr.lr_operator_embedding", "lr.lr_min", "lr.lr_warmup_fraction", "lr.lr_decay_fraction"]},
-                {"title": "Entropy",        "fields": ["entropy.entropy_start", "entropy.entropy_end", "entropy.entropy_anneal_fraction"]},
-                {"title": "PPO",            "fields": ["ppo.gamma", "ppo.gae_lambda", "ppo.clip_ratio", "ppo.value_loss_coef", "ppo.gradient_clip_max_norm", "ppo.kl_divergence_threshold", "ppo.anchor_kl_start", "ppo.anchor_kl_end", "ppo.anchor_anneal_fraction"]},
-                {"title": "Reward",         "fields": ["reward.distance_weight", "reward.unassigned_penalty_weight", "reward.idle_penalty_weight", "reward.priority_penalty_weight", "reward.add_job_cost", "reward.remove_job_cost", "reward.no_action_cost", "reward.disruption_cost", "reward.holding_reference_seconds"]},
-                {"title": "Sampler",        "fields": ["env.mean_jobs", "env.std_jobs", "env.mean_vehicles", "env.std_vehicles", "env.radius", "env.repossession_fraction"]},
-                {"title": "Events",         "fields": ["env.job_insert_min", "env.job_insert_max", "env.job_remove_min", "env.job_remove_max", "env.vehicle_insert_min", "env.vehicle_insert_max", "env.vehicle_remove_min", "env.vehicle_remove_max"]},
-                {"title": "Execution",      "fields": ["training.max_disruptions_per_episode", "training.max_edits_per_round", "env.disruption_gap_mean", "env.disruption_gap_min", "env.disruption_gap_max", "env.repossession_success_probability", "env.depot_service"]},
-                {"title": "Architecture",   "fields": ["model.gnn_num_layers", "model.policy_gnn_hidden_channels", "model.policy_embedding_dim", "model.operator_embedding_dim", "model.context_embedding_dim", "model.policy_actor_hidden_1", "model.policy_actor_hidden_2", "model.value_critic_hidden_1", "model.value_critic_hidden_2"]},
-                {"title": "Services",       "fields": ["service.vroom_url", "service.solve_cache_limit"]},
-            ],
+            "title"    : "Train",
+            "category" : "Training",
+            "purpose"  : "PPO over inline-sampled episodes with per-head learning rates, entropy annealing and a KL anchor to the initial policy.",
         },
         "evaluate": {
-            "title"      : "Evaluate",
-            "group"      : "Evaluation",
-            "summary"    : "Compare the checkpoint against teacher, insertion-only, and do-nothing baselines.",
-            "essentials" : ["io.run_name", "evaluation.episodes"],
-            "sections"   : [
-                {"title": "Run",        "fields": ["io.run_name", "io.runs_dir", "io.checkpoint_filename"]},
-                {"title": "Evaluation", "fields": ["evaluation.episodes", "evaluation.seed", "evaluation.greedy", "training.max_disruptions_per_episode", "training.max_edits_per_round", "env.disruption_gap_mean", "env.disruption_gap_min", "env.disruption_gap_max", "env.repossession_success_probability"]},
-                {"title": "Reward",     "fields": ["reward.distance_weight", "reward.unassigned_penalty_weight", "reward.idle_penalty_weight", "reward.priority_penalty_weight", "reward.add_job_cost", "reward.remove_job_cost", "reward.no_action_cost", "reward.disruption_cost", "reward.holding_reference_seconds"]},
-                {"title": "Sampler",    "fields": ["env.mean_jobs", "env.std_jobs", "env.mean_vehicles", "env.std_vehicles", "env.radius", "env.repossession_fraction", "env.scenario_seed"]},
-                {"title": "Compute",    "fields": ["training.device"]},
-                {"title": "Services",   "fields": ["service.vroom_url", "service.solve_cache_limit"]},
-            ],
+            "title"    : "Evaluate",
+            "category" : "Evaluation",
+            "purpose"  : "Score a checkpoint on held-out episodes against the teacher, insertion-only and do-nothing baselines, and write the evaluation report.",
         },
         "infer": {
-            "title"      : "Infer (random scenario)",
-            "group"      : "Evaluation",
-            "summary"    : "Run the checkpoint once on a random scenario and log the step table.",
-            "essentials" : ["io.run_name", "inference.seed"],
-            "sections"   : [
-                {"title": "Run",       "fields": ["io.run_name", "io.runs_dir", "io.checkpoint_filename"]},
-                {"title": "Inference", "fields": ["inference.seed", "inference.greedy"]},
-                {"title": "Episode",   "fields": ["training.max_disruptions_per_episode", "training.max_edits_per_round", "env.disruption_gap_mean", "env.disruption_gap_min", "env.disruption_gap_max"]},
-                {"title": "Sampler",   "fields": ["env.mean_jobs", "env.std_jobs", "env.mean_vehicles", "env.std_vehicles", "env.radius", "env.repossession_fraction"]},
-                {"title": "Compute",   "fields": ["training.device"]},
-                {"title": "Services",  "fields": ["service.vroom_url", "service.solve_cache_limit"]},
-            ],
+            "title"    : "Infer",
+            "category" : "Evaluation",
+            "purpose"  : "Run a checkpoint once on a random scenario and log the decision table of the episode.",
         },
         "diagnose": {
-            "title"      : "Diagnose (record traces)",
-            "group"      : "Analysis",
-            "summary"    : "Record a full trace of every agent on held-out episodes, with policy distributions and teacher verdicts, and index them for the Diagnose tab.",
-            "essentials" : ["io.run_name", "diagnostics.seed", "diagnostics.episodes"],
-            "sections"   : [
-                {"title": "Run",         "fields": ["io.run_name", "io.runs_dir", "io.checkpoint_filename"]},
-                {"title": "Diagnostics", "fields": ["diagnostics.seed", "diagnostics.episodes", "diagnostics.agents", "diagnostics.greedy", "diagnostics.sampled_twin", "diagnostics.teacher_verdict"]},
-                {"title": "Episode",     "fields": ["training.max_disruptions_per_episode", "training.max_edits_per_round", "env.disruption_gap_mean", "env.disruption_gap_min", "env.disruption_gap_max", "env.repossession_success_probability"]},
-                {"title": "Sampler",     "fields": ["env.mean_jobs", "env.std_jobs", "env.min_jobs", "env.mean_vehicles", "env.std_vehicles", "env.radius", "env.repossession_fraction"]},
-                {"title": "Compute",     "fields": ["training.device"]},
-                {"title": "Services",    "fields": ["service.vroom_url", "service.solve_cache_limit"]},
-            ],
+            "title"    : "Diagnose",
+            "category" : "Analysis",
+            "purpose"  : "Record the full trace of every agent on held-out episodes, with policy distributions and teacher verdicts, and index them for the Diagnose tab.",
         },
     }
 
-    def __init__(self):
-        self.defaults = Config()
-        self._validate()
+    def __init__(self, paths: ProjectPaths, resolver: ScriptConfigResolver) -> None:
+        """Stores the project paths and the config resolver."""
+        self.paths    = paths
+        self.resolver = resolver
 
-    def has_script(self, key):
-        return key in self.SCRIPTS
+    def titles(self) -> dict:
+        """Returns the catalog title of every entry point, keyed by script key."""
+        return {key: meta["title"] for key, meta in self.META.items()}
 
-    def known_paths(self, key):
-        script = self.SCRIPTS[key]
-        return {path for section in script["sections"] for path in section["fields"]}
+    def list_scripts(self) -> list[dict]:
+        """Returns one catalog record per entry point present on disk.
 
-    def list_scripts(self):
-        return [
-            {
-                "key"        : key,
-                "title"      : script["title"],
-                "group"      : script["group"],
-                "summary"    : script["summary"],
-                "essentials" : script["essentials"],
-            }
-            for key, script in self.SCRIPTS.items()
-        ]
+        Each record carries the entry key and relative file, its title, category and purpose, and its configuration class.
+        """
+        entries = []
+        for key, meta in self.META.items():
+            spec = self.paths.script_entry(key)
+            if not spec["path"].exists():
+                continue
 
-    def _field_spec(self, path):
-        section_name, _, field_name = path.partition(".")
-        section = getattr(self.defaults, section_name)
-        spec    = {entry.name: entry for entry in fields(section) if entry.init}[field_name]
-        return section, spec
+            entries.append({
+                "key"          : key,
+                "file"         : spec["rel"],
+                "title"        : meta["title"],
+                "category"     : meta["category"],
+                "purpose"      : meta["purpose"],
+                "config_class" : self.resolver.entry_config(key)["class"],
+            })
+        return entries
 
-    def _field_kind(self, annotation):
-        origin = get_origin(annotation)
+    def get_script(self, key: str) -> dict | None:
+        """Returns one entry point's full detail, source text included.
 
-        if origin is Union:
-            members = [arg for arg in get_args(annotation) if arg is not type(None)]
-            return self._field_kind(members[0])
+        Args:
+            key : Entry-point key.
 
-        if origin is tuple:
-            return "tuple"
-        if annotation is bool:
-            return "bool"
-        if annotation is int:
-            return "int"
-        if annotation is float:
-            return "float"
-        if annotation is str:
-            return "str"
+        Returns:
+            Record with the catalog metadata, the entry source, the shell command and the preferred interpreter, or None when the entry file does not exist.
+        """
+        spec = self.paths.script_entry(key)
+        if not spec["path"].exists():
+            return None
 
-        raise ValueError(f"Field type {annotation!r} has no form widget")
-
-    def _nullable(self, annotation):
-        return get_origin(annotation) is Union and type(None) in get_args(annotation)
-
-    def _field_entry(self, path):
-        section, spec = self._field_spec(path)
-        meta          = self.META.get(path, {})
-        default       = getattr(section, spec.name)
-
-        if isinstance(default, tuple):
-            default = list(default)
+        meta = self.META[key]
 
         return {
-            "path"     : path,
-            "label"    : meta.get("label", spec.name.replace("_", " ").capitalize()),
-            "help"     : meta.get("help"),
-            "kind"     : self._field_kind(spec.type),
-            "nullable" : self._nullable(spec.type),
-            "choices"  : meta.get("choices"),
-            "default"  : default,
+            "key"          : key,
+            "file"         : spec["rel"],
+            "title"        : meta["title"],
+            "category"     : meta["category"],
+            "purpose"      : meta["purpose"],
+            "source"       : spec["path"].read_text(encoding="utf-8"),
+            "language"     : "python",
+            "config_class" : self.resolver.entry_config(key)["class"],
+            "command"      : f"python -u {spec['rel']}",
+            "preferred"    : self.paths.preferred_interpreter(self.paths.discover_interpreters(), key),
         }
-
-    def form(self, key):
-        script = self.SCRIPTS[key]
-
-        return {
-            "key"        : key,
-            "title"      : script["title"],
-            "summary"    : script["summary"],
-            "essentials" : script["essentials"],
-            "command"    : f"main/{key}.py",
-            "sections"   : [
-                {"title": section["title"], "fields": [self._field_entry(path) for path in section["fields"]]}
-                for section in script["sections"]
-            ],
-        }
-
-    def _validate(self):
-        for key in self.SCRIPTS:
-            for path in self.known_paths(key):
-                self._field_entry(path)
-
-            for path in self.SCRIPTS[key]["essentials"]:
-                if path not in self.known_paths(key):
-                    raise ValueError(f"Essential field {path!r} of script {key!r} is not in any section")
