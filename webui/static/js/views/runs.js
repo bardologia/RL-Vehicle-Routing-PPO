@@ -261,7 +261,8 @@ export class RunsView {
     this.shell.title.textContent = detail.name;
     this.shell.date.innerHTML = `<span data-role="dateline">${esc(`${detail.kind}${info ? `, ${fmtAge(info.mtime)}` : ""}`)}</span>${RunStatus.chip(detail)}`;
     this.writeHeadKpis(detail.name);
-    this.shell.controls.innerHTML = `${seed !== undefined ? `<a class="btn btn--primary" href="${esc(Links.diagnose(detail.name, seed))}">Open in Diagnose</a>` : ""}${detail.loadable ? `<button type="button" class="btn btn--sm btn--quiet" data-action="actions" aria-haspopup="dialog" aria-expanded="false">Actions</button>` : ""}`;
+    this.shell.controls.innerHTML = `${seed !== undefined ? `<a class="btn btn--primary" href="${esc(Links.diagnose(detail.name, seed))}">Open in Diagnose</a>` : ""}${detail.loadable ? `<button type="button" class="btn btn--sm btn--quiet" data-action="actions" aria-haspopup="dialog" aria-expanded="false">Actions</button>` : ""}<span class="runs__findings" data-role="findings"></span>`;
+    this.writeHeadFindings(detail);
     this.writeShelf();
     new Tabs(this.shell.tabs, SECTIONS.map((entry) => ({ ...entry, count: entry.value === "logs" ? detail.logs.length : entry.value === "files" ? detail.files.length : entry.value === "gallery" ? detail.analysis.length : undefined })), this.section, (value) => this.app.router.go(Links.runs(this.run, value)));
     this.body = this.shell.section;
@@ -275,6 +276,21 @@ export class RunsView {
   async cached(key, url) {
     if (!this.cache[key]) this.cache[key] = await api.get(url);
     return this.cache[key];
+  }
+
+  async writeHeadFindings(detail) {
+    let findings;
+    try {
+      findings = await this.cached("findings", `/api/runs/${encodeURIComponent(detail.name)}/findings`);
+    } catch (error) {
+      return;
+    }
+    if (!this.shell || this.detail !== detail) return;
+    const host = this.shell.controls.querySelector("[data-role=findings]");
+    if (!host) return;
+    const traceLink = detail.loadable ? `<a class="btn btn--sm" href="${esc(Links.recordTraces(detail.name, detail.reports[0] === undefined ? null : detail.reports[0], null))}">Record traces</a>` : "";
+    const scope = detail.reports.length ? `Rules over report seed ${detail.reports[0]}, its traces and the training curves.` : "Rules over the training curves. Report and trace rules need an evaluation.";
+    host.innerHTML = FindingsList.strip(findings.findings, { inline: false, scope, actions: { report: detail.loadable ? `<a class="btn btn--sm" href="${esc(Links.evaluate(detail.name))}">Evaluate this run</a>` : "", traces: traceLink, verdicts: traceLink } });
   }
 
   async writeHeadKpis(name) {
@@ -344,18 +360,11 @@ export class RunsView {
   async renderSummary(token) {
     const detail = this.detail;
     const base = `/api/runs/${encodeURIComponent(this.run)}`;
-    const [findings, ...reports] = await Promise.all([
-      this.cached("findings", `${base}/findings`),
-      ...detail.reports.map((seed) => this.cached(`evaluation.${seed}`, `${base}/evaluation/${seed}`)),
-    ]);
+    const reports = await Promise.all(detail.reports.map((seed) => this.cached(`evaluation.${seed}`, `${base}/evaluation/${seed}`)));
     if (token !== this.token) return;
 
     const parts = [];
     if (detail.loadable === false) parts.push(errorBlock(`This checkpoint does not load on the current architecture: ${detail.reason}. It cannot be evaluated or recorded.`));
-
-    const traceLink = detail.loadable ? `<a class="btn btn--sm" href="${esc(Links.recordTraces(this.run, detail.reports[0] === undefined ? null : detail.reports[0], null))}">Record traces</a>` : "";
-    const scope = detail.reports.length ? `Rules over report seed ${detail.reports[0]}, its traces and the training curves.` : "Rules over the training curves. Report and trace rules need an evaluation.";
-    parts.push(`<div class="runs__findings">${FindingsList.strip(findings.findings, { actions: { report: detail.loadable ? `<a class="btn btn--sm" href="${esc(Links.evaluate(this.run))}">Evaluate this run</a>` : "", traces: traceLink, verdicts: traceLink }, tail: Popover.infoButton("Findings", infoText(scope)) })}</div>`);
 
     reports.forEach((report, index) => {
       parts.push(`<section class="panel" data-region="evaluation">${panelHead("Evaluation", { note: `seed ${report.meta.seed}, ${plural(report.meta.episodes, "episode")}, ${report.meta.greedy ? "greedy" : "sampled"}`, info: AgentTable.info(report), actions: `<span data-role="agent-set" data-report="${index}"></span>` })}<div class="panel__body"><div data-role="agents" data-report="${index}"></div>
