@@ -705,7 +705,7 @@ export class StatusBoard {
     this.fireNuke(true);
     try {
       const res = await api.post("/api/system/nuke");
-      this.app.toast.show(`Nuke: cleared ${plural(res.cancelled, "queued launch")}, terminated ${res.signalled}, force-killed ${res.killed}`, "ok");
+      this.app.toast.show(`Nuke: cleared ${res.cancelled} queued launch${res.cancelled === 1 ? "" : "es"}, terminated ${res.signalled}, force-killed ${res.killed}`, "ok");
       this.app.pollJobs();
       this.pollJobs();
     } catch (error) {
