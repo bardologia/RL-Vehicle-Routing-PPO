@@ -1664,8 +1664,7 @@ class FxInsertFigure extends HairlineFigureBase {
         pose.push(1 - phase.s);
         if (op === 0) hidden = phase.s > 0.5 ? -1 : 0;
       }
-      if (op === 1 && phase.kind !== "land" && phase.kind !== "back") jog = phase.kind === "rise" ? false : false;
-      if (op === 1 && (phase.kind === "back")) jog = phase.s > 0.5;
+      if (op === 1 && phase.kind === "back") jog = phase.s > 0.5;
       this.phaseOf = phase.kind === "land" ? 2 : phase.kind === "back" ? 3 : 1;
     }
     this._drawTray(hidden);
@@ -1675,7 +1674,6 @@ class FxInsertFigure extends HairlineFigureBase {
   }
 
   _drawTray(hidden) {
-    const op = this.data.operator;
     this.slots.forEach((slot) => {
       const shown = slot.k < this.crates && slot.k !== hidden;
       const want  = shown ? 1 : 0;
@@ -1683,7 +1681,6 @@ class FxInsertFigure extends HairlineFigureBase {
       slot.drawn  = want;
       HL.put(slot.solid, shown ? this.crate.path(slot.x, slot.y, 0.8, 4.2) : FxPrism.EMPTY);
     });
-    void op;
   }
 
   _drawMover(pose, asPost) {
@@ -2760,7 +2757,7 @@ class FxTrainingFigure extends HairlineFigureBase {
     const b      = this.slats[j];
     const za     = this._top(a, now, breath);
     const zb     = this._top(b, now, breath);
-    const pose   = [HL.lerp(a.x, b.x, s), 0, Math.max(za, zb) * FxRank.smooth(Math.abs(s - 0.5) * 2) * 0 + HL.lerp(za, zb, FxRank.smooth(s)) + 0.6 * Math.sin(Math.PI * s)];
+    const pose   = [HL.lerp(a.x, b.x, s), 0, HL.lerp(za, zb, FxRank.smooth(s)) + 0.6 * Math.sin(Math.PI * s)];
     this.under   = s < 0.5 ? a : b;
     const key    = pose.map((v) => Math.round(v * 100)).join("|");
     if (key === this.puck.drawn) return;
@@ -3298,7 +3295,7 @@ class FxBreakdownFigure extends HairlineFigureBase {
     const a     = HL.rad(35);
     const len   = 2.2 * k;
     const z0    = (FxVan.CAB_Z + FxVan.CAB[3]) * k;
-    const tip   = [x - len * Math.cos(a) * 0 + len * Math.cos(a), y, z0 + len * Math.sin(a)];
+    const tip   = [x + len * Math.cos(a), y, z0 + len * Math.sin(a)];
     const half  = 1.3 * k;
     const quad  = [this.P(x, y - half, z0), this.P(tip[0], y - half, tip[2]), this.P(tip[0], y + half, tip[2]), this.P(x, y + half, z0)];
     HL.put(this.bonnet, { sil: HL.poly(quad), crease: "" });
