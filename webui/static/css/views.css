@@ -15,7 +15,7 @@
 .finding__head .state { flex: none; min-width: 9ch; }
 .finding__title { min-width: 0; font-size: 13px; font-weight: 700; line-height: 1.45; color: var(--ink); text-decoration: none; }
 a.finding__title:hover { text-decoration: underline; text-decoration-color: var(--accent); }
-.finding__more { margin-left: auto; align-self: center; }
+.finding__more { flex: none; margin-left: -2px; align-self: center; }
 .finding__more .icon { transition: transform var(--t-ctl) var(--ease); }
 .finding.is-open .finding__more .icon { transform: rotate(90deg); }
 .finding__more[aria-expanded="true"] { background: transparent; border-color: transparent; color: var(--ink); }
