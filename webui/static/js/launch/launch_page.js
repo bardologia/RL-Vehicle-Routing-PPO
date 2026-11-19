@@ -107,7 +107,7 @@ export class LaunchPage extends ConfigForm {
   }
 
   facts() {
-    const bits = [this.detail.category, this.detail.file, this.detail.config_class];
+    const bits = [this.detail.category, this.detail.file];
     if (this.config) {
       const shown = this.states.length;
       bits.push(`${shown} of ${this.config.leaves.length} fields`, `${this.sections.length} sections`);
