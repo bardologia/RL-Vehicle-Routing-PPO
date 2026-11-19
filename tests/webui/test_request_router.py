@@ -1,14 +1,29 @@
+"""Tests of the request router over the analysis sub-routers.
+
+Every analysis route reaches its service with its path, query and body
+arguments parsed, the static router keeps its path guards, a known path asked
+with the wrong verb answers 405, an unknown section or path answers 404, an
+unreadable or non-object body answers 400, a service's ApiError answers its own
+status and any other exception answers 500, and two routers claiming one section
+refuse to build.
+"""
+
 import io
 import json
 
 import pytest
 
-from request_router import RequestRouter
-from web_errors import ApiError
-from tests.conftest import CapturingLogger
+from request_router            import RequestRouter
+from routers.analysis_routers  import BuildingRouter, EpisodeRouter, HealthRouter, RunRouter, ScenarioRouter, TraceRouter
+from routers.dispatch          import RouteConflict
+from routers.static_router     import StaticRouter
+from web_errors                import ApiError
+from tests.conftest            import CapturingLogger
 
 
 class Recorder:
+    """Stands in for one service, recording every call and answering with its name."""
+
     def __init__(self, name, log, fail=None):
         self.name = name
         self.log  = log
@@ -37,30 +52,6 @@ class FakeLab(Recorder):
         return []
 
 
-class FakeCatalog(Recorder):
-    def has_script(self, key):
-        return key == "train"
-
-    def list_scripts(self):
-        return [{"key": "train"}]
-
-
-class FakeProcesses(Recorder):
-    def launch(self, key, overrides, queued):
-        self.log.append(("processes", "launch", (key, overrides, queued)))
-        return {"ok": key == "train", "error": "unknown script"}
-
-    def stop(self, job_id):
-        self.log.append(("processes", "stop", (job_id,)))
-        return {"ok": True}
-
-    def get_stream(self, job_id):
-        return None
-
-    def list_jobs(self):
-        return []
-
-
 class FakeBuildings(Recorder):
     def tile(self, zoom, x, y):
         self.log.append(("buildings", "tile", (zoom, x, y)))
@@ -68,6 +59,8 @@ class FakeBuildings(Recorder):
 
 
 class FakeHandler:
+    """Minimal request handler capturing the status, headers and body of the reply."""
+
     def __init__(self, command, path, body=None):
         raw           = b"" if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
         self.command  = command
@@ -98,8 +91,6 @@ def setup(paths):
     (paths.static_dir / "app.js").write_text("export {}")
 
     services = {
-        "catalog"     : FakeCatalog("catalog", log),
-        "processes"   : FakeProcesses("processes", log),
         "runs"        : FakeRuns("runs", log),
         "lab"         : FakeLab("lab", log),
         "checkpoints" : Recorder("checkpoints", log),
@@ -111,7 +102,17 @@ def setup(paths):
         "buildings"   : FakeBuildings("buildings", log),
     }
 
-    return RequestRouter(paths=paths, logger=CapturingLogger(), **services), services, log
+    router = RequestRouter(CapturingLogger(), [
+        StaticRouter(paths, services["runs"]),
+        HealthRouter(services["lab"]),
+        RunRouter(services["runs"], services["checkpoints"], services["findings"]),
+        EpisodeRouter(services["episodes"]),
+        TraceRouter(services["traces"], services["verdicts"]),
+        ScenarioRouter(services["lab"], services["scenarios"]),
+        BuildingRouter(services["buildings"]),
+    ])
+
+    return router, services, log
 
 
 def request(router, command, path, body=None):
@@ -121,8 +122,6 @@ def request(router, command, path, body=None):
 
 
 ROUTES = [
-    ("GET",    "/api/scripts/train/config",                 None, ("catalog", "form")),
-    ("POST",   "/api/jobs/abc/stop",                        {},   ("processes", "stop")),
     ("GET",    "/api/checkpoints",                          None, ("checkpoints", "list")),
     ("GET",    "/api/runs",                                 None, ("runs", "list_runs")),
     ("GET",    "/api/runs/run_a",                           None, ("runs", "run_detail")),
@@ -154,6 +153,7 @@ ROUTES = [
 
 @pytest.mark.parametrize("command, path, body, expected", ROUTES)
 def test_every_api_route_reaches_its_service(setup, command, path, body, expected):
+    """Checks each analysis route answers 200 JSON from the service it names."""
     router, services, log = setup
     handler               = request(router, command, path, body)
 
@@ -163,6 +163,7 @@ def test_every_api_route_reaches_its_service(setup, command, path, body, expecte
 
 
 def test_arguments_are_parsed_from_path_query_and_body(setup):
+    """Checks path segments are decoded, query integers parsed and bodies passed through."""
     router, services, log = setup
 
     request(router, "GET", "/api/runs/run_a/findings?seed=5")
@@ -192,7 +193,8 @@ def test_arguments_are_parsed_from_path_query_and_body(setup):
     assert log[-1][2] == (16, 23280, 37160)
 
 
-def test_static_health_scripts_and_launch_keep_their_shapes(setup):
+def test_static_and_health_keep_their_shapes(setup):
+    """Checks the index, a static asset and the health payload with its non-finite value nulled."""
     router, services, log = setup
 
     index = request(router, "GET", "/")
@@ -200,33 +202,29 @@ def test_static_health_scripts_and_launch_keep_their_shapes(setup):
     assert request(router, "GET", "/static/app.js").sent["Cache-Control"] == "no-cache"
 
     assert request(router, "GET", "/api/health").json() == {"osrm": True, "vroom": None}
-    assert request(router, "GET", "/api/scripts").json() == {"scripts": [{"key": "train"}]}
-    assert request(router, "GET", "/api/jobs").json() == {"jobs": []}
     assert request(router, "GET", "/api/scenario/templates").json() == {"templates": []}
-
-    assert request(router, "POST", "/api/run", {"script": "train", "overrides": {"a.b": 1}, "queue": True}).status == 200
-    assert log[-1][2] == ("train", {"a.b": 1}, True)
-    assert request(router, "POST", "/api/run", {"script": "nope"}).status == 400
 
 
 def test_error_statuses(setup):
+    """Checks the 400, 403, 404 and 405 answers of malformed or unknown requests."""
     router, services, log = setup
 
     cases = [
-        ("GET",    "/api/project",                 None,       404),
-        ("POST",   "/api/scenario/run",            {},         404),
-        ("GET",    "/api/scenario/checkpoints",    None,       404),
-        ("GET",    "/api/scripts/nope/config",     None,       404),
-        ("GET",    "/api/jobs/nope/stream",        None,       404),
-        ("GET",    "/runsmedia?path=/etc/passwd",  None,       404),
-        ("GET",    "/static/missing.js",           None,       404),
-        ("GET",    "/static/../request_router.py", None,       403),
-        ("DELETE", "/api/episodes",                None,       405),
-        ("PUT",    "/api/runs",                    {},         405),
-        ("POST",   "/api/episodes",                b"{broken", 400),
-        ("POST",   "/api/episodes",                b"[1, 2]",  400),
-        ("GET",    "/api/runs/run_a/findings?seed=x", None,    400),
-        ("POST",   "/api/scenario/sample",         {"seed": "x"}, 400),
+        ("GET",    "/api/project",                    None,          404),
+        ("POST",   "/api/scenario/run",               {},            404),
+        ("GET",    "/api/scenario/checkpoints",       None,          404),
+        ("GET",    "/api/runs/run_a/evaluation/x",    None,          404),
+        ("GET",    "/api/traces/diag/run_a/x/2/model", None,         404),
+        ("GET",    "/api/buildings/16/a/3.json",      None,          404),
+        ("GET",    "/runsmedia?path=/etc/passwd",     None,          404),
+        ("GET",    "/static/missing.js",              None,          404),
+        ("GET",    "/static/../request_router.py",    None,          403),
+        ("DELETE", "/api/episodes",                   None,          405),
+        ("PUT",    "/api/runs",                       {},            405),
+        ("POST",   "/api/episodes",                   b"{broken",    400),
+        ("POST",   "/api/episodes",                   b"[1, 2]",     400),
+        ("GET",    "/api/runs/run_a/findings?seed=x", None,          400),
+        ("POST",   "/api/scenario/sample",            {"seed": "x"}, 400),
     ]
 
     for command, path, body, status in cases:
@@ -236,6 +234,7 @@ def test_error_statuses(setup):
 
 
 def test_service_errors_map_to_their_status_and_unexpected_ones_to_500(setup):
+    """Checks an ApiError keeps its status and message while any other exception becomes a 500."""
     router, services, log = setup
 
     services["episodes"].fail = {"status": ApiError(409, "busy"), "create": RuntimeError("boom")}
@@ -252,3 +251,21 @@ def test_service_errors_map_to_their_status_and_unexpected_ones_to_500(setup):
 
     bad_key = request(router, "GET", "/api/traces/ep/e1/bad%20key")
     assert bad_key.status == 400
+
+
+def test_cross_origin_requests_are_refused(setup):
+    """Checks a request whose Origin differs from its Host answers 403 and reaches no service."""
+    router, services, log = setup
+
+    handler = FakeHandler("POST", "/api/episodes", {})
+    handler.headers.update({"Origin": "http://evil.example", "Host": "127.0.0.1:8766"})
+    router.route(handler)
+
+    assert handler.status == 403
+    assert log == []
+
+
+def test_two_routers_claiming_one_section_refuse_to_build(setup):
+    """Checks the section index rejects a second owner of the same section."""
+    with pytest.raises(RouteConflict):
+        RequestRouter(CapturingLogger(), [HealthRouter(FakeLab("lab", [])), HealthRouter(FakeLab("lab", []))])
