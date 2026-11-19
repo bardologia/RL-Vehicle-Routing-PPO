@@ -382,7 +382,10 @@
 .diag__regret { max-height: 420px; }
 .diag__regret thead th { white-space: normal; vertical-align: bottom; line-height: 1.15; padding-top: 4px; padding-bottom: 4px; }
 .diag__regret thead th small { display: block; margin-left: 0; }
-.diag__regret th, .diag__regret td { padding-left: 6px; padding-right: 6px; }
+.diag__regret th, .diag__regret td { padding-left: 4px; padding-right: 4px; }
+.diag__regret th:first-child, .diag__regret td:first-child { padding-left: 8px; }
+.diag__regret thead th { letter-spacing: 0.02em; }
+.diag__regret.dtable:has(.dtable__menu) thead th:last-child { padding-right: 5px; white-space: nowrap; }
 .diag__section { margin: var(--sp-12) 0 0; font-size: 22px; letter-spacing: -0.02em; }
 .diag__section .muted { font: 600 11.5px var(--mono); letter-spacing: 0; margin-left: var(--sp-8); }
 .diag__grid { display: flex; gap: var(--gap); align-items: flex-start; }

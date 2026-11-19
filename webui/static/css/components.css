@@ -189,13 +189,13 @@ input[type="range"]:focus-visible::-moz-range-thumb { background: var(--accent);
 .dtable th, .dtable td { height: var(--row); padding: 0 10px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--line-soft); color: var(--ink-dim); }
 .dtable--dense th, .dtable--dense td { height: var(--row-dense); padding: 0 8px; }
 .dtable--dense td { font-size: 12px; }
-.dtable--dense thead th { font-stretch: 82%; letter-spacing: 0.04em; }
 .dtable thead th { position: sticky; top: 0; z-index: 2; background: var(--panel-solid); border-bottom: 2px solid var(--line-card); font: 700 11px var(--sans); font-stretch: 88%; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); }
 .dtable thead th small { margin-left: 4px; font: 600 11px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink-hint); }
 .dtable thead th button { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
 .dtable thead th button:hover { color: var(--ink); }
 .dtable thead th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dtable thead th[aria-sort="ascending"], .dtable thead th[aria-sort="descending"] { color: var(--ink); }
+.dtable--dense thead th { font-stretch: 82%; letter-spacing: 0.04em; }
 .dtable thead th .icon { width: 10px; height: 10px; stroke-width: 2.4; }
 .dtable td.num, .dtable th.num { text-align: right; }
 .dtable td.num { font-family: var(--mono); color: var(--ink); }
