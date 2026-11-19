@@ -279,13 +279,12 @@ export class OverviewView {
       const reports = checkpoint.reports.length ? checkpoint.reports.map((seed) => `<a href="${esc(Links.diagnose(checkpoint.run, seed))}" data-hint="Open the report in Diagnose">${seed}</a>`).join(", ") : dash;
       const traces = checkpoint.diagnostics.length ? checkpoint.diagnostics.map((seed) => esc(seed)).join(", ") : dash;
       const word = checkpoint.loadable ? "LOADABLE" : "INCOMPATIBLE";
-      const hint = checkpoint.reason ? ` data-hint="${esc(checkpoint.reason)}" data-hint-title="${word.toLowerCase()}"` : "";
+      const hint = ` data-hint="${esc(checkpoint.reason || "loads on the current architecture")}" data-hint-title="${word.toLowerCase()}"`;
       return `
         <tr${checkpoint.run === this.selected ? ' aria-selected="true"' : ""}>
-          <td><a href="${esc(Links.runs(checkpoint.run))}">${esc(checkpoint.run)}</a></td>
+          <td class="over__run"><span class="state state--${checkpoint.loadable ? "pass" : "fail"}"${hint}><i></i><span class="sr-only">${word.toLowerCase()}</span></span><a href="${esc(Links.runs(checkpoint.run))}">${esc(checkpoint.run)}</a></td>
           <td>${esc(checkpoint.kind)}</td>
           <td class="num">${esc(fmtAge(checkpoint.mtime).replace(/ ago$/, ""))}</td>
-          <td${hint}>${statusChip(word)}</td>
           <td class="num">${reward}</td>
           <td class="num">${reports}</td>
           <td class="num">${traces}</td>
@@ -293,7 +292,7 @@ export class OverviewView {
     }).join("");
     this.nodes.checkpoints.innerHTML = this.checkpoints.length ? `
       <div class="dtable dtable--dense dtable--static"><table>
-        <thead><tr><th>Run</th><th>Kind</th><th class="num" data-hint="Time since the checkpoint was written">Age</th><th>State</th><th class="num" data-hint="Model mean reward of the newest report">Reward<small>pts</small></th><th class="num" data-hint="Seeds with an evaluation report">Report</th><th class="num" data-hint="Seeds with recorded traces">Traces</th></tr></thead>
+        <thead><tr><th data-hint="State dot: loadable or incompatible on the current architecture">Run</th><th>Kind</th><th class="num" data-hint="Time since the checkpoint was written">Age</th><th class="num" data-hint="Model mean reward of the newest report">Reward<small>pts</small></th><th class="num" data-hint="Seeds with an evaluation report">Report</th><th class="num" data-hint="Seeds with recorded traces">Traces</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>` : `<p class="muted">No run holds a checkpoint yet. <a href="#/launch/pretrain">Launch pretrain</a></p>`;
   }
