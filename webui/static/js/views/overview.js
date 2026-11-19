@@ -36,7 +36,7 @@ export class OverviewView {
           ${panelHead("Findings", { info: infoText("Rules flagged WARN or FAIL for the selected run. FAIL rules state their finding; open a row for its numbers, its rule id and its links. The title opens the evidence.") })}
           <div class="panel__body" data-role="findings"></div>
         </section>
-        <div class="grid-12">
+        <div class="grid-12 over__pair">
           <section class="panel span-7" data-region="checkpoints">
             ${panelHead("Checkpoints", { info: infoText("Every run directory that holds a policy file, checked against the current architecture.", "Reward is the model mean reward of the newest report, in points. A report seed opens that report in Diagnose.") })}
             <div class="panel__body figcard"><div class="figcard__fig">${HairlineFigure.html("checkpoint")}</div><div class="figcard__body" data-role="checkpoints"></div></div>
