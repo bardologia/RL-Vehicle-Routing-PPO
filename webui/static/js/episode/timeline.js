@@ -6,6 +6,7 @@ import { Agents, Sentences, TERMS } from "./encoding.js";
 export class Timeline {
   static LABEL_W = 208;
   static VALUE_W = 64;
+  static CELL_MAX = 160;
   static HEAD_H = 26;
   static GAP = 10;
   static LANE_H = 28;
@@ -72,7 +73,7 @@ export class Timeline {
     }
     const total = slots.reduce((sum, value) => sum + (value || 0), 0);
     const room = width - Timeline.LABEL_W - Timeline.VALUE_W - Timeline.GAP * Math.max(0, slots.length - 1);
-    const cell = Math.max(9, Math.min(64, room / Math.max(1, total)));
+    const cell = Math.max(9, Math.min(Timeline.CELL_MAX, room / Math.max(1, total)));
     const roundX = [];
     let x = Timeline.LABEL_W;
     slots.forEach((count, round) => {
@@ -199,7 +200,7 @@ export class Timeline {
         <button type="button" class="timeline__lane timeline__lane--${Agents.style(lane.key)}${current ? " is-current" : ""}" data-lanehead="${esc(lane.key)}" style="top:${Timeline.HEAD_H + index * laneH}px;height:${laneH}px" aria-pressed="${current}" title="${esc(Agents.label(lane.key))}">
           <i class="timeline__stroke"></i><span class="timeline__name">${esc(Agents.label(lane.key))}</span>${state}
         </button>
-        <div class="timeline__total ${sign}" style="top:${Timeline.HEAD_H + index * laneH}px;height:${laneH}px;left:${end + 8}px" title="Cumulative reward at the end of the lane">${total}</div>`;
+        <div class="timeline__total ${sign}" style="top:${Timeline.HEAD_H + index * laneH}px;height:${laneH}px;left:${width - Timeline.VALUE_W}px;width:${Timeline.VALUE_W - 12}px" title="Cumulative reward at the end of the lane">${total}</div>`;
     }).join("");
 
     this.container.innerHTML = `
@@ -207,7 +208,7 @@ export class Timeline {
         ${header}
         <svg class="timeline__svg" width="${width}" height="${svgH}" style="top:${Timeline.HEAD_H}px" role="img" aria-label="Decisions of every recorded agent, grouped by round">${bands}${rows}</svg>
         ${heads}
-        <div class="timeline__axis" style="left:${end + 8}px">return</div>
+        <div class="timeline__axis" style="left:${width - Timeline.VALUE_W}px;width:${Timeline.VALUE_W - 12}px">return</div>
       </div>`;
   }
 }

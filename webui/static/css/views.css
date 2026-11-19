@@ -122,10 +122,10 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 .timeline__lane--insertion_only .timeline__stroke { border-top-style: dashed; }
 .timeline__lane--do_nothing { --lane: var(--lane-nothing); }
 .timeline__lane--do_nothing .timeline__stroke { border-top-style: dotted; }
-.timeline__total { position: absolute; display: flex; align-items: center; min-width: 6ch; font-family: var(--mono); font-size: 12px; font-weight: 700; line-height: 1.45; color: var(--ink); }
+.timeline__total { position: absolute; display: flex; align-items: center; justify-content: flex-end; min-width: 6ch; font-family: var(--mono); font-size: 12px; font-weight: 700; line-height: 1.45; color: var(--ink); }
 .timeline__total.gain { color: var(--gain); }
 .timeline__total.loss { color: var(--loss); }
-.timeline__axis { position: absolute; top: 0; height: 26px; display: flex; align-items: center; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-hint); }
+.timeline__axis { position: absolute; top: 0; height: 26px; display: flex; align-items: center; justify-content: flex-end; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-hint); }
 .tl-round { fill: transparent; }
 .tl-round.is-current { fill: rgba(255, 255, 255, 0.025); }
 .tl-lane { stroke: var(--line-soft); stroke-width: 1; }
