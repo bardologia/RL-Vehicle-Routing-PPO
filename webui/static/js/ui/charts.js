@@ -331,7 +331,7 @@ export class ColumnChart {
       const tip = row.tip || Tooltip.rows(`${esc(xLabel)} ${esc(row.label)}`, [[esc(yLabel), fmtFixed(row.value, digits)], row.n !== undefined ? ["n", row.n] : null]);
       return `${label}<rect class="ch-bar${onClick ? " is-link" : ""}" x="${cx - barWidth / 2}" y="${top}" width="${barWidth}" height="${size}" data-index="${index}" data-tip="${esc(tip)}"${onClick ? ` tabindex="0" role="link"` : ""}></rect>`;
     }).join("");
-    const zero = `<line class="ch-axis" x1="${frame.x0}" x2="${frame.x1}" y1="${y.map(0)}" y2="${y.map(0)}"></line>`;
+    const zero = `<line class="ch-zero" x1="${frame.x0}" x2="${frame.x1}" y1="${y.map(0)}" y2="${y.map(0)}"></line>`;
     const labels = `<text class="ch-label" x="${(frame.x0 + frame.x1) / 2}" y="${height - 4}" text-anchor="middle">${esc(xLabel)}</text><text class="ch-label" x="2" y="${frame.y1 - 8}">${esc(yLabel)}</text>`;
     container.innerHTML = `${frame.open()}${grid}${bars}${zero}${labels}${note ? `<text class="ch-note" x="${frame.x1}" y="${frame.y1 - 8}" text-anchor="end">${esc(note)}</text>` : ""}</svg>`;
     bindTips(container);

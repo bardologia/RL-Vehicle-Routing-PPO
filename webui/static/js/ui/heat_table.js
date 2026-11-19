@@ -23,14 +23,15 @@ export class HeatTable {
     const clamped = Math.max(0, Math.min(1, share));
     const step = Math.min(3, Math.floor(clamped * 4));
     const mix = clamped * 4 - step;
-    const ink = clamped > 0.6 ? "var(--heat-on-dark)" : "var(--ink)";
+    const ink = clamped >= 0.5 ? "var(--heat-on-light)" : "var(--ink)";
     return `background:color-mix(in oklab, var(--ramp-${step + 1}) ${(mix * 100).toFixed(0)}%, var(--ramp-${step}));color:${ink}`;
   }
 
   static divergingStyle(value, extent) {
     const share = Math.max(0, Math.min(1, Math.abs(value) / (extent || 1)));
     const tone = value >= 0 ? "var(--gain)" : "var(--loss)";
-    return `background:color-mix(in oklab, ${tone} ${(share * 70).toFixed(0)}%, var(--panel));color:var(--ink)`;
+    const ink = share > 0.55 ? "var(--heat-on-light)" : "var(--ink)";
+    return `background:color-mix(in oklab, ${tone} ${(share * 70).toFixed(0)}%, var(--heat-neutral));color:${ink}`;
   }
 
   render({ rows, columns, cells, rowTotals, columnTotals, mode = "ramp", format, cornerLabel, totalLabel = "sum", marks = {} }) {

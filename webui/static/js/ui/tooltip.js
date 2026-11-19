@@ -1,7 +1,7 @@
 export class Tooltip {
   constructor() {
     this.node = document.createElement("div");
-    this.node.className = "tooltip";
+    this.node.className = "tooltip glass";
     this.node.setAttribute("role", "tooltip");
     document.body.appendChild(this.node);
   }
@@ -14,10 +14,10 @@ export class Tooltip {
 
   move(x, y) {
     const box = this.node.getBoundingClientRect();
-    let left = x + 14;
-    let top = y + 14;
-    if (left + box.width > window.innerWidth - 8) left = x - box.width - 14;
-    if (top + box.height > window.innerHeight - 8) top = y - box.height - 14;
+    let left = x + 16;
+    let top = y + 16;
+    if (left + box.width > window.innerWidth - 8) left = x - box.width - 16;
+    if (top + box.height > window.innerHeight - 8) top = y - box.height - 16;
     this.node.style.left = `${Math.max(8, left)}px`;
     this.node.style.top = `${Math.max(8, top)}px`;
   }

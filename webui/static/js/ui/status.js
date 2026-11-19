@@ -1,4 +1,5 @@
 import { esc, icon } from "../format.js";
+import { Orb } from "../fx/orb.js";
 
 const TONE = {
   PASS: "pass", UP: "pass", SAME: "pass", LOADABLE: "pass", ACTIVE: "pass", finished: "pass",
@@ -33,7 +34,8 @@ export function emptyBlock(sentence, actionHtml) {
 }
 
 export function skeleton(rows = 3) {
-  return `<div class="skeleton" aria-busy="true">${"<i></i>".repeat(rows)}</div>`;
+  const large = rows >= 4;
+  return `<div class="skeleton${large ? " skeleton--panel" : ""}" aria-busy="true">${Orb.html("searching", large ? 64 : 20)}<span>Loading</span></div>`;
 }
 
 export class Toast {
