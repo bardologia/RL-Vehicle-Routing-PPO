@@ -42,9 +42,6 @@ export class EpisodeView {
     this.start = new StartPage(app, this.startNode);
 
     this.bindKeys();
-    app.theme.onChange(() => {
-      if (this.map) this.map.restyle();
-    });
     app.onHealth(() => {
       if (this.built && this.ref) this.renderBar();
     });

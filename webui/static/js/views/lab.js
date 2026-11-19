@@ -44,9 +44,6 @@ export class LabView {
     app.onHealth(() => {
       if (this.built) this.renderSummary();
     });
-    app.theme.onChange(() => {
-      if (this.map) this.map.restyle();
-    });
   }
 
   build() {
