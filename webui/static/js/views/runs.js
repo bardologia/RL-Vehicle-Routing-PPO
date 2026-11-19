@@ -50,7 +50,7 @@ export class RunStatus {
     if (!report || !report.agents.model) return "no report";
     const model = report.agents.model.mean_reward;
     const teacher = report.agents.teacher ? report.agents.teacher.mean_reward : null;
-    return `model ${fmtSigned(model)}${teacher === null ? "" : `, ${fmtSigned(model - teacher)} to teacher`}`;
+    return `model ${fmtSigned(model)}${teacher === null ? "" : `, vs teacher ${fmtSigned(model - teacher)}`}`;
   }
 }
 
@@ -216,7 +216,7 @@ export class RunsView {
     this.list.innerHTML = shown.length ? shown.map((run) => `
       <a class="runs__item" href="${esc(Links.runs(run.name, this.section))}"${run.name === this.run ? ' aria-current="true"' : ""}>
         <span class="runs__line">${RunStatus.dot(run)}<span class="runs__name">${esc(run.name)}</span><span class="runs__age">${esc(fmtAge(run.mtime).replace(/ ago$/, ""))}</span></span>
-        <span class="runs__sub">${esc(`${run.kind}, ${RunStatus.rewardLine(run)}`)}</span>
+        <span class="runs__sub" data-hint="${esc(`${run.kind}, ${RunStatus.rewardLine(run)}`)}">${esc(run.reports.length ? RunStatus.rewardLine(run) : `${run.kind}, no report`)}</span>
       </a>`).join("") : `<p class="muted runs__none">No run matches "${esc(this.filter)}".</p>`;
   }
 
