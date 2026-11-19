@@ -355,7 +355,7 @@ export class EpisodeView {
     });
     this.drawer = new Drawer(left, {
       storeKey: "episode.drawer",
-      startCollapsed: window.innerHeight < 900,
+      startCollapsed: true,
       tabs: [{ value: "routes", label: "Routes" }, { value: "unassigned", label: "Unassigned" }, { value: "compare", label: "Compare" }, { value: "inputs", label: "Inputs" }],
       onTab: () => this.renderDrawer(),
     });
@@ -363,10 +363,13 @@ export class EpisodeView {
     this.coverObserver.observe(this.drawer.root);
     this.coverObserver.observe(this.recordNode.querySelector(".ep__map"));
     this.drawer.body.innerHTML = `<div data-pane="routes"></div><div data-pane="unassigned"></div><div data-pane="compare"></div><div data-pane="inputs"></div>`;
+    this.drawer.actions.innerHTML = `<span class="drawer__paneactions" data-actions="routes"></span><span class="drawer__paneactions" data-actions="compare"></span>`;
     this.routeTable = new RouteTable(this.drawer.body.querySelector("[data-pane=routes]"), {
       onIsolate: (vehicleId) => this.isolate(this.isolated === vehicleId ? null : vehicleId),
       onHover: (vehicleId) => this.map.highlight(vehicleId === null ? null : { vehicleId }),
+      menuHost: this.drawer.actions.querySelector("[data-actions=routes]"),
     });
+    this.compare = new Compare(this.drawer.body.querySelector("[data-pane=compare]"), { actions: this.drawer.actions.querySelector("[data-actions=compare]") });
     this.unassignedTable = new DataTable(this.drawer.body.querySelector("[data-pane=unassigned]"), {
       rowKey: (row) => row.job_id,
       emptyText: "Every job is on a route in this frame.",
@@ -595,8 +598,9 @@ export class EpisodeView {
     const tab = this.drawer.tab;
     for (const pane of this.drawer.body.querySelectorAll("[data-pane]")) pane.classList.toggle("hidden", pane.dataset.pane !== tab);
     this.drawer.tabs.setCount("unassigned", frame ? frame.plan.unassigned.length : null);
+    for (const actions of this.drawer.actions.querySelectorAll("[data-actions]")) actions.hidden = actions.dataset.actions !== tab;
     if (tab === "compare") {
-      this.drawer.body.querySelector("[data-pane=compare]").innerHTML = this.status && this.status.shared ? Compare.html(this.lanes, this.status) : Compare.html(this.lanes, this.derivedShared());
+      this.compare.render(this.lanes, this.status && this.status.shared ? this.status : this.derivedShared());
       return;
     }
     if (!frame) return;

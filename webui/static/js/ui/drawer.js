@@ -15,13 +15,15 @@ export class Drawer {
         <div class="drawer__grip" role="separator" aria-orientation="horizontal" aria-label="Resize the drawer" tabindex="0"></div>
         <div class="drawer__bar">
           <div class="drawer__tabs"></div>
-          <button type="button" class="btn btn--quiet drawer__toggle"></button>
+          <div class="drawer__actions"></div>
+          <button type="button" class="btn btn--sm drawer__toggle"></button>
         </div>
         <div class="drawer__body"></div>
       </div>`);
     container.appendChild(this.root);
 
     this.body = this.root.querySelector(".drawer__body");
+    this.actions = this.root.querySelector(".drawer__actions");
     this.toggle = this.root.querySelector(".drawer__toggle");
     this.tabs = new Tabs(this.root.querySelector(".drawer__tabs"), tabs, Store.read(`${storeKey}.tab`, tabs[0].value), (value, changed) => {
       Store.write(`${storeKey}.tab`, value);

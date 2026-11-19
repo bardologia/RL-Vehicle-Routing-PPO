@@ -306,10 +306,12 @@ a.chip--fail:hover, button.chip--fail:hover { color: var(--ink); border-color: v
 .drawer__grip::after { content: ""; position: absolute; left: 50%; top: 3px; width: 28px; height: 2px; margin-left: -14px; background: var(--line-strong); }
 .drawer.is-collapsed .drawer__grip { display: none; }
 .drawer__grip:focus-visible { outline-offset: -2px; }
-.drawer__bar { display: flex; align-items: center; justify-content: space-between; flex: none; height: calc(var(--drawer-bar) - 2px); padding: 0 var(--sp-8); background: var(--glass-solid); border-bottom: 2px solid var(--line-card); }
+.drawer__bar { display: flex; align-items: center; gap: var(--sp-12); flex: none; height: calc(var(--drawer-bar) - 2px); padding: 0 var(--sp-8) 0 var(--sp-16); background: var(--glass-solid); border-bottom: 2px solid var(--line-card); }
 .drawer.is-collapsed .drawer__bar { border-bottom: 0; }
-.drawer__toggle.btn { padding: 2px 8px; border-color: transparent; font-size: 12.5px; }
-.drawer__toggle.btn:hover { border-color: var(--line); }
+.drawer__actions { display: flex; align-items: center; gap: var(--sp-4); margin-left: auto; }
+.drawer__paneactions { display: inline-flex; align-items: center; gap: var(--sp-4); }
+.drawer__paneactions[hidden], .drawer.is-collapsed .drawer__actions > * { display: none; }
+.drawer__info { display: inline-flex; }
 .drawer__body { flex: 1; overflow: auto; min-height: 0; }
 
 .dtable {
