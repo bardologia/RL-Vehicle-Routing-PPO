@@ -44,7 +44,7 @@ export class SavedRunsPage {
 
   paint() {
     if (!this.entries.length) {
-      this.grid.innerHTML = emptyBlock("No saved runs yet. Configure a script on its launch page and press Save for later.", `<a class="btn btn--sm" href="#/launch">Open the entry points</a>`, { name: "drawer", state: null });
+      this.grid.innerHTML = emptyBlock("No saved runs yet. Configure a script on its launch page and press Save for later.", `<a class="btn btn--sm" href="#/launch">Open the entry points</a>`);
       return;
     }
 
@@ -128,7 +128,7 @@ export class TemplatesPage {
 
   paint() {
     if (!this.entries.length) {
-      this.grid.innerHTML = emptyBlock("No config templates yet. Set the fields you reuse on a launch page and press Save as template in the rail.", `<a class="btn btn--sm" href="#/launch">Open the entry points</a>`, { name: "riffle", state: null });
+      this.grid.innerHTML = emptyBlock("No config templates yet. Set the fields you reuse on a launch page and press Save as template in the rail.", `<a class="btn btn--sm" href="#/launch">Open the entry points</a>`);
       return;
     }
 
