@@ -334,7 +334,7 @@ export class StatusBoard {
   bar(role, pct) {
     const target = this.node(role);
     if (!target) return;
-    target.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    target.style.transform = `scaleX(${Math.max(0, Math.min(100, pct)) / 100})`;
     target.classList.toggle("is-hot", pct >= 90);
   }
 

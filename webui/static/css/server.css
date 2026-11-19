@@ -27,7 +27,7 @@
 .sb-metric > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-metric > span:last-child { flex: none; color: var(--ink); }
 .sb-bar { height: 3px; margin: 4px 0 12px; background: var(--line-soft); overflow: hidden; }
-.sb-bar__fill { display: block; width: 0; height: 100%; background: var(--accent); transition: width 600ms var(--ease); }
+.sb-bar__fill { display: block; width: 100%; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left center; transition: transform var(--t-bar) var(--ease); }
 .sb-bar__fill--live { background: var(--live); }
 .sb-bar__fill--warn { background: var(--warn); }
 .sb-bar__fill--accent { background: var(--ramp-3); }
