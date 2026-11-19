@@ -50,6 +50,24 @@ class App {
     Store.write("context", { run, seed });
   }
 
+  bindHints() {
+    let hinting = false;
+    document.body.addEventListener("pointermove", (event) => {
+      const target = event.target instanceof Element ? event.target.closest("[data-hint]") : null;
+      if (target) {
+        tooltip.show(Tooltip.text(target.dataset.hintTitle ? esc(target.dataset.hintTitle) : "", esc(target.dataset.hint)), event.clientX, event.clientY);
+        hinting = true;
+      } else if (hinting) {
+        tooltip.hide();
+        hinting = false;
+      }
+    });
+    document.body.addEventListener("pointerleave", () => {
+      if (hinting) tooltip.hide();
+      hinting = false;
+    });
+  }
+
   measureScrollbar() {
     const probe = el(`<div style="position:absolute;top:-200px;width:100px;height:100px;overflow-y:scroll"></div>`);
     document.body.appendChild(probe);
@@ -81,7 +99,7 @@ class App {
     document.getElementById("keys-toggle").addEventListener("click", () => this.keySheet.toggle());
     this.serviceNode = document.getElementById("svc");
     this.serviceNode.addEventListener("click", () => this.toggleServices());
-    tooltip.bind(document.body, "[data-hint]", (target) => Tooltip.text(target.dataset.hintTitle ? esc(target.dataset.hintTitle) : "", esc(target.dataset.hint)));
+    this.bindHints();
     keys.bindGlobal("?", "Show this key list", () => this.keySheet.toggle());
     keys.bindGlobal("/", "Focus the search of the current view", () => {
       const view = this.views[this.active];
