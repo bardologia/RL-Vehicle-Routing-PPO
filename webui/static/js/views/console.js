@@ -12,7 +12,7 @@ export class ConsoleView {
         <aside class="console__jobs" aria-label="Jobs">
           <header class="console__head"><h2 class="console__label">Jobs</h2><span class="console__count" data-role="count"></span></header>
           <ul class="job-list" data-role="list"></ul>
-          <div class="console__foot">${HairlineFigure.html("terminal", 'aria-hidden="true"')}</div>
+          <div class="console__foot">${HairlineFigure.html("terminal", 'autopilot="scrub" aria-hidden="true"')}</div>
         </aside>
         <div class="console__stage">
           <div class="console__hint" data-role="hint">

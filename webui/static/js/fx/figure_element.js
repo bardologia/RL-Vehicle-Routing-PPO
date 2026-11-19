@@ -28,6 +28,7 @@ class HairlineAutopilot {
   static PERIOD_Y  = 10;
   static REACH_X   = 0.28;
   static REACH_Y   = 0.25;
+  static SCRUB     = 0.18;
   static CYCLE     = 3.2;
   static HOVER     = 0.5;
   static DRIFT     = 0.06;
@@ -38,9 +39,10 @@ class HairlineAutopilot {
   static JITTER    = 0.04;
   static HOPS      = [[0.3, 0.2], [0.7, 0.6], [0.4, 0.3], [0.75, 0.75], [0.25, 0.4], [0.6, 0.8], [0.35, 0.5], [0.7, 0.2]];
 
-  constructor(stage, hop = false) {
+  constructor(stage, hop = false, scrub = false) {
     this.stage    = stage;
     this.hop      = hop;
+    this.scrub    = scrub;
     this.phase    = Math.random() * Math.PI * 2;
     this.clock    = Math.random() * HairlineAutopilot.CYCLE;
     this.travel   = 0;
@@ -74,6 +76,7 @@ class HairlineAutopilot {
       this.hops   += 1;
       return [u + jitter(), v + jitter()];
     }
+    if (this.scrub) return [0.5, 0.5 + HairlineAutopilot.SCRUB * this._sweep(this.travel / HairlineAutopilot.PERIOD_Y + this.phase)];
     const u = 0.5 + HairlineAutopilot.REACH_X * this._sweep(this.travel / HairlineAutopilot.PERIOD_X + this.phase);
     const v = 0.5 + HairlineAutopilot.REACH_Y * this._sweep(this.travel / HairlineAutopilot.PERIOD_Y + 1.7 * this.phase);
     return [u, v];
@@ -206,7 +209,8 @@ class HairlineFigureElement extends HTMLElement {
     this.value  = HairlineCatalog.value(spec, this.getAttribute("intensity"));
     this.figure = spec.mount({ stage: this, svg: this.svg, read: { textContent: null } }, this.value);
     this._applyState();
-    if (this.getAttribute("autopilot") !== "off") this.autopilot = new HairlineAutopilot(this, HairlineCatalog.stock(name));
+    const mode  = this.getAttribute("autopilot");
+    if (mode !== "off") this.autopilot = new HairlineAutopilot(this, mode !== "scrub" && HairlineCatalog.stock(name), mode === "scrub");
   }
 
   _label() {
