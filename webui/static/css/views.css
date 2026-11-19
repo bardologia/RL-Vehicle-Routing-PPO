@@ -13,7 +13,7 @@
 .finding:first-child { border-top: 0; }
 .finding__head { display: flex; align-items: baseline; gap: var(--sp-8); min-height: 26px; }
 .finding__head .state { flex: none; min-width: 9ch; }
-.finding__title { min-width: 0; font-size: 14px; font-weight: 700; line-height: 1.45; color: var(--ink); text-decoration: none; }
+.finding__title { min-width: 0; font-size: 13px; font-weight: 700; line-height: 1.45; color: var(--ink); text-decoration: none; }
 a.finding__title:hover { text-decoration: underline; text-decoration-color: var(--accent); }
 .finding__more { margin-left: auto; align-self: center; }
 .finding__more .icon { transition: transform var(--t-ctl) var(--ease); }
