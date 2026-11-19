@@ -40,6 +40,8 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .episode-start { height: 100%; overflow-x: hidden; overflow-y: scroll; }
 .start { display: flex; flex-direction: column; gap: var(--gap); }
 .start > .view-head { margin-bottom: 0; }
+.start__body { display: flex; flex-direction: column; gap: var(--gap); }
+.runs__back { margin-top: var(--sp-16); text-align: center; }
 .start__top { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-24); align-items: center; }
 .start__top > div { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
 .start__sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-12); }
@@ -59,7 +61,6 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .ep { height: 100%; display: flex; flex-direction: column; min-height: 0; background: var(--well); }
 .ep.hidden { display: none; }
 .ep__lost { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.ep__lost hairline-figure { width: 160px; margin-bottom: var(--sp-16); }
 .ep__lost .errorblock { width: min(640px, 100%); }
 .ep__bar { flex: none; min-height: 56px; display: flex; align-items: center; gap: 6px 18px; padding: 0 16px; border-bottom: 2px solid var(--line); flex-wrap: nowrap; position: relative; z-index: 6; }
 .ep__bar:has(> .ep__error:not(:empty)) { flex-wrap: wrap; }
@@ -323,13 +324,10 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .lab__assign legend { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-hint); padding: 0 var(--sp-4); }
 .lab__runrow { display: flex; align-items: center; gap: var(--sp-12); }
 .lab__right .kpirow { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
-.lab__figure { flex: none; margin: auto auto 0; padding: var(--sp-16) 0; width: 200px; }
-.lab__right:has(.kpirow) .lab__figure { display: none; }
 .lab__tools { position: absolute; z-index: 1000; left: var(--sp-8); top: 52px; display: flex; gap: var(--sp-4); }
 .lab__tools .btn { padding: 5px 11px; background: var(--glass-solid); }
 .lab__tools .btn[aria-pressed="true"] { background: linear-gradient(var(--accent-wash), var(--accent-wash)), var(--glass-solid); }
 @media (max-width: 1500px) { .lab { grid-template-columns: 300px minmax(0, 1fr) 300px; } }
-@media (max-height: 900px) { .lab__figure { display: none; } }
 
 .launch { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100%; padding: 0 var(--edge-r) 0 var(--edge-l); }
 .launch__rail { position: sticky; top: 0; align-self: start; height: calc(100vh - var(--bar-h)); overflow: auto; border-right: 2px solid var(--line-card); padding: 28px 0 var(--sp-24); display: flex; flex-direction: column; }
@@ -342,6 +340,8 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .launch__scriptsum { color: var(--ink-faint); font-size: 13px; line-height: 1.5; }
 .launch__main { padding: 28px 0 48px var(--pad); display: flex; flex-direction: column; gap: var(--sp-16); min-width: 0; }
 .launch__main > .view-head { margin-bottom: 0; }
+.launch__body { display: flex; flex-direction: column; gap: var(--sp-16); min-width: 0; }
+.launch__body:empty { display: none; }
 .launch__count { font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1.5; color: var(--ink-faint); }
 .launch__cmd { margin: 0; padding: 10px 12px; background: var(--well); border: 2px solid var(--line-card); border-radius: var(--r); color: var(--ink-dim); line-height: 1.55; white-space: pre-wrap; word-break: break-all; }
 .launch__cmd b { font-weight: 700; color: var(--ink); }

@@ -228,8 +228,12 @@ export class MapView {
   }
 
   bindDrag(marker, kind, id) {
-    marker.on("dragstart", () => tooltip.hide());
+    marker.on("dragstart", () => {
+      tooltip.hide();
+      HairlineFigureBase.busy(true);
+    });
     marker.on("dragend", () => {
+      HairlineFigureBase.busy(false);
       const position = marker.getLatLng();
       this.onDrag(kind, id, [Number(position.lng.toFixed(6)), Number(position.lat.toFixed(6))]);
     });
@@ -542,6 +546,7 @@ export class MapView {
     if (reduced || !usable.length) return;
     const started = performance.now();
     const duration = 1200;
+    HairlineFigureBase.busy(true);
     const tick = (now) => {
       const share = Math.min(1, (now - started) / duration);
       const eased = share < 0.5 ? 2 * share * share : 1 - (-2 * share + 2) ** 2 / 2;
@@ -554,12 +559,16 @@ export class MapView {
         this.vehicleMarkers.get(move.vehicleId).setLatLng([a[0] + (b[0] - a[0]) * rest, a[1] + (b[1] - a[1]) * rest]);
       }
       this.animation = share < 1 ? requestAnimationFrame(tick) : null;
+      if (!this.animation) HairlineFigureBase.busy(false);
     };
     this.animation = requestAnimationFrame(tick);
   }
 
   cancelAnimation() {
-    if (this.animation) cancelAnimationFrame(this.animation);
+    if (this.animation) {
+      cancelAnimationFrame(this.animation);
+      HairlineFigureBase.busy(false);
+    }
     this.animation = null;
   }
 

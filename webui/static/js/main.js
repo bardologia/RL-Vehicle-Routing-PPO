@@ -1,12 +1,11 @@
 import { api } from "./api.js";
 import { el, esc, plural, Store } from "./format.js";
-import "./fx/figure.js";
 import { BackdropOrb } from "./fx/orb.js";
 import { keys } from "./keys.js";
 import { KeySheet } from "./ui/keysheet.js";
 import { Popover } from "./ui/popover.js";
 import { Router } from "./router.js";
-import { statusChip, Toast } from "./ui/status.js";
+import { FigureState, statusChip, Toast } from "./ui/status.js";
 import { tooltip, Tooltip } from "./ui/tooltip.js";
 import { ConsoleView } from "./views/console.js";
 import { DiagnoseView } from "./views/diagnose.js";
@@ -38,6 +37,8 @@ class App {
     this.active = null;
     this.health = null;
     this.healthListeners = [];
+    this.jobs = null;
+    this.jobListeners = [];
     this.toast = new Toast(document.getElementById("toast"));
     this.backdrop = new BackdropOrb(document.getElementById("bg-orb"));
   }
@@ -77,6 +78,7 @@ class App {
 
   mount() {
     this.measureScrollbar();
+    FigureState.watch(document.body);
     const tabs = document.getElementById("tabs");
     const holder = document.getElementById("views");
     TABS.forEach((tab, index) => {
@@ -171,29 +173,49 @@ class App {
     this.serviceNode.classList.remove("is-pending");
     this.serviceNode.classList.toggle("is-down", down);
     this.serviceNode.querySelector("span").textContent = this.serviceWord();
-    if (Popover.isOpenFor(this.serviceNode)) Popover.current.node.innerHTML = this.servicesHtml();
+    if (!Popover.isOpenFor(this.serviceNode)) return;
+    const node = Popover.current.node;
+    node.querySelector(".svcpop__body").innerHTML = this.servicesBody();
+    const figure = node.querySelector("hairline-figure");
+    const state = this.serviceState();
+    if (JSON.stringify(figure.state) !== JSON.stringify(state)) figure.state = state;
   }
 
-  servicesHtml() {
+  serviceState() {
+    const health = this.health || { osrm: false, vroom: false, unreachable: false };
+    return { osrm: Boolean(health.osrm), vroom: Boolean(health.vroom), reachable: !health.unreachable };
+  }
+
+  servicesBody() {
     const health = this.health || { osrm: false, vroom: false, osrm_url: "", vroom_url: "" };
     const down = !health.osrm || !health.vroom;
     const row = (name, key) => `<b>${name}</b><span>${esc(health[`${key}_url`] || "")}</span>${statusChip(health[key] ? "UP" : "DOWN")}`;
     return `
-      <div class="svcpop__figure" data-role="services-figure"></div>
       <div class="svcpop__rows">${row("OSRM", "osrm")}${row("VROOM", "vroom")}</div>
       ${health.unreachable ? `<p class="svcpop__text">The console backend did not answer.</p>` : ""}
       <p class="svcpop__text">${down ? "Recording, solving and teacher verdicts are disabled. Start the services from the repository root:" : "Recording, solving and teacher verdicts need both routing services. Started from the repository root with:"}</p>
       <code class="svcpop__cmd">${esc(DOCKER)}</code>`;
   }
 
+  servicesHtml() {
+    return `<div class="svcpop__figure">${FigureState.html("services", this.serviceState(), 'aria-hidden="true"')}</div><div class="svcpop__body">${this.servicesBody()}</div>`;
+  }
+
   toggleServices() {
     Popover.toggle(this.serviceNode, this.servicesHtml(), { label: "Routing services", className: "svcpop" });
+  }
+
+  onJobs(listener) {
+    this.jobListeners.push(listener);
+    if (this.jobs) listener(this.jobs);
   }
 
   async pollJobs() {
     const link = document.getElementById("jobs-link");
     try {
       const { jobs } = await api.get("/api/jobs");
+      this.jobs = jobs;
+      for (const listener of this.jobListeners) listener(jobs);
       const running = jobs.filter((job) => ["running", "queued", "pending"].includes(job.status)).length;
       link.textContent = running ? `${plural(running, "job")} running` : "No jobs running";
       link.classList.toggle("is-live", running > 0);

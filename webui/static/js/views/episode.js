@@ -14,9 +14,9 @@ import { RouteTable } from "../episode/route_table.js";
 import { StartPage } from "../episode/start_page.js";
 import { Timeline } from "../episode/timeline.js";
 import { Position, TraceModel } from "../episode/trace_model.js";
-import { Figure } from "../fx/figure.js";
 import { Drawer } from "../ui/drawer.js";
-import { errorBlock, skeleton, statusChip } from "../ui/status.js";
+import { errorBlock, failView, skeleton, statusChip } from "../ui/status.js";
+import { FigureStates } from "../ui/figure_states.js";
 import { DataTable } from "../ui/table.js";
 
 export class EpisodeView {
@@ -120,7 +120,7 @@ export class EpisodeView {
     this.map = null;
     this.ref = null;
     this.showRecording();
-    this.recordNode.innerHTML = `<div class="view__pad ep__lost">${Figure.html("patch")}${errorBlock(cause, details)}<p><a class="btn" href="#/episode">Back to the episode start page</a></p></div>`;
+    this.recordNode.innerHTML = `<div class="view__pad ep__lost">${failView(cause, details, { status: 404 })}<p><a class="btn" href="#/episode">Back to the episode start page</a></p></div>`;
   }
 
   async recordFromReport(run, seed, index) {
@@ -290,6 +290,7 @@ export class EpisodeView {
       if (token !== this.token) return;
       const before = this.selected.lane;
       this.applyStatus(status);
+      this.syncMapCover();
       const changed = await this.loadTraces();
       if (token !== this.token) return;
       const hadSelection = this.selected.seq !== null;
@@ -336,6 +337,9 @@ export class EpisodeView {
     });
     this.kpiNode = this.recordNode.querySelector(".ep__kpis");
     const left = this.recordNode.querySelector(".ep__left");
+    this.coverNode = el(`<div class="fig-cover" hidden>${HairlineFigure.html("recording", 'aria-hidden="true"')}<p class="figure-empty__text"></p></div>`);
+    this.recordNode.querySelector(".ep__map").appendChild(this.coverNode);
+    this.coverFigure = this.coverNode.querySelector("hairline-figure");
 
     this.timeline = new Timeline(this.recordNode.querySelector(".ep__timeline"), { onSelect: (laneKey, seq) => this.select(laneKey, seq) });
     this.map = new MapView(this.recordNode.querySelector(".ep__map"), {
@@ -488,11 +492,13 @@ export class EpisodeView {
     if (!lane || !frame) {
       this.kpiNode.innerHTML = "";
       this.map.setScene(null);
-      this.map.setCaption(this.isRunning() ? "Recording. The first frame arrives after the opening solve." : "No frames were recorded.");
-      this.decision.container.innerHTML = this.isRunning() ? `<div class="decision__head">${skeleton(4)}</div>` : `<p class="decision__rule muted">No lane of this recording has frames.</p>`;
+      this.map.setCaption("");
+      this.syncMapCover();
+      this.decision.empty(this.isRunning() ? `<div class="decision__head">${skeleton(4)}</div>` : `<p class="decision__rule muted">No lane of this recording has frames.</p>`);
       this.renderDrawer();
       return;
     }
+    this.coverNode.hidden = true;
 
     const trace = lane.trace;
     this.app.router.silent(Router.build(["episode", ...this.refParts(), lane.key, Position.of(frame)]));
@@ -504,6 +510,19 @@ export class EpisodeView {
     this.renderOverlays();
     this.decision.render({ trace, seq: frame.seq, verdictState: this.verdictState() });
     this.renderDrawer();
+  }
+
+  syncMapCover() {
+    if (!this.coverNode || this.frame()) return;
+    const running = this.isRunning();
+    const name = running ? "recording" : "fleet";
+    if (this.coverFigure.getAttribute("name") !== name) {
+      delete this.coverFigure.dataset.stateKey;
+      this.coverFigure.setAttribute("name", name);
+    }
+    FigureStates.write(this.coverFigure, running && this.status ? FigureStates.recordingFromStatus(this.status) : { routes: [], unassigned: 0, idle: 0, solving: false });
+    this.coverNode.querySelector("p").textContent = running ? "Recording. The first frame arrives after the opening solve." : "No frames were recorded.";
+    this.coverNode.hidden = false;
   }
 
   refParts() {
@@ -663,6 +682,7 @@ export class EpisodeView {
     else {
       if (this.selected.seq >= this.lane().trace.length - 1) this.select(this.selected.lane, 0);
       this.map.playing = true;
+      HairlineFigureBase.hold(true);
       this.playTimer = setInterval(() => {
         if (this.selected.seq >= this.lane().trace.length - 1) this.stopPlay();
         else this.step(1);
@@ -675,6 +695,7 @@ export class EpisodeView {
     const wasPlaying = Boolean(this.playTimer);
     clearInterval(this.playTimer);
     this.playTimer = null;
+    if (wasPlaying) HairlineFigureBase.hold(false);
     if (this.map) this.map.playing = false;
     if (wasPlaying && this.built && this.ref && this.status) this.renderBar();
   }

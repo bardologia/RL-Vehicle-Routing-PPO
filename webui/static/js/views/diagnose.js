@@ -3,13 +3,13 @@ import { AgentTable } from "../diagnose/agent_table.js";
 import { BehaviourPanels } from "../diagnose/behaviour.js";
 import { FindingsList } from "../diagnose/findings_list.js";
 import { Links } from "../diagnose/links.js";
-import { Agents } from "../episode/encoding.js";
+import { Agents, TERMS } from "../episode/encoding.js";
 import { el, esc, fmtPct, fmtSigned, fmtSignedInt, isNum, plural } from "../format.js";
-import { Figure } from "../fx/figure.js";
 import { Scatter } from "../ui/charts.js";
 import { PageHead } from "../ui/page_head.js";
 import { infoText, panelHead } from "../ui/panel.js";
-import { emptyBlock, errorBlock, skeleton } from "../ui/status.js";
+import { emptyBlock, errorBlock, failView, skeleton } from "../ui/status.js";
+import { FigureStates } from "../ui/figure_states.js";
 import { DataTable, needsTraces } from "../ui/table.js";
 import { Segmented } from "../ui/tabs.js";
 
@@ -37,7 +37,8 @@ export class DiagnoseView {
           title: "Diagnose",
           controls: `${PageHead.control("Run", `<select class="select" data-role="run" aria-label="Run"></select>`)}<label class="ctl" data-role="seedwrap"><span class="ctl__label">Report seed</span><select class="select" data-role="seed" aria-label="Report"></select></label><a class="btn btn--sm btn--quiet" data-role="record" href="#/launch/diagnose">Record traces</a>`,
           extra: `<div data-role="flags"></div>`,
-          figure: Figure.html("loupe"),
+          figure: `${HairlineFigure.html("diverge")}${HairlineFigure.html("confusion")}`,
+          form: "duo",
         })}
         <div data-role="error"></div>
         <div data-role="content" class="diag__content"></div>
@@ -50,6 +51,11 @@ export class DiagnoseView {
     this.recordLink = root.querySelector("[data-role=record]");
     this.errorNode = root.querySelector("[data-role=error]");
     this.content = root.querySelector("[data-role=content]");
+    this.figures = { diverge: root.querySelector("hairline-figure[name=diverge]"), confusion: root.querySelector("hairline-figure[name=confusion]") };
+    this.content.addEventListener("click", (event) => {
+      const figure = event.target.closest(".sechead__figures hairline-figure[data-panel]");
+      if (figure) this.focusPanel(figure.dataset.panel);
+    });
 
     this.runSelect.addEventListener("change", () => this.app.router.go(Links.diagnose(this.runSelect.value, null)));
     this.seedSelect.addEventListener("change", () => this.app.router.go(Links.diagnose(this.run, this.seedSelect.value)));
@@ -84,7 +90,7 @@ export class DiagnoseView {
       this.clearReport();
       this.renderSelectors(null, null);
       this.content.innerHTML = "";
-      this.errorNode.innerHTML = errorBlock("The run list could not be loaded.", error.message);
+      this.errorNode.innerHTML = failView("The run list could not be loaded.", error.message, error);
       return;
     }
     if (token !== this.token) return;
@@ -102,7 +108,7 @@ export class DiagnoseView {
     if (!run) {
       this.clearReport();
       this.renderSelectors(null, wanted);
-      this.content.innerHTML = `<section class="panel"><div class="panel__body">${errorBlock(`Run "${wanted}" does not exist.`, "The hash names a run that is not in the runs directory.")}</div></section>`;
+      this.content.innerHTML = failView(`Run "${wanted}" does not exist.`, "The hash names a run that is not in the runs directory.", { status: 404 });
       return;
     }
     const seeds = run.reports.map((report) => report.seed);
@@ -138,7 +144,7 @@ export class DiagnoseView {
     } catch (error) {
       if (token !== this.token) return;
       this.content.innerHTML = "";
-      this.errorNode.innerHTML = errorBlock(`The report of "${this.run}", seed ${this.seed}, could not be loaded.`, error.message);
+      this.errorNode.innerHTML = failView(`The report of "${this.run}", seed ${this.seed}, could not be loaded.`, error.message, error);
       return;
     }
     if (token !== this.token) return;
@@ -159,6 +165,19 @@ export class DiagnoseView {
     this.facts.innerHTML = "";
     this.flags.innerHTML = "";
     this.recordLink.href = "#/launch/diagnose";
+    this.writeFigures();
+  }
+
+  writeFigures() {
+    FigureStates.write(this.figures.diverge, FigureStates.diverge(this.report, this.index));
+    FigureStates.write(this.figures.confusion, FigureStates.confusion(this.index));
+  }
+
+  writeBehaviourFigures() {
+    const node = (name) => this.content.querySelector(`.sechead__figures hairline-figure[name=${name}]`);
+    FigureStates.write(node("heads"), FigureStates.heads(this.report));
+    FigureStates.write(node("terms"), FigureStates.terms(this.index, TERMS.map((term) => term.key)));
+    FigureStates.write(node("ranking"), FigureStates.ranking(this.index));
   }
 
   renderSelectors(run, missing) {
@@ -212,7 +231,7 @@ export class DiagnoseView {
           <div class="panel__body"><div data-role="regret" class="diag__regret"></div></div>
         </section>
       </div>
-      <div class="sechead diag__section"><h2>Behaviour <span class="muted">from recorded traces</span></h2></div>
+      <div class="sechead diag__section"><div class="sechead__main"><h2>Behaviour <span class="muted">from recorded traces</span></h2></div><div class="sechead__figures">${HairlineFigure.html("heads", 'data-panel="operator-mix" data-hint="Operator mix"')}${HairlineFigure.html("terms", 'data-panel="reward-by-term" data-hint="Reward by term"')}${HairlineFigure.html("ranking", 'data-panel="job-ranking" data-hint="Job ranking"')}</div></div>
       <div data-role="behaviour-note"></div>
       <div data-role="behaviour"></div>`;
 
@@ -225,6 +244,8 @@ export class DiagnoseView {
       }, "Reference agent");
     }
 
+    this.writeFigures();
+    this.writeBehaviourFigures();
     this.buildRegret();
     this.behaviour = new BehaviourPanels(this.content.querySelector("[data-role=behaviour]"), { run: this.run, seed: this.seed, recordHash: this.recordHash, onNavigate: (hash) => this.app.router.go(hash) });
     this.drawCharts();

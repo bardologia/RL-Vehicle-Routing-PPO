@@ -1,9 +1,9 @@
 import { api } from "../api.js";
 import { esc, fmtAge, fmtSigned, isNum, Store } from "../format.js";
-import { Figure } from "../fx/figure.js";
 import { PageHead } from "../ui/page_head.js";
 import { infoText, panelHead } from "../ui/panel.js";
-import { errorBlock, skeleton, statusChip } from "../ui/status.js";
+import { errorBlock, failView, skeleton, statusChip } from "../ui/status.js";
+import { FigureStates } from "../ui/figure_states.js";
 import { AgentPicker } from "./agent_picker.js";
 import { Agents } from "./encoding.js";
 
@@ -14,6 +14,13 @@ export class StartPage {
     this.kind = Store.read("episode.source", "seed");
     this.runs = [];
     this.picker = null;
+    this.recent = [];
+    container.innerHTML = `<div class="view__pad start">${PageHead.html({ title: "Episode", lead: "Record one episode with every agent on the same start.", form: "hero", figure: HairlineFigure.html("recording") })}<div class="start__body" data-role="body"></div></div>`;
+    this.body = container.querySelector("[data-role=body]");
+    this.figure = container.querySelector("hairline-figure[name=recording]");
+    this.body.addEventListener("pointerover", (event) => this.followRow(event.target));
+    this.body.addEventListener("focusin", (event) => this.followRow(event.target));
+    this.body.addEventListener("pointerleave", () => this.followRow(null));
     container.addEventListener("click", (event) => this.onClick(event));
     container.addEventListener("change", (event) => this.onChange(event));
     container.addEventListener("input", (event) => {
@@ -30,15 +37,21 @@ export class StartPage {
     return "Scenario from the Lab";
   }
 
+  followRow(target) {
+    const row = target instanceof Element ? target.closest("tr[data-recent]") : null;
+    const episode = row ? this.recent[Number(row.dataset.recent)] : this.recent[0];
+    FigureStates.write(this.figure, FigureStates.recordingFromEpisode(episode || null));
+  }
+
   async show() {
-    this.container.innerHTML = `<div class="view__pad">${skeleton(5)}</div>`;
+    this.body.innerHTML = skeleton(5);
     let checkpoints;
     let runs;
     let episodes;
     try {
       [checkpoints, runs, episodes] = await Promise.all([api.get("/api/checkpoints"), api.get("/api/runs"), api.get("/api/episodes")]);
     } catch (error) {
-      this.container.innerHTML = `<div class="view__pad">${errorBlock("The episode start page could not be loaded.", error.message)}</div>`;
+      this.body.innerHTML = failView("The episode start page could not be loaded.", error.message, error);
       return;
     }
     this.checkpoints = checkpoints.checkpoints;
@@ -47,6 +60,7 @@ export class StartPage {
   }
 
   render(recent) {
+    this.recent = recent;
     const context = this.app.context;
     const saved = Store.read("episode.form", { seed: 1, rounds: 5, edits: 8, run: null, report: null, index: 0 });
     if (context.run && this.runs.some((run) => run.name === context.run)) saved.run = context.run;
@@ -78,7 +92,7 @@ export class StartPage {
         <span class="fieldlabel"><span>Episode</span><input class="input input--num" data-field="index"${report ? ` title="0 to ${report.episodes - 1}"` : ""} inputmode="numeric" value="${esc(saved.index)}"><span class="field__error" role="alert" data-error="index"></span></span>
       </span>` : `<span class="muted">No run has an evaluation report yet. <a href="#/launch/evaluate">Evaluate a run</a> first.</span>`;
 
-    const recentRows = recent.length ? recent.map((episode) => {
+    const recentRows = recent.length ? recent.map((episode, index) => {
       const keys = Object.keys(episode.agents).sort((a, b) => Agents.order(a) - Agents.order(b));
       const first = keys.find((key) => episode.agents[key].status === "finished") || keys[0];
       const agents = keys.map((key) => {
@@ -86,12 +100,10 @@ export class StartPage {
         const tail = entry.status === "finished" && isNum(entry.total_reward) ? fmtSigned(entry.total_reward, 2) : entry.status === "failed" ? statusChip("FAIL") : esc(entry.status);
         return `<span class="recent__agent"><span class="lanekey lanekey--${Agents.style(key)}"><i></i>${esc(Agents.label(key))}</span> ${tail}</span>`;
       }).join("");
-      return `<tr><td class="nowrap">${fmtAge(episode.created)}</td><td>${esc(StartPage.sourceText(episode.source))}</td><td>${agents}</td><td><a class="btn btn--sm" href="#/episode/ep/${esc(episode.episode_id)}/${encodeURIComponent(first)}/0">Open</a></td></tr>`;
+      return `<tr data-recent="${index}"><td class="nowrap">${fmtAge(episode.created)}</td><td>${esc(StartPage.sourceText(episode.source))}</td><td>${agents}</td><td><a class="btn btn--sm" href="#/episode/ep/${esc(episode.episode_id)}/${encodeURIComponent(first)}/0">Open</a></td></tr>`;
     }).join("") : `<tr class="dtable__empty"><td colspan="4">No recordings yet. Pick a source above and record one.</td></tr>`;
 
-    this.container.innerHTML = `
-      <div class="view__pad start">
-        ${PageHead.html({ title: "Episode", lead: "Record one episode with every agent on the same start.", form: "narrow", figure: Figure.html("patch") })}
+    this.body.innerHTML = `
         <div class="start__top">
           <div>
         <div class="start__sources" role="radiogroup" aria-label="Episode source">
@@ -119,8 +131,8 @@ export class StartPage {
         <section class="panel panel--flush">
           ${panelHead("Recent recordings", { note: "last ten", info: infoText("The last ten recordings, stored under logs/webui/episodes.") })}
           <div class="panel__body"><div class="dtable dtable--static"><table><thead><tr><th>Recorded</th><th>Source</th><th>Agents and return</th><th></th></tr></thead><tbody>${recentRows}</tbody></table></div></div>
-        </section>
-      </div>`;
+        </section>`;
+    this.followRow(null);
 
     this.picker = new AgentPicker(this.container.querySelector("[data-role=picker]"), { checkpoints: this.checkpoints, preferredRun: context.run, storeKey: "episode.agents" });
     this.syncRecord();

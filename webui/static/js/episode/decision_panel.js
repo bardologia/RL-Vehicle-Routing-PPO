@@ -2,6 +2,7 @@ import { esc, fmtDur, fmtFixed, fmtProb, fmtSigned, isNum, listIds, plural, sign
 import { BarChart } from "../ui/charts.js";
 import { HeatTable } from "../ui/heat_table.js";
 import { statusChip, plainChip } from "../ui/status.js";
+import { FigureStates } from "../ui/figure_states.js";
 import { kvTable } from "../ui/table.js";
 import { Segmented } from "../ui/tabs.js";
 import { Agents, OPERATORS, Sentences, TERMS, Vehicles } from "./encoding.js";
@@ -18,6 +19,9 @@ export class DecisionPanel {
     this.heatMode = "policy";
     this.current = null;
     container.classList.add("decision");
+    container.innerHTML = `<div class="fig-band decision__band">${HairlineFigure.html("insert", 'aria-hidden="true"')}</div><div class="decision__body"></div>`;
+    this.band = container.querySelector(".decision__band > hairline-figure");
+    this.body = container.querySelector(".decision__body");
     container.addEventListener("click", (event) => {
       const jump = event.target.closest("[data-jump]");
       if (jump) this.onJump(Number(jump.dataset.jump));
@@ -215,17 +219,33 @@ export class DecisionPanel {
       <p class="decision__foot">${sentence}</p>`;
   }
 
+  empty(html) {
+    this.current = null;
+    this.body.innerHTML = html;
+  }
+
+  renderBand(frame) {
+    const name = frame.kind === "round_open" ? "disruption" : frame.decision.policy ? "heads" : "insert";
+    if (this.band.getAttribute("name") !== name) {
+      delete this.band.dataset.stateKey;
+      this.band.setAttribute("name", name);
+    }
+    const state = name === "disruption" ? FigureStates.disruption(frame) : name === "heads" ? FigureStates.decisionHeads(frame.decision) : FigureStates.insert(frame);
+    FigureStates.write(this.band, state);
+  }
+
   render({ trace, seq, verdictState }) {
     const frame = trace.frame(seq);
     const frameChanged = !this.current || this.current.trace !== trace || this.current.seq !== seq;
     const scroll = frameChanged ? 0 : this.container.scrollTop;
     this.current = { trace, seq };
     if (!frame) {
-      this.container.innerHTML = "";
+      this.body.innerHTML = "";
       return;
     }
+    this.renderBand(frame);
     if (frame.kind === "round_open") {
-      this.container.innerHTML = this.roundOpen(trace, frame);
+      this.body.innerHTML = this.roundOpen(trace, frame);
       this.container.scrollTop = scroll;
       return;
     }
@@ -266,7 +286,7 @@ export class DecisionPanel {
     if (decision.action.operator === 0 && isNum(decision.break_even_s)) parts.push(this.section("Break-even", this.breakEven(decision)));
     parts.push(this.section("Teacher verdict", `<div data-role="verdict">${VerdictPanel.html(frame, verdictState)}</div>`));
 
-    this.container.innerHTML = parts.join("");
+    this.body.innerHTML = parts.join("");
     this.container.scrollTop = scroll;
     if (policy) this.mountHeat(trace, frame);
   }

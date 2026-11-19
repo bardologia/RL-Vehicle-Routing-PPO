@@ -7,11 +7,11 @@ import { LineChart } from "../ui/charts.js";
 import { kpiRow } from "../ui/kpi.js";
 import { LogText } from "../ui/logtext.js";
 import { MarkdownTable } from "../ui/markdown_table.js";
-import { Figure } from "../fx/figure.js";
 import { PageHead } from "../ui/page_head.js";
 import { infoText, panelHead, panelHtml } from "../ui/panel.js";
 import { Popover } from "../ui/popover.js";
-import { emptyBlock, errorBlock, skeleton, statusChip } from "../ui/status.js";
+import { EMPTY_FIGURES, emptyBlock, errorBlock, failView, skeleton, statusChip } from "../ui/status.js";
+import { FigureStates } from "../ui/figure_states.js";
 import { kvTable } from "../ui/table.js";
 import { Tabs } from "../ui/tabs.js";
 
@@ -24,6 +24,7 @@ const SECTIONS = [
   { value: "gallery", label: "Gallery" },
 ];
 
+const SECTION_FIGURES = { summary: "checkpoint", health: "training", curves: "training", logs: "terminal", files: "cabinet", gallery: "riffle" };
 const STYLES = ["solid", "dashed", "dotted"];
 const PAGE = 24;
 
@@ -94,6 +95,8 @@ export class RunsView {
     this.curveState = { search: "", page: 0, log: false, overlay: "" };
     this.logState = { file: null, search: "", follow: false };
     this.followTimer = null;
+    this.shell = null;
+    this.slotNames = [];
 
     root.appendChild(el(`
       <div class="runs">
@@ -111,6 +114,11 @@ export class RunsView {
       this.renderRail();
     });
     this.main.addEventListener("click", (event) => this.onClick(event));
+    this.main.addEventListener("figure-pick", (event) => {
+      const name = this.slotNames[event.detail.slot];
+      if (name && name !== this.run) this.app.router.go(Links.runs(name, this.section));
+    });
+    app.onJobs(() => this.writeTraining());
     this.main.addEventListener("input", (event) => this.onInput(event));
     this.main.addEventListener("change", (event) => this.onInput(event));
 
@@ -140,7 +148,8 @@ export class RunsView {
     try {
       this.runs = (await api.get("/api/runs")).runs;
     } catch (error) {
-      this.main.innerHTML = `<div class="view__pad">${errorBlock("The run list could not be loaded.", error.message)}</div>`;
+      this.shell = null;
+      this.main.innerHTML = `<div class="view__pad">${failView("The run list could not be loaded.", error.message, error)}</div>`;
       return;
     }
     if (token !== this.token) return;
@@ -150,7 +159,8 @@ export class RunsView {
     const section = SECTIONS.some((entry) => entry.value === parts[1]) ? parts[1] : "summary";
     if (!name) {
       this.renderRail();
-      this.main.innerHTML = `<div class="view__pad">${emptyBlock("The runs directory is empty. A pretrain run is the usual first step.", `<a class="btn btn--primary" href="#/launch/pretrain">Launch pretrain</a>`)}</div>`;
+      this.shell = null;
+      this.main.innerHTML = `<div class="view__pad">${emptyBlock("The runs directory is empty. A pretrain run is the usual first step.", `<a class="btn btn--primary" href="#/launch/pretrain">Launch pretrain</a>`, EMPTY_FIGURES.checkpoints)}</div>`;
       return;
     }
     if (parts[0] !== name || parts[1] !== section) {
@@ -167,7 +177,13 @@ export class RunsView {
       this.cache = {};
       this.curveState.page = 0;
       this.logState.file = null;
-      this.main.innerHTML = `<div class="view__pad">${skeleton(5)}</div>`;
+      this.ensureShell();
+      this.shell.title.textContent = name;
+      this.shell.date.innerHTML = "";
+      this.shell.controls.innerHTML = "";
+      this.shell.tabs.innerHTML = "";
+      this.shell.section.innerHTML = skeleton(5);
+      this.writeShelf();
     }
     try {
       if (!this.runs.some((run) => run.name === name)) throw new ApiError(404, `unknown run '${name}'`);
@@ -175,7 +191,8 @@ export class RunsView {
     } catch (error) {
       if (token !== this.token) return;
       this.detail = null;
-      this.main.innerHTML = `<div class="view__pad"><section class="panel"><header class="panel__head"><h3 class="panel__title">${error.status === 404 ? "404: unknown run" : "Run not loaded"}</h3></header><div class="panel__body">${errorBlock(error.status === 404 ? `There is no run named "${name}".` : `Run "${name}" could not be loaded.`, error.message)}<p><a class="btn" href="#/runs">Open the newest run</a></p></div></section></div>`;
+      this.shell = null;
+      this.main.innerHTML = `<div class="view__pad">${failView(error.status === 404 ? `There is no run named "${name}".` : `Run "${name}" could not be loaded.`, error.message, error)}<p class="runs__back"><a class="btn" href="#/runs">Open the newest run</a></p></div>`;
       return;
     }
     if (token !== this.token) return;
@@ -197,25 +214,51 @@ export class RunsView {
       </a>`).join("") : `<p class="muted runs__none">No run matches "${esc(this.filter)}".</p>`;
   }
 
+  ensureShell() {
+    if (this.shell) return;
+    this.main.innerHTML = `
+      <div class="view__pad">
+        ${PageHead.html({ title: "", form: "narrow", figure: HairlineFigure.html("checkpoint") })}
+        <div data-role="tabs" class="runs__tabs"></div>
+        <div data-role="section" class="runs__section"></div>
+      </div>`;
+    const find = (selector) => this.main.querySelector(selector);
+    this.shell = { title: find("[data-role=title]"), date: find(".view-head__date"), controls: find("[data-role=controls]"), tabs: find("[data-role=tabs]"), section: find("[data-role=section]"), figure: find("hairline-figure[name=checkpoint]") };
+  }
+
+  headFigure(name, intensity) {
+    const figure = this.shell.figure;
+    if (figure.getAttribute("name") !== name) {
+      delete figure.dataset.stateKey;
+      figure.setAttribute("name", name);
+    }
+    if (intensity === undefined) figure.removeAttribute("intensity");
+    else figure.setAttribute("intensity", intensity.toFixed(2));
+  }
+
+  writeShelf() {
+    const name = SECTION_FIGURES[this.section] || "checkpoint";
+    const detail = this.detail;
+    const count = name === "cabinet" && detail ? Math.min(1, detail.files.length / 60) : name === "riffle" && detail ? Math.min(1, detail.analysis.length / 8) : undefined;
+    this.headFigure(name, count);
+    if (name === "training") this.writeTraining();
+    if (name !== "checkpoint") return;
+    const shelf = FigureStates.checkpoints(this.runs, this.run);
+    this.slotNames = shelf.names;
+    FigureStates.write(this.shell.figure, shelf.state);
+  }
+
   renderShell(info) {
     const detail = this.detail;
     const seed = detail.reports[0];
     const episodes = info && info.reports[0] ? info.reports[0].episodes : null;
-    this.main.innerHTML = `
-      <div class="view__pad">
-        ${PageHead.html({
-          title: detail.name,
-          form: "narrow",
-          dateline: `${detail.kind}${info ? `, ${fmtAge(info.mtime)}` : ""}`,
-          datelineExtra: RunStatus.chip(detail),
-          controls: `${seed !== undefined ? `<a class="btn btn--primary" href="${esc(Links.diagnose(detail.name, seed))}">Open in Diagnose</a>` : ""}${detail.loadable ? `<button type="button" class="btn btn--sm btn--quiet" data-action="actions" aria-haspopup="dialog" aria-expanded="false">Actions</button>` : ""}`,
-          figure: Figure.html("cabinet"),
-        })}
-        <div data-role="tabs" class="runs__tabs"></div>
-        <div data-role="section" class="runs__section"></div>
-      </div>`;
-    new Tabs(this.main.querySelector("[data-role=tabs]"), SECTIONS.map((entry) => ({ ...entry, count: entry.value === "logs" ? detail.logs.length : entry.value === "files" ? detail.files.length : entry.value === "gallery" ? detail.analysis.length : undefined })), this.section, (value) => this.app.router.go(Links.runs(this.run, value)));
-    this.body = this.main.querySelector("[data-role=section]");
+    this.ensureShell();
+    this.shell.title.textContent = detail.name;
+    this.shell.date.innerHTML = `<span data-role="dateline">${esc(`${detail.kind}${info ? `, ${fmtAge(info.mtime)}` : ""}`)}</span>${RunStatus.chip(detail)}`;
+    this.shell.controls.innerHTML = `${seed !== undefined ? `<a class="btn btn--primary" href="${esc(Links.diagnose(detail.name, seed))}">Open in Diagnose</a>` : ""}${detail.loadable ? `<button type="button" class="btn btn--sm btn--quiet" data-action="actions" aria-haspopup="dialog" aria-expanded="false">Actions</button>` : ""}`;
+    this.writeShelf();
+    new Tabs(this.shell.tabs, SECTIONS.map((entry) => ({ ...entry, count: entry.value === "logs" ? detail.logs.length : entry.value === "files" ? detail.files.length : entry.value === "gallery" ? detail.analysis.length : undefined })), this.section, (value) => this.app.router.go(Links.runs(this.run, value)));
+    this.body = this.shell.section;
     this.actionItems = detail.loadable ? [
       { label: "Record episode", href: "#/episode" },
       { label: "Evaluate", href: Links.evaluate(detail.name) },
@@ -245,6 +288,28 @@ export class RunsView {
       if (token !== this.token) return;
       body.innerHTML = errorBlock(`The ${this.section} section of "${this.run}" could not be loaded.`, error.message);
     }
+  }
+
+  trainingValues() {
+    const health = this.cache.health;
+    if (health) {
+      const chart = health.charts.find((entry) => entry.key === (health.kind === "ppo" ? "episode_reward" : "accuracy"));
+      if (chart && chart.series.length) return chart.series[0].values;
+    }
+    const curves = this.cache.curves;
+    if (curves) {
+      const tag = ["episode/total_reward", "pretrain/accuracy/operator"].find((name) => curves.tags[name]);
+      if (tag) return curves.tags[tag].values;
+    }
+    return null;
+  }
+
+  writeTraining() {
+    const figure = this.shell ? this.shell.figure : null;
+    if (!figure || figure.getAttribute("name") !== "training") return;
+    const jobs = this.app.jobs || [];
+    const live = jobs.some((job) => job.status === "running" && job.overrides && job.overrides["io.run_name"] === this.run);
+    FigureStates.write(figure, FigureStates.training(this.trainingValues(), live));
   }
 
   panel(title, help, bodyHtml, extra, note) {
@@ -344,6 +409,7 @@ export class RunsView {
     this.body.innerHTML = `
       <div class="runs__controls"><span class="state state--plain" data-hint="Fixed charts. Charts on the same step axis share the crosshair.">${health.kind === "ppo" ? "PPO training" : "behaviour cloning"}</span><span class="diag__spacer"></span>${this.smoothingControl()}</div>
       <div class="runs__charts">${blocks.join("")}</div>`;
+    this.writeTraining();
 
     health.charts.forEach((chart, index) => {
       const series = RunsView.dedupe(chart.series);
@@ -378,6 +444,7 @@ export class RunsView {
       </div>
       <div data-role="curve-error"></div>
       <div data-role="curve-grid"></div>`;
+    this.writeTraining();
     await this.drawCurves();
   }
 
@@ -505,7 +572,7 @@ export class RunsView {
 
   renderGallery() {
     const images = this.detail.analysis;
-    this.body.innerHTML = this.panel("Gallery", "Images written to the analysis folder of the run.", images.length ? `<div class="runs__gallery">${images.map((image) => `<button type="button" class="runs__thumb" data-action="lightbox" data-src="${esc(image.url)}" data-name="${esc(image.name)}"><img src="${esc(image.url)}" alt="${esc(image.name)}" loading="lazy"><span>${esc(image.name)}</span></button>`).join("")}</div>` : `<div class="figure-empty">${Figure.html("drawer")}<p class="figure-empty__text">This run has no analysis images.</p></div>`);
+    this.body.innerHTML = this.panel("Gallery", "Images written to the analysis folder of the run.", images.length ? `<div class="runs__gallery">${images.map((image) => `<button type="button" class="runs__thumb" data-action="lightbox" data-src="${esc(image.url)}" data-name="${esc(image.name)}"><img src="${esc(image.url)}" alt="${esc(image.name)}" loading="lazy"><span>${esc(image.name)}</span></button>`).join("")}</div>` : emptyBlock("This run has no analysis images."));
   }
 
   onClick(event) {

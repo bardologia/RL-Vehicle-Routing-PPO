@@ -5,8 +5,8 @@ import { AgentPicker } from "../episode/agent_picker.js";
 import { Vehicles } from "../episode/encoding.js";
 import { KpiStrip } from "../episode/kpi_strip.js";
 import { MapView } from "../episode/map_view.js";
-import { Figure } from "../fx/figure.js";
 import { errorBlock, statusChip } from "../ui/status.js";
+import { FigureStates } from "../ui/figure_states.js";
 import { DataTable } from "../ui/table.js";
 
 const TOOLS = [
@@ -66,10 +66,10 @@ export class LabView {
           <div class="lab__tools" role="toolbar" aria-label="Map tools"></div>
         </div>
         <aside class="lab__right">
+          <div class="fig-band lab__band">${HairlineFigure.html("fleet")}</div>
           <section class="lab__block" data-role="editor"></section>
           <section class="lab__block" data-role="summary"></section>
           <section class="lab__block" data-role="run"></section>
-          ${Figure.html("dish", "lab__figure")}
         </aside>
       </div>`));
     const find = (role) => this.root.querySelector(`[data-role=${role}]`);
@@ -78,6 +78,7 @@ export class LabView {
     this.summaryNode = find("summary");
     this.runNode = find("run");
     this.toolsNode = this.root.querySelector(".lab__tools");
+    this.fleet = this.root.querySelector("hairline-figure[name=fleet]");
 
     this.map = new MapView(this.root.querySelector(".lab__map"), {
       controls: ["fit", "buildings", "crossings"],
@@ -570,6 +571,7 @@ export class LabView {
 
   renderSummary() {
     const state = this.solveState;
+    FigureStates.write(this.fleet, FigureStates.fleet(this.plan, this.scenario, state.status === "solving"));
     const pinned = Boolean(this.scenario && this.scenario.assignment);
     let body;
     if (state.status === "solving") body = `<p class="muted" role="status">solving</p>`;

@@ -3,12 +3,12 @@ import { FindingsList } from "../diagnose/findings_list.js";
 import { Links } from "../diagnose/links.js";
 import { Agents } from "../episode/encoding.js";
 import { el, esc, fmtAge, fmtSigned, plural } from "../format.js";
-import { Figure } from "../fx/figure.js";
 import { IntervalPlot } from "../ui/charts.js";
 import { kpiRow } from "../ui/kpi.js";
 import { PageHead } from "../ui/page_head.js";
 import { infoText, panelHead } from "../ui/panel.js";
-import { emptyBlock, errorBlock, skeleton, statusChip } from "../ui/status.js";
+import { EMPTY_FIGURES, emptyBlock, errorBlock, failView, skeleton, statusChip } from "../ui/status.js";
+import { FigureStates } from "../ui/figure_states.js";
 
 const AGENTS = ["model", "teacher", "insertion_only", "do_nothing"];
 const DOCKER = 'sg docker -c "docker compose up -d"';
@@ -28,7 +28,7 @@ export class OverviewView {
           title: "Overview",
           form: "hero",
           controls: `${PageHead.control("Run", `<select class="select" data-role="run" aria-label="Run"></select>`)}<span class="ctl" data-role="status-actions"></span>`,
-          figure: Figure.html("router"),
+          figure: HairlineFigure.html("balance"),
         })}
         <div data-role="error"></div>
         <section class="panel" data-region="status">
@@ -40,13 +40,13 @@ export class OverviewView {
           <div class="panel__body" data-role="findings"></div>
         </section>
         <div class="grid-12">
-          <section class="panel panel--flush span-7" data-region="checkpoints">
+          <section class="panel span-7" data-region="checkpoints">
             ${panelHead("Checkpoints", { info: infoText("Every run directory that holds a policy file, checked against the current architecture.") })}
-            <div class="panel__body" data-role="checkpoints"></div>
+            <div class="panel__body figcard"><div class="figcard__fig">${HairlineFigure.html("checkpoint")}</div><div class="figcard__body" data-role="checkpoints"></div></div>
           </section>
           <section class="panel span-5" data-region="activity">
             ${panelHead("Activity", { info: infoText("Jobs of this server session and the latest recordings.") })}
-            <div class="panel__body" data-role="activity"></div>
+            <div class="panel__body figcard"><div class="figcard__fig">${HairlineFigure.html("queue")}</div><div class="figcard__body" data-role="activity"></div></div>
           </section>
         </div>
         <section class="panel" data-region="services">
@@ -56,8 +56,13 @@ export class OverviewView {
       </div>`));
     this.nodes = {};
     for (const node of root.querySelectorAll("[data-role]")) this.nodes[node.dataset.role] = node;
+    this.figures = {};
+    for (const node of root.querySelectorAll("hairline-figure")) this.figures[node.getAttribute("name")] = node;
+    this.slotNames = [];
+    this.figures.checkpoint.addEventListener("figure-pick", (event) => this.pickSlot(event.detail.slot));
     this.nodes.run.addEventListener("change", () => {
       this.selected = this.nodes.run.value;
+      this.renderCheckpoints();
       this.loadRun();
     });
     this.nodes.findingsNote = root.querySelector("[data-region=findings] [data-role=panel-note]");
@@ -76,6 +81,20 @@ export class OverviewView {
 
   focusSearch() {
     this.nodes.run.focus();
+  }
+
+  pickSlot(slot) {
+    const name = this.slotNames[slot];
+    const run = this.runs ? this.runs.find((entry) => entry.name === name) : null;
+    if (!run) return;
+    if (!run.has_checkpoint) {
+      this.app.router.go(Links.runs(run.name));
+      return;
+    }
+    this.selected = run.name;
+    this.nodes.run.value = run.name;
+    this.renderCheckpoints();
+    this.loadRun();
   }
 
   enter() {
@@ -115,13 +134,12 @@ export class OverviewView {
     try {
       [runs, checkpoints] = await Promise.all([api.get("/api/runs"), api.get("/api/checkpoints")]);
     } catch (error) {
-      this.nodes.error.innerHTML = errorBlock("The runs and checkpoints could not be loaded.", error.message);
+      this.nodes.error.innerHTML = failView("The runs and checkpoints could not be loaded.", error.message, error);
       return;
     }
     if (token !== this.token) return;
     this.runs = runs.runs;
     this.checkpoints = checkpoints.checkpoints;
-    this.renderCheckpoints();
     this.loadActivity();
 
     const context = this.app.context;
@@ -130,6 +148,7 @@ export class OverviewView {
     const preferred = this.selected || (remembered ? remembered.name : null);
     const run = this.runs.find((entry) => entry.name === preferred && entry.has_checkpoint) || loadable.find((entry) => entry.reports.length) || loadable[0] || null;
     this.selected = run ? run.name : null;
+    this.renderCheckpoints();
     const options = this.runs.filter((entry) => entry.has_checkpoint);
     this.nodes.run.innerHTML = options.length ? options.map((entry) => `<option value="${esc(entry.name)}"${entry.name === this.selected ? " selected" : ""}>${esc(entry.name)}${entry.loadable ? "" : " (incompatible)"}</option>`).join("") : `<option>none</option>`;
     this.nodes.run.disabled = !options.length;
@@ -142,12 +161,13 @@ export class OverviewView {
     this.statusTiles = [];
     this.findingCounts = null;
     this.nodes.kpis.innerHTML = "";
+    FigureStates.write(this.figures.balance, FigureStates.balance(null));
     const run = this.runs.find((entry) => entry.name === this.selected) || null;
     this.run = run;
     if (!run) {
       this.nodes.dateline.textContent = "";
       this.nodes["status-actions"].innerHTML = "";
-      this.nodes.status.innerHTML = emptyBlock("No checkpoint loads on the current architecture. A pretrain run produces the first usable policy.", `<a class="btn btn--primary" href="#/launch/pretrain">Launch pretrain</a>`);
+      this.nodes.status.innerHTML = emptyBlock("No checkpoint loads on the current architecture. A pretrain run produces the first usable policy.", `<a class="btn btn--primary" href="#/launch/pretrain">Launch pretrain</a>`, EMPTY_FIGURES.checkpoints);
       this.nodes.findings.innerHTML = `<p class="muted">Findings need a run.</p>`;
       this.nodes.findingsNote.textContent = "";
       return;
@@ -184,11 +204,12 @@ export class OverviewView {
     if (!this.report) {
       this.nodes["status-actions"].innerHTML = record;
       this.syncRecord();
-      this.nodes.status.innerHTML = emptyBlock(`${run.name} loads but has no evaluation report. The teacher dominates the time: about 30 s per episode at 3 rounds.`, `<a class="btn btn--primary" href="${esc(Links.evaluate(run.name))}">Evaluate this run</a>`);
+      this.nodes.status.innerHTML = emptyBlock(`${run.name} loads but has no evaluation report. The teacher dominates the time: about 30 s per episode at 3 rounds.`, `<a class="btn btn--primary" href="${esc(Links.evaluate(run.name))}">Evaluate this run</a>`, EMPTY_FIGURES.report);
       return;
     }
 
     const report = this.report;
+    FigureStates.write(this.figures.balance, FigureStates.balance(report));
     this.nodes.dateline.textContent = `${run.kind}, ${fmtAge(run.mtime)}, report seed ${seed}, n = ${report.meta.episodes}, ${report.meta.greedy ? "greedy" : "sampled"}`;
     this.nodes["status-actions"].innerHTML = `<a class="btn btn--primary" href="${esc(Links.diagnose(run.name, seed))}">Open in Diagnose</a>${record}`;
     const model = report.agents.model;
@@ -245,6 +266,9 @@ export class OverviewView {
   }
 
   renderCheckpoints() {
+    const shelf = FigureStates.checkpoints(this.runs, this.selected);
+    this.slotNames = shelf.names;
+    FigureStates.write(this.figures.checkpoint, shelf.state);
     const byRun = new Map(this.runs.map((run) => [run.name, run]));
     const rows = this.checkpoints.map((checkpoint) => {
       const run = byRun.get(checkpoint.run);
@@ -266,7 +290,7 @@ export class OverviewView {
       <div class="dtable dtable--static"><table>
         <thead><tr><th>Run</th><th>Kind</th><th class="num">Age</th><th>Checkpoint</th><th class="num" title="Model mean reward of the newest report">Reward<small>points</small></th><th class="num">Report seeds</th><th class="num">Trace seeds</th></tr></thead>
         <tbody>${rows}</tbody>
-      </table></div>` : `<div class="over__pad">${emptyBlock("No run holds a checkpoint yet.", `<a class="btn btn--primary" href="#/launch/pretrain">Launch pretrain</a>`)}</div>`;
+      </table></div>` : `<p class="muted">No run holds a checkpoint yet. <a href="#/launch/pretrain">Launch pretrain</a></p>`;
   }
 
   async loadActivity() {
@@ -278,6 +302,7 @@ export class OverviewView {
       this.nodes.activity.innerHTML = errorBlock("Jobs and recordings could not be loaded.", error.message);
       return;
     }
+    FigureStates.write(this.figures.queue, FigureStates.queue(jobs.jobs));
     const jobRows = jobs.jobs.slice(0, 6).map((job) => `<tr><td><a href="#/console/${esc(job.job_id)}">${esc(job.title)}</a></td><td>${statusChip(job.status === "failed" && job.exit_code === -15 ? "stopped" : job.status)}</td><td class="muted">${esc(job.overrides && job.overrides["io.run_name"] ? job.overrides["io.run_name"] : "")}</td><td class="num muted">${esc(job.started.replace("T", " ").slice(5, 16))}</td></tr>`).join("");
     const episodeRows = episodes.episodes.slice(0, 6).map((episode) => {
       const keys = Object.keys(episode.agents).sort((a, b) => Agents.order(a) - Agents.order(b));

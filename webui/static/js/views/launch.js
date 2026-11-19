@@ -1,9 +1,9 @@
 import { api } from "../api.js";
 import { el, esc, plural } from "../format.js";
-import { Figure } from "../fx/figure.js";
 import { PageHead } from "../ui/page_head.js";
 import { infoText, panelHead } from "../ui/panel.js";
-import { errorBlock, skeleton } from "../ui/status.js";
+import { errorBlock, failView, skeleton } from "../ui/status.js";
+import { FigureStates } from "../ui/figure_states.js";
 
 export class LaunchView {
   constructor(app, root) {
@@ -14,6 +14,7 @@ export class LaunchView {
     this.dirty = {};
     this.invalid = {};
     this.activeKey = null;
+    this.fired = 0;
 
     root.appendChild(el(`
       <div class="launch">
@@ -22,6 +23,17 @@ export class LaunchView {
       </div>`));
     this.rail = root.querySelector(".launch__rail");
     this.main = root.querySelector(".launch__main");
+    this.main.innerHTML = `
+      ${PageHead.html({
+        title: "Launch",
+        form: "narrow",
+        controls: `<button type="button" class="btn btn--primary" data-action="launch" disabled>Launch</button><button type="button" class="btn" data-action="queue" disabled>Queue</button><button type="button" class="btn btn--sm btn--quiet" data-action="reset">Reset</button><span class="launch__count" data-role="count"></span>`,
+        figure: HairlineFigure.html("dispatch"),
+      })}
+      <div class="launch__body" data-role="launch-body"></div>`;
+    this.head = { title: this.main.querySelector("[data-role=title]"), lead: this.main.querySelector("[data-role=lead]"), figure: this.main.querySelector("hairline-figure[name=dispatch]") };
+    this.body = this.main.querySelector("[data-role=launch-body]");
+    app.onJobs(() => this.writeDispatch());
 
     this.main.addEventListener("input", (event) => this.onEdit(event));
     this.main.addEventListener("change", (event) => this.onEdit(event));
@@ -33,7 +45,7 @@ export class LaunchView {
       try {
         this.scripts = (await api.get("/api/scripts")).scripts;
       } catch (error) {
-        this.main.innerHTML = errorBlock("The script list could not be loaded.", error.message);
+        this.body.innerHTML = failView("The script list could not be loaded.", error.message, error);
         return;
       }
       this.renderRail();
@@ -70,12 +82,18 @@ export class LaunchView {
       else link.removeAttribute("aria-current");
     }
 
-    this.main.innerHTML = skeleton(4);
+    const script = this.scripts.find((entry) => entry.key === key);
+    this.head.title.textContent = script ? script.title : key;
+    this.head.lead.textContent = script ? script.summary : "";
+    this.form = null;
+    this.setArmed(false);
+    this.main.querySelector("[data-role=count]").textContent = "";
+    this.body.innerHTML = skeleton(4);
     try {
       this.form = await api.get(`/api/scripts/${encodeURIComponent(key)}/config`);
     } catch (error) {
       this.form = null;
-      this.main.innerHTML = errorBlock(`The form for "${key}" could not be loaded.`, error.message);
+      this.body.innerHTML = failView(`The form for "${key}" could not be loaded.`, error.message, error);
       return;
     }
 
@@ -141,14 +159,9 @@ export class LaunchView {
         </details>`;
     }).join("");
 
-    this.main.innerHTML = `
-      ${PageHead.html({
-        title: form.title,
-        lead: form.summary,
-        form: "narrow",
-        controls: `<button type="button" class="btn btn--primary" data-action="launch">Launch</button><button type="button" class="btn" data-action="queue">Queue</button><button type="button" class="btn btn--sm btn--quiet" data-action="reset">Reset</button><span class="launch__count" data-role="count"></span>`,
-        figure: Figure.html("elevator"),
-      })}
+    this.head.title.textContent = form.title;
+    this.head.lead.textContent = form.summary;
+    this.body.innerHTML = `
       <div data-role="error"></div>
       <pre class="launch__cmd" data-role="cmd" aria-label="Command preview"></pre>
       <section class="panel">
@@ -211,7 +224,7 @@ export class LaunchView {
     const bad = Object.keys(this.invalid).length;
     this.main.querySelector("[data-role=count]").textContent = bad ? `${bad} invalid` : count ? `${count} changed` : "all defaults";
     this.main.querySelector("[data-role=count]").classList.toggle("launch__changed", count > 0 && !bad);
-    for (const button of this.main.querySelectorAll("[data-action=launch], [data-action=queue]")) button.disabled = bad > 0;
+    this.setArmed(bad === 0);
 
     this.form.sections.forEach((section, index) => {
       const node = this.main.querySelector(`[data-changed="${index}"]`);
@@ -221,9 +234,21 @@ export class LaunchView {
     });
   }
 
+  setArmed(armed) {
+    for (const button of this.main.querySelectorAll("[data-action=launch], [data-action=queue]")) button.disabled = !armed;
+    this.writeDispatch();
+  }
+
+  writeDispatch() {
+    const jobs = this.app.jobs || [];
+    const armed = Boolean(this.form) && Object.keys(this.invalid).length === 0;
+    FigureStates.write(this.head.figure, { armed, loads: Math.min(6, Object.keys(this.dirty).length), queued: jobs.some((job) => ["queued", "pending"].includes(job.status)), fired: this.fired });
+  }
+
   onClick(event) {
     const button = event.target.closest("button[data-action]");
     if (!button) return;
+    if (button.disabled) return;
     if (button.dataset.action === "reset") this.select(this.activeKey, {});
     if (button.dataset.action === "launch") this.launch(false);
     if (button.dataset.action === "queue") this.launch(true);
@@ -239,6 +264,8 @@ export class LaunchView {
       errorNode.innerHTML = errorBlock("The job was not started.", error.message);
       return;
     }
+    this.fired += 1;
+    this.writeDispatch();
     this.app.toast.confirm(queue && result.queued ? "Job queued" : "Job launched");
     this.app.pollJobs();
     this.app.router.go(`#/console/${result.job_id}`);

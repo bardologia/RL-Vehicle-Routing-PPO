@@ -1,9 +1,9 @@
 import { api } from "../api.js";
 import { el, esc } from "../format.js";
 import { LogText } from "../ui/logtext.js";
-import { Figure } from "../fx/figure.js";
 import { PageHead } from "../ui/page_head.js";
-import { emptyBlock, errorBlock, statusChip } from "../ui/status.js";
+import { EMPTY_FIGURES, emptyBlock, errorBlock, failView, statusChip } from "../ui/status.js";
+import { FigureStates } from "../ui/figure_states.js";
 
 export class ConsoleView {
   constructor(app, root) {
@@ -18,13 +18,14 @@ export class ConsoleView {
 
     root.appendChild(el(`
       <div class="view__pad">
-        ${PageHead.html({ title: "Console", form: "narrow", figure: Figure.html("terminal") })}
+        ${PageHead.html({ title: "Console", form: "narrow", figure: HairlineFigure.html("queue") })}
         <div data-role="error"></div>
         <div class="jobs" data-role="jobs"></div>
       </div>`));
     this.list = root.querySelector("[data-role=jobs]");
     this.errorNode = root.querySelector("[data-role=error]");
     this.dateline = root.querySelector("[data-role=dateline]");
+    this.figure = root.querySelector("hairline-figure[name=queue]");
     this.list.addEventListener("click", (event) => this.onClick(event));
     this.list.addEventListener("input", (event) => this.onSearch(event));
   }
@@ -50,10 +51,11 @@ export class ConsoleView {
     try {
       jobs = (await api.get("/api/jobs")).jobs;
     } catch (error) {
-      this.errorNode.innerHTML = errorBlock("The job list could not be loaded.", error.message);
+      this.errorNode.innerHTML = failView("The job list could not be loaded.", error.message, error);
       return;
     }
     this.errorNode.innerHTML = "";
+    FigureStates.write(this.figure, FigureStates.queue(jobs));
     const count = (...states) => jobs.filter((job) => states.includes(job.status)).length;
     this.dateline.textContent = jobs.length ? `${count("running")} running, ${count("queued", "pending")} queued, ${count("finished")} finished, ${count("failed", "cancelled")} failed` : "";
     if (jobs.some((job) => !["running", "queued", "pending"].includes(job.status) && job.overrides["io.run_name"] && !this.runNames.has(job.overrides["io.run_name"]))) {
@@ -65,7 +67,7 @@ export class ConsoleView {
     }
 
     if (!jobs.length) {
-      this.list.innerHTML = emptyBlock("No jobs in this server session.", `<a class="btn" href="#/launch">Open Launch</a>`);
+      if (!this.list.querySelector(".figure-empty")) this.list.innerHTML = emptyBlock("No jobs in this server session.", `<a class="btn" href="#/launch">Open Launch</a>`);
       this.tiles = {};
       return;
     }
