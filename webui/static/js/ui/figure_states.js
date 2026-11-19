@@ -147,9 +147,9 @@ export class FigureStates {
       const at = Math.min(n - 1, Math.round(((b + 0.5) * n) / 24 - 0.5));
       return isNum(values[at]) ? values[at] : null;
     });
-    const live_ = bins.filter(isNum);
-    const lo = Math.min(...live_);
-    const hi = Math.max(...live_);
+    const present = bins.filter(isNum);
+    const lo = Math.min(...present);
+    const hi = Math.max(...present);
     const scaled = bins.map((value) => (value === null ? null : hi > lo ? (value - lo) / (hi - lo) : 0.5));
     let best = null;
     scaled.forEach((value, k) => {
