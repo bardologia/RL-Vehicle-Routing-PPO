@@ -181,7 +181,7 @@ export class OverviewView {
     }
 
     const seed = run.reports.length ? run.reports[0].seed : null;
-    this.nodes.dateline.textContent = `${run.kind}, ${fmtAge(run.mtime)}${seed === null ? "" : `, report seed ${seed}`}`;
+    this.nodes.dateline.textContent = `${run.kind}, updated ${fmtAge(run.mtime)}${seed === null ? "" : `, report seed ${seed}`}`;
     this.nodes.status.innerHTML = skeleton(3);
     this.nodes.findings.innerHTML = skeleton(3);
     const base = `/api/runs/${encodeURIComponent(run.name)}`;
@@ -221,7 +221,7 @@ export class OverviewView {
 
     const report = this.report;
     FigureStates.write(this.figures.plans, FigureStates.plans(report));
-    this.nodes.dateline.textContent = `${run.kind}, ${fmtAge(run.mtime)}, report seed ${seed}, n = ${report.meta.episodes}, ${report.meta.greedy ? "greedy" : "sampled"}`;
+    this.nodes.dateline.textContent = `${run.kind}, updated ${fmtAge(run.mtime)}, report seed ${seed}, n = ${report.meta.episodes}, ${report.meta.greedy ? "greedy" : "sampled"}`;
     this.nodes["status-actions"].innerHTML = `<a class="btn btn--primary" href="${esc(Links.diagnose(run.name, seed))}">Open in Diagnose</a>${record}`;
     const model = report.agents.model;
     const teacher = report.paired.teacher;
@@ -293,7 +293,7 @@ export class OverviewView {
     }).join("");
     this.nodes.checkpoints.innerHTML = this.checkpoints.length ? `
       <div class="dtable dtable--dense dtable--static"><table>
-        <thead><tr><th data-hint="State dot: loadable or incompatible on the current architecture">Run</th><th>Kind</th><th class="num" data-hint="Time since the checkpoint was written">Age</th><th class="num" data-hint="Model mean reward of the newest report">Reward<small>pts</small></th><th class="num" data-hint="Seeds with an evaluation report">Report</th><th class="num" data-hint="Seeds with recorded traces">Traces</th></tr></thead>
+        <thead><tr><th data-hint="State dot: loadable or incompatible on the current architecture">Run</th><th>Kind</th><th class="num" data-hint="Time since the checkpoint file was written">Saved</th><th class="num" data-hint="Model mean reward of the newest report">Reward<small>pts</small></th><th class="num" data-hint="Seeds with an evaluation report">Report</th><th class="num" data-hint="Seeds with recorded traces">Traces</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>` : `<p class="muted">No run holds a checkpoint yet. <a href="#/launch/pretrain">Launch pretrain</a></p>`;
   }
