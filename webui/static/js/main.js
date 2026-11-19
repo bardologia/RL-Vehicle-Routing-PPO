@@ -14,6 +14,7 @@ import { LabView } from "./views/lab.js";
 import { LaunchView } from "./views/launch.js";
 import { OverviewView } from "./views/overview.js";
 import { RunsView } from "./views/runs.js";
+import { ServerView } from "./views/server.js";
 
 const TABS = [
   { key: "overview", label: "Overview", view: OverviewView },
@@ -23,6 +24,7 @@ const TABS = [
   { key: "runs", label: "Runs", view: RunsView },
   { key: "launch", label: "Launch", view: LaunchView },
   { key: "console", label: "Console", view: ConsoleView },
+  { key: "server", label: "Server", view: ServerView },
 ];
 
 const QUIET_VIEWS = ["episode", "lab"];
@@ -217,7 +219,7 @@ class App {
       const { jobs } = await api.get("/api/jobs");
       this.jobs = jobs;
       for (const listener of this.jobListeners) listener(jobs);
-      const running = jobs.filter((job) => ["running", "queued", "pending"].includes(job.status)).length;
+      const running = jobs.filter((job) => ["running", "queued", "pending", "scheduled"].includes(job.status)).length;
       link.textContent = running ? `${plural(running, "job")} running` : "No jobs running";
       link.classList.toggle("is-live", running > 0);
     } catch (error) {

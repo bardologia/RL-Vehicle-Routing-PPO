@@ -32,7 +32,7 @@ export class FigureStates {
 
   static queue(jobs) {
     const count = (...states) => jobs.filter((job) => states.includes(job.status)).length;
-    return { running: count("running"), queued: count("queued", "pending"), finished: count("finished"), failed: count("failed", "stopped", "cancelled", "error") };
+    return { running: count("running"), queued: count("queued", "pending", "scheduled"), finished: count("finished"), failed: count("failed", "stopped", "cancelled", "error") };
   }
 
   static diverge(report, index) {

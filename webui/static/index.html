@@ -9,11 +9,15 @@
 <link rel="preload" href="/static/vendor/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/vendor/fonts/jetbrainsmono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/vendor/leaflet.css">
+<link rel="stylesheet" href="/static/vendor/xterm.css">
 <link rel="stylesheet" href="/static/css/tokens.css">
 <link rel="stylesheet" href="/static/css/base.css">
 <link rel="stylesheet" href="/static/css/fx.css">
 <link rel="stylesheet" href="/static/css/components.css">
 <link rel="stylesheet" href="/static/css/views.css">
+<link rel="stylesheet" href="/static/css/console.css">
+<link rel="stylesheet" href="/static/css/launch.css">
+<link rel="stylesheet" href="/static/css/server.css">
 </head>
 <body>
 <canvas class="bg-orb" id="bg-orb" aria-hidden="true"></canvas>
@@ -63,6 +67,9 @@
     <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.2M12 12h.2M19 12h.2" stroke-width="3"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5"/></symbol>
+    <symbol id="i-then" viewBox="0 0 24 24"><path d="M6 4v9a3 3 0 0 0 3 3h10M15 12l4 4-4 4"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M16 8V4H4v12h4"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><path d="M9 6h.2M15 6h.2M9 12h.2M15 12h.2M9 18h.2M15 18h.2" stroke-width="3"/></symbol>
   </defs>
 </svg>
 
@@ -88,9 +95,12 @@
 <script src="/static/vendor/thinking-orbs-engine.js"></script>
 <script src="/static/vendor/hairline-kernel.js"></script>
 <script src="/static/vendor/hairline-figures.js"></script>
+<script src="/static/vendor/xterm.js"></script>
+<script src="/static/vendor/xterm-addon-fit.js"></script>
 <script src="/static/js/fx/motion.js"></script>
 <script src="/static/js/fx/figure_base.js"></script>
 <script src="/static/js/fx/figures.js"></script>
+<script src="/static/js/fx/server_figures.js"></script>
 <script src="/static/js/fx/figure_element.js"></script>
 <script type="module" src="/static/js/main.js"></script>
 </body>

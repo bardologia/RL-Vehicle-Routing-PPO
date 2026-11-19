@@ -25,6 +25,8 @@
 .btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn--primary:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
 .btn--primary:disabled, .btn--primary:disabled:hover { background: var(--accent); border-color: var(--accent); }
+.btn.btn--danger:not(:disabled) { border-color: color-mix(in srgb, var(--fail) 55%, var(--line)); color: var(--fail-ink); }
+.btn.btn--danger:not(:disabled):hover { border-color: var(--fail); color: var(--fail-ink); background: var(--fail-wash); }
 .btn--quiet { background: transparent; color: var(--ink-dim); }
 .btn--quiet:hover { color: var(--ink); }
 .btn--sm { padding: 5px 11px; font-size: 12.5px; }
@@ -185,6 +187,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { background: var(--accent);
 .span-6 { grid-column: span 6; }
 .span-7 { grid-column: span 7; }
 .span-8 { grid-column: span 8; }
+.span-9 { grid-column: span 9; }
 .span-12 { grid-column: span 12; }
 @media (max-width: 1100px) {
   .grid-12 > * { grid-column: span 12; }
@@ -233,6 +236,10 @@ a.chip--fail:hover, button.chip--fail:hover { color: var(--ink); border-color: v
 .toast.is-shown { opacity: 1; transform: translate(-50%, 0); }
 .toast .icon { display: none; }
 .toast::before { content: ""; flex: none; width: 7px; height: 7px; background: var(--pass); }
+.toast[data-kind="warn"] { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.toast[data-kind="warn"]::before { background: var(--warn); }
+.toast[data-kind="error"] { border-color: color-mix(in srgb, var(--fail) 45%, var(--line)); max-width: min(720px, calc(100vw - 32px)); }
+.toast[data-kind="error"]::before { background: var(--fail); }
 
 .viz-tip { position: fixed; z-index: 2600; left: 0; top: 0; max-width: 320px; padding: 10px 12px; border: 2px solid var(--line); border-radius: var(--r); color: var(--ink-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1.5; pointer-events: none; opacity: 0; transition: opacity var(--t-tip) var(--ease); }
 .viz-tip.is-shown { opacity: 1; }
@@ -292,7 +299,21 @@ a.chip--fail:hover, button.chip--fail:hover { color: var(--ink); border-color: v
 .segmented button, .tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 0; border-radius: var(--r-in); background: transparent; color: var(--ink-faint); font-family: var(--mono); font-size: 12px; font-weight: 700; line-height: 1.3; white-space: nowrap; cursor: pointer; transition: background var(--t-ctl) var(--ease), color var(--t-ctl) var(--ease); }
 .segmented button:hover, .tabs button:hover { color: var(--ink); }
 .segmented button[aria-checked="true"], .tabs button[aria-selected="true"] { background: var(--accent-wash); color: var(--accent); }
+.segmented button[aria-pressed="true"] { background: var(--accent-wash); color: var(--accent); }
+.segmented a { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: var(--r-in); color: var(--ink-faint); font-family: var(--mono); font-size: 12px; font-weight: 700; line-height: 1.3; white-space: nowrap; text-decoration: none; transition: background var(--t-ctl) var(--ease), color var(--t-ctl) var(--ease); }
+.segmented a:hover { color: var(--ink); }
+.segmented a[aria-current="page"] { background: var(--accent-wash); color: var(--accent); }
 .segmented button:disabled { opacity: 0.42; cursor: not-allowed; }
+
+.switch { position: relative; flex: none; display: inline-flex; align-items: center; gap: 8px; height: 22px; padding: 0; border: 0; background: transparent; color: var(--ink-faint); font-family: var(--mono); font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; }
+.switch::before { content: ""; flex: none; width: 34px; height: 18px; border: 2px solid var(--line); border-radius: 9px; background: var(--surface); transition: background var(--t-ctl) var(--ease), border-color var(--t-ctl) var(--ease); }
+.switch__knob { position: absolute; left: 4px; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; background: var(--ink-faint); transition: transform var(--t-ctl) var(--ease), background var(--t-ctl) var(--ease); }
+.switch:hover::before { border-color: var(--line-strong); }
+.switch.is-on::before { background: var(--accent-wash); border-color: var(--accent); }
+.switch.is-on .switch__knob { transform: translateX(16px); background: var(--accent); }
+.switch.is-on { color: var(--accent); }
+.switch.is-dirty::before { border-color: var(--warn); }
+.switch__word:empty { display: none; }
 .segmented button:disabled:hover { color: var(--ink-faint); }
 .segmented button:focus-visible, .tabs button:focus-visible { outline-offset: 0; }
 .segmented.is-off { opacity: 0.42; }
