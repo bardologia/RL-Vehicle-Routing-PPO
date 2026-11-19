@@ -158,7 +158,7 @@ export class LineChart {
     }).join("");
 
     this.container.innerHTML = `${legend}${frame.open()}${frame.axes(x, y, Scale.ticks(xLo, xHi, 5), yTicks, xLabel, yLabel)}${lines}<line class="ch-cross" y1="${frame.y1}" y2="${frame.y0}" x1="0" x2="0" visibility="hidden"></line></svg>`;
-    this.state = { frame, x, drawn };
+    this.state = { frame, x, drawn, span: [xLo, xHi] };
   }
 
   static logTicks(lo, hi) {
@@ -203,8 +203,12 @@ export class LineChart {
       cross.setAttribute("visibility", "hidden");
       return;
     }
-    const { frame, x } = this.state;
-    const px = Math.max(frame.x0, Math.min(frame.x1, x.map(step)));
+    const { x, span } = this.state;
+    if (step < span[0] || step > span[1]) {
+      cross.setAttribute("visibility", "hidden");
+      return;
+    }
+    const px = x.map(step);
     cross.setAttribute("x1", px);
     cross.setAttribute("x2", px);
     cross.setAttribute("visibility", "visible");
