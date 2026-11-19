@@ -592,7 +592,7 @@ export class RunsView {
         <span class="diag__spacer"></span>
         <button type="button" class="btn btn--sm" data-action="log-follow" aria-pressed="${state.follow}" data-hint="Reload the file every 3 s and keep the end in view">Follow</button>
       </div>
-      <pre class="job__log runs__log" data-role="log" tabindex="0" aria-label="Log text" data-hint="The last 256 KB of the file"></pre>`;
+      <pre class="job__log runs__log" data-role="log" tabindex="0" aria-label="Log text"></pre>`;
     this.fillLog(true);
     this.syncFollow();
   }
@@ -602,10 +602,8 @@ export class RunsView {
     const node = this.body.querySelector("[data-role=log]");
     const log = this.detail.logs.find((entry) => entry.name === state.file);
     const count = LogText.fill(node, log.text, state.search);
-    const lines = plural(log.text.split("\n").length, "line");
-    const counter = this.body.querySelector("[data-role=log-count]");
-    counter.textContent = state.search ? plural(count, "match") : lines;
-    counter.dataset.hint = `${lines}, the last 256 KB of ${log.name}`;
+    this.body.querySelector("[data-role=log-count]").textContent = state.search ? plural(count, "match") : "";
+    this.body.querySelector("[data-role=log-file]").closest(".ctl").dataset.hint = `${plural(log.text.split("\n").length, "line")}, the last 256 KB of ${log.name}`;
     if (state.follow) node.scrollTop = node.scrollHeight;
     else if (jump && state.search) {
       const mark = node.querySelector("mark");

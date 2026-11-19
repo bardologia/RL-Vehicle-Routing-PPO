@@ -482,7 +482,7 @@ a.chip--flag:hover { background: var(--surface); color: var(--ink); border-color
 .runs__search .input { padding-left: 30px; width: 100%; }
 .runs__rail .runs__search { display: flex; margin: 0 14px var(--sp-4) 0; }
 .runs__list { display: flex; flex-direction: column; }
-.runs__item { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-height: 44px; padding: 4px 14px 5px 10px; margin-left: -10px; border-top: 1px solid var(--line-soft); text-decoration: none; transition: background var(--t-ctl) var(--ease); }
+.runs__item { display: flex; flex-direction: column; justify-content: center; gap: 0; min-height: 44px; padding: 3px 14px 4px 10px; margin-left: -10px; border-top: 1px solid var(--line-soft); text-decoration: none; transition: background var(--t-ctl) var(--ease); }
 .runs__item:hover { background: var(--surface-2); }
 .runs__item[aria-current="true"] { background: var(--accent-wash); }
 .runs__line { display: flex; align-items: center; gap: 8px; min-width: 0; }
