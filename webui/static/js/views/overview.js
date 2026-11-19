@@ -2,15 +2,15 @@ import { api } from "../api.js";
 import { FindingsList } from "../diagnose/findings_list.js";
 import { Links } from "../diagnose/links.js";
 import { Agents } from "../episode/encoding.js";
-import { el, esc, fmtAge, fmtSigned, plural } from "../format.js";
-import { IntervalPlot } from "../ui/charts.js";
+import { el, esc, fmtAge, fmtSigned, NONE, plural } from "../format.js";
+import { AgentTable } from "../diagnose/agent_table.js";
 import { kpiRow } from "../ui/kpi.js";
 import { PageHead } from "../ui/page_head.js";
 import { infoText, panelHead } from "../ui/panel.js";
-import { EMPTY_FIGURES, emptyBlock, errorBlock, failView, skeleton, statusChip } from "../ui/status.js";
+import { Popover } from "../ui/popover.js";
+import { errorBlock, failView, skeleton, statusChip } from "../ui/status.js";
 import { FigureStates } from "../ui/figure_states.js";
 
-const AGENTS = ["model", "teacher", "insertion_only", "do_nothing"];
 const DOCKER = 'sg docker -c "docker compose up -d"';
 
 export class OverviewView {
@@ -28,20 +28,17 @@ export class OverviewView {
           title: "Overview",
           form: "hero",
           controls: `${PageHead.control("Run", `<select class="select" data-role="run" aria-label="Run"></select>`)}<span class="ctl" data-role="status-actions"></span>`,
+          after: `<section class="panel over__board" data-region="status"><div data-role="status"></div></section>`,
           figure: HairlineFigure.html("balance"),
         })}
         <div data-role="error"></div>
-        <section class="panel" data-region="status">
-          ${panelHead("Model status", { info: infoText("Mean episode reward of every agent in the report of the selected run, and the paired difference between the model and each other agent, both with a 95% interval.") })}
-          <div class="panel__body" data-role="status"></div>
-        </section>
         <section class="panel" data-region="findings">
-          ${panelHead("Findings", { info: infoText("Rules flagged WARN or FAIL for the selected run, each with a link to its evidence.") })}
+          ${panelHead("Findings", { info: infoText("Rules flagged WARN or FAIL for the selected run. FAIL rules state their finding; open a row for its numbers, its rule id and its links. The title opens the evidence.") })}
           <div class="panel__body" data-role="findings"></div>
         </section>
         <div class="grid-12">
           <section class="panel span-7" data-region="checkpoints">
-            ${panelHead("Checkpoints", { info: infoText("Every run directory that holds a policy file, checked against the current architecture.") })}
+            ${panelHead("Checkpoints", { info: infoText("Every run directory that holds a policy file, checked against the current architecture.", "Reward is the model mean reward of the newest report, in points. A report seed opens that report in Diagnose.") })}
             <div class="panel__body figcard"><div class="figcard__fig">${HairlineFigure.html("checkpoint")}</div><div class="figcard__body" data-role="checkpoints"></div></div>
           </section>
           <section class="panel span-5" data-region="activity">
@@ -65,8 +62,11 @@ export class OverviewView {
       this.renderCheckpoints();
       this.loadRun();
     });
-    this.nodes.findingsNote = root.querySelector("[data-region=findings] [data-role=panel-note]");
     this.nodes.status.addEventListener("click", (event) => this.onRecord(event));
+    this.nodes.kpis.addEventListener("click", (event) => this.onKpi(event));
+    this.nodes.kpis.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") this.onKpi(event);
+    });
     this.nodes["status-actions"].addEventListener("click", (event) => this.onRecord(event));
     app.onHealth((health) => this.renderServices(health));
 
@@ -74,13 +74,23 @@ export class OverviewView {
     window.addEventListener("resize", () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        if (this.app.active === "overview" && this.report) this.drawIntervals();
+        if (this.app.active === "overview" && this.report) this.drawBoard();
       }, 150);
     });
   }
 
   focusSearch() {
     this.nodes.run.focus();
+  }
+
+  onKpi(event) {
+    const tile = event.target.closest(".kpi[data-kpi=findings]");
+    if (!tile) return;
+    event.preventDefault();
+    const panel = this.root.querySelector("[data-region=findings]");
+    panel.scrollIntoView({ block: "start", behavior: "auto" });
+    panel.classList.add("is-target");
+    setTimeout(() => panel.classList.remove("is-target"), 2400);
   }
 
   pickSlot(slot) {
@@ -167,15 +177,14 @@ export class OverviewView {
     if (!run) {
       this.nodes.dateline.textContent = "";
       this.nodes["status-actions"].innerHTML = "";
-      this.nodes.status.innerHTML = emptyBlock("No checkpoint loads on the current architecture. A pretrain run produces the first usable policy.", `<a class="btn btn--primary" href="#/launch/pretrain">Launch pretrain</a>`, EMPTY_FIGURES.checkpoints);
+      this.nodes.status.innerHTML = OverviewView.boardNote("No checkpoint loads on the current architecture. A pretrain run produces the first usable policy.", `<a class="btn btn--primary" href="#/launch/pretrain">Launch pretrain</a>`);
       this.nodes.findings.innerHTML = `<p class="muted">Findings need a run.</p>`;
-      this.nodes.findingsNote.textContent = "";
       return;
     }
 
     const seed = run.reports.length ? run.reports[0].seed : null;
     this.nodes.dateline.textContent = `${run.kind}, ${fmtAge(run.mtime)}${seed === null ? "" : `, report seed ${seed}`}`;
-    this.nodes.status.innerHTML = skeleton(4);
+    this.nodes.status.innerHTML = skeleton(3);
     this.nodes.findings.innerHTML = skeleton(3);
     const base = `/api/runs/${encodeURIComponent(run.name)}`;
     let report = null;
@@ -194,6 +203,10 @@ export class OverviewView {
     this.renderFindings(run, seed, findings.findings);
   }
 
+  static boardNote(sentence, actionHtml) {
+    return `<div class="over__note"><p>${esc(sentence)}</p>${actionHtml || ""}</div>`;
+  }
+
   renderStatus(run, seed) {
     const record = run.loadable ? `<a class="btn btn--sm btn--quiet" href="#/episode">Record episode</a>` : "";
     if (!run.loadable) {
@@ -204,7 +217,7 @@ export class OverviewView {
     if (!this.report) {
       this.nodes["status-actions"].innerHTML = record;
       this.syncRecord();
-      this.nodes.status.innerHTML = emptyBlock(`${run.name} loads but has no evaluation report. The teacher dominates the time: about 30 s per episode at 3 rounds.`, `<a class="btn btn--primary" href="${esc(Links.evaluate(run.name))}">Evaluate this run</a>`, EMPTY_FIGURES.report);
+      this.nodes.status.innerHTML = OverviewView.boardNote(`${run.name} loads but has no evaluation report. The teacher dominates the time: about 30 s per episode at 3 rounds.`, `<a class="btn btn--primary" href="${esc(Links.evaluate(run.name))}">Evaluate this run</a>`);
       return;
     }
 
@@ -226,40 +239,32 @@ export class OverviewView {
     }
     this.statusTiles = tiles;
     this.renderHead();
-    this.nodes.status.innerHTML = `
-      <div class="over__plots">
-        <div><p class="over__plotnote">reward, points, 95% interval</p><div data-role="rewards"></div></div>
-        <div><p class="over__plotnote">model minus agent, points, 95% interval</p><div data-role="paired"></div></div>
-      </div>
-      ${report.missing_agents.length ? `<p class="muted">Missing from this report: ${report.missing_agents.map((key) => esc(Agents.label(key))).join(", ")}.</p>` : ""}`;
-    this.drawIntervals();
+    this.drawBoard();
     this.syncRecord();
   }
 
   renderHead() {
     const tiles = [...(this.statusTiles || [])];
-    if (this.findingCounts) tiles.push({ key: "findings", label: "Findings", detail: "fail / warn", value: `${this.findingCounts.FAIL} / ${this.findingCounts.WARN}`, subs: [FindingsList.restLabel(this.findingCounts)], title: "Rules flagged FAIL and WARN for this run. The list is below." });
+    if (this.findingCounts) tiles.push({ key: "findings", label: "Findings", detail: "fail / warn", value: `${this.findingCounts.FAIL} / ${this.findingCounts.WARN}`, subs: [FindingsList.restLabel(this.findingCounts)], title: "Rules flagged FAIL and WARN for this run. Click to open the list." });
     this.nodes.kpis.innerHTML = tiles.length ? kpiRow(tiles, { columns: 4 }) : "";
+    const link = this.nodes.kpis.querySelector(".kpi[data-kpi=findings]");
+    if (link) {
+      link.tabIndex = 0;
+      link.setAttribute("role", "link");
+      link.classList.add("kpi--link");
+    }
   }
 
-  drawIntervals() {
-    const report = this.report;
-    const present = AGENTS.filter((key) => report.agents[key]);
-    const rewards = present.map((key) => ({ label: Agents.label(key), style: Agents.style(key), mean: report.agents[key].mean_reward, lo: report.agents[key].ci95[0], hi: report.agents[key].ci95[1], n: report.agents[key].episodes }));
-    const paired = present.filter((key) => report.paired[key]).map((key) => ({ label: `minus ${Agents.label(key)}`, style: Agents.style(key), mean: report.paired[key].mean_diff, lo: report.paired[key].ci95[0], hi: report.paired[key].ci95[1], n: report.meta.episodes }));
-    const rewardNode = this.nodes.status.querySelector("[data-role=rewards]");
-    const pairedNode = this.nodes.status.querySelector("[data-role=paired]");
-    if (!rewardNode) return;
-    IntervalPlot.render(rewardNode, rewards, { xLabel: `episode reward (points), n = ${report.meta.episodes}`, zeroLine: true });
-    if (paired.length) IntervalPlot.render(pairedNode, paired, { xLabel: `reward difference (points), n = ${report.meta.episodes}`, zeroLine: true });
-    else pairedNode.innerHTML = `<p class="muted">The report holds no agent to compare the model with.</p>`;
+  drawBoard() {
+    if (!this.report) return;
+    const info = Popover.infoButton("Agents", infoText(`Mean episode reward of every agent in the report of the selected run, and the paired difference between the model and each other agent, both with a 95% interval, in points, n = ${this.report.meta.episodes}.`, "Hover a row for its interval. Diagnose holds the full agent table."));
+    AgentTable.render(this.nodes.status, this.report, { set: "brief", tail: info });
   }
 
   renderFindings(run, seed, findings) {
     const counts = FindingsList.counts(findings);
     this.findingCounts = counts;
     this.renderHead();
-    this.nodes.findingsNote.textContent = [counts.FAIL ? `${counts.FAIL} fail` : null, counts.WARN ? `${counts.WARN} warn` : null].filter((part) => part).join(", ");
     const trace = `<a class="btn btn--sm" href="${esc(Links.recordTraces(run.name, seed, this.report ? this.report.meta.episodes : null))}">Record traces</a>`;
     const actions = { report: `<a class="btn btn--sm" href="${esc(Links.evaluate(run.name))}">Evaluate this run</a>`, traces: trace, verdicts: trace };
     this.nodes.findings.innerHTML = FindingsList.list(findings, { actions, columns: true, emptyText: `No rule is flagged for ${run.name}.` });
@@ -270,25 +275,28 @@ export class OverviewView {
     this.slotNames = shelf.names;
     FigureStates.write(this.figures.checkpoint, shelf.state);
     const byRun = new Map(this.runs.map((run) => [run.name, run]));
+    const dash = `<span class="faint">${NONE}</span>`;
     const rows = this.checkpoints.map((checkpoint) => {
       const run = byRun.get(checkpoint.run);
-      const reward = run && run.reports.length && run.reports[0].agents.model ? fmtSigned(run.reports[0].agents.model.mean_reward) : "";
-      const reports = checkpoint.reports.length ? checkpoint.reports.map((seed) => `<a href="${esc(Links.diagnose(checkpoint.run, seed))}" title="Open the report in Diagnose">${seed}</a>`).join(", ") : `<span class="faint">none</span>`;
-      const traces = checkpoint.diagnostics.length ? checkpoint.diagnostics.map((seed) => esc(seed)).join(", ") : `<span class="faint">none</span>`;
+      const reward = run && run.reports.length && run.reports[0].agents.model ? fmtSigned(run.reports[0].agents.model.mean_reward) : dash;
+      const reports = checkpoint.reports.length ? checkpoint.reports.map((seed) => `<a href="${esc(Links.diagnose(checkpoint.run, seed))}" data-hint="Open the report in Diagnose">${seed}</a>`).join(", ") : dash;
+      const traces = checkpoint.diagnostics.length ? checkpoint.diagnostics.map((seed) => esc(seed)).join(", ") : dash;
+      const word = checkpoint.loadable ? "LOADABLE" : "INCOMPATIBLE";
+      const hint = checkpoint.reason ? ` data-hint="${esc(checkpoint.reason)}" data-hint-title="${word.toLowerCase()}"` : "";
       return `
-        <tr>
+        <tr${checkpoint.run === this.selected ? ' aria-selected="true"' : ""}>
           <td><a href="${esc(Links.runs(checkpoint.run))}">${esc(checkpoint.run)}</a></td>
           <td>${esc(checkpoint.kind)}</td>
-          <td class="num">${esc(fmtAge(checkpoint.mtime))}</td>
-          <td${checkpoint.reason ? ` data-hint="${esc(checkpoint.reason)}"` : ""}>${statusChip(checkpoint.loadable ? "LOADABLE" : "INCOMPATIBLE")}</td>
+          <td class="num">${esc(fmtAge(checkpoint.mtime).replace(/ ago$/, ""))}</td>
+          <td${hint}>${statusChip(word)}</td>
           <td class="num">${reward}</td>
           <td class="num">${reports}</td>
           <td class="num">${traces}</td>
         </tr>`;
     }).join("");
     this.nodes.checkpoints.innerHTML = this.checkpoints.length ? `
-      <div class="dtable dtable--static"><table>
-        <thead><tr><th>Run</th><th>Kind</th><th class="num">Age</th><th>Checkpoint</th><th class="num" title="Model mean reward of the newest report">Reward<small>points</small></th><th class="num">Report seeds</th><th class="num">Trace seeds</th></tr></thead>
+      <div class="dtable dtable--dense dtable--static"><table>
+        <thead><tr><th>Run</th><th>Kind</th><th class="num" data-hint="Time since the checkpoint was written">Age</th><th>State</th><th class="num" data-hint="Model mean reward of the newest report">Reward<small>pts</small></th><th class="num" data-hint="Seeds with an evaluation report">Report</th><th class="num" data-hint="Seeds with recorded traces">Traces</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>` : `<p class="muted">No run holds a checkpoint yet. <a href="#/launch/pretrain">Launch pretrain</a></p>`;
   }

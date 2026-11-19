@@ -11,7 +11,7 @@ export class PageHead {
     return `<span class="ctl" role="group" aria-label="${esc(label)}"><span class="ctl__label">${esc(label)}</span>${html}</span>`;
   }
 
-  static html({ title = "", lead = "", controls = "", dateline = "", datelineExtra = "", kpis = "", extra = "", figure = "", form = "head", className = "" } = {}) {
+  static html({ title = "", lead = "", controls = "", dateline = "", datelineExtra = "", kpis = "", extra = "", after = "", figure = "", form = "head", className = "" } = {}) {
     return `
       <header class="view-head${PageHead.FORMS[form]}${className ? ` ${className}` : ""}">
         <div class="view-head__main">
@@ -21,6 +21,7 @@ export class PageHead {
           <p class="view-head__date"><span data-role="dateline">${esc(dateline)}</span>${datelineExtra}</p>
           ${extra}
           <div class="view-head__kpis" data-role="kpis">${kpis}</div>
+          ${after}
         </div>
         <div class="view-head__figure" data-role="figure">${figure}</div>
       </header>`;
