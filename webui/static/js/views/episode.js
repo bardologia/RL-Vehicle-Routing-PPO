@@ -6,7 +6,7 @@ import { AgentPicker } from "../episode/agent_picker.js";
 import { FindingsList } from "../diagnose/findings_list.js";
 import { Compare } from "../episode/compare.js";
 import { DecisionPanel } from "../episode/decision_panel.js";
-import { Agents, Sentences, Vehicles } from "../episode/encoding.js";
+import { Agents, Vehicles } from "../episode/encoding.js";
 import { Inputs } from "../episode/inputs.js";
 import { KpiStrip } from "../episode/kpi_strip.js";
 import { Geometry, MapView } from "../episode/map_view.js";
@@ -35,7 +35,6 @@ export class EpisodeView {
     this.verdicts = new Map();
     this.pollTimer = null;
     this.playTimer = null;
-    this.popover = null;
     this.token = 0;
     this.built = false;
 
@@ -401,6 +400,15 @@ export class EpisodeView {
     this.built = true;
   }
 
+  titleParts() {
+    const source = this.status.source;
+    const caps = `${plural(this.status.caps.rounds, "round")}, ${plural(this.status.caps.edits, "edit")}`;
+    const seed = isNum(source.seed) ? `seed ${source.seed}, ` : "";
+    if (source.kind === "diagnostics" || source.kind === "evaluation") return { title: `${source.run} / episode ${source.index}`, meta: `${seed}${caps}` };
+    if (source.kind === "seed") return { title: `Seed ${source.seed}`, meta: caps };
+    return { title: StartPage.sourceShort(source), meta: `${seed}${caps}` };
+  }
+
   sourceText() {
     const source = this.status.source;
     const caps = `${plural(this.status.caps.rounds, "round")}, up to ${this.status.caps.edits} edits each`;
@@ -419,6 +427,7 @@ export class EpisodeView {
   }
 
   renderBar() {
+    const reopen = Popover.current && this.barNode.contains(Popover.current.anchor) ? Popover.current.anchor.dataset.action : null;
     if (!this.status || !this.ref) {
       this.barNode.innerHTML = `<span class="muted">Opening the recording.</span>`;
       return;
@@ -430,29 +439,28 @@ export class EpisodeView {
     const position = lane && this.selected.seq !== null ? `frame ${this.selected.seq + 1} of ${frames}` : "no frame yet";
     const flagged = lane ? lane.trace.findings.filter((finding) => finding.status === "WARN" || finding.status === "FAIL").length : 0;
     const expectations = this.lanes.filter((entry) => entry.trace.expectation).map((entry) => statusChip(entry.trace.expectation.status, Agents.label(entry.key)));
-    const hasTeacher = this.lanes.some((entry) => entry.key === "teacher");
     const up = this.app.servicesUp;
     const playing = Boolean(this.playTimer);
+    const { title, meta } = this.titleParts();
 
     this.barNode.innerHTML = `
       <a class="tbtn" href="#/episode" title="Episodes" aria-label="Back to the episode start page">${icon("back")}</a>
-      <span class="ep__source" title="${esc(this.sourceText())}">${esc(this.sourceText())}</span>
+      <span class="ep__source" data-hint-title="${esc(title)}" data-hint="${esc(this.sourceText())}."><b>${esc(title)}</b><span class="ep__meta">${esc(meta)}</span></span>
       <span class="ep__transport" role="group" aria-label="Playback">
         <button type="button" class="tbtn" data-action="back" title="Previous frame (Left)" aria-label="Previous frame">${icon("step-back")}</button>
         <button type="button" class="tbtn tbtn--play" data-action="play" title="Play or pause (Space)" aria-label="${playing ? "Pause" : "Play"}" aria-pressed="${playing}">${icon(playing ? "pause" : "play")}</button>
         <button type="button" class="tbtn" data-action="forward" title="Next frame (Right)" aria-label="Next frame">${icon("step-forward")}</button>
         <span class="readout ep__position">${position}</span>
       </span>
-      ${expectations.length ? `<span class="ep__expect"><span class="ctl__label">Expectation</span>${expectations.join("")}</span>` : ""}
+      ${expectations.length ? `<span class="ep__expect" data-hint-title="Expectation" data-hint="The template's declared expectation, checked on each lane after it finished.">${expectations.join("")}</span>` : ""}
       <span class="ep__spacer"></span>
-      ${!up && isEpisode ? `<span class="ep__down">${statusChip("DOWN", "routing services")}<code>sg docker -c "docker compose up -d"</code></span>` : ""}
-      <button type="button" class="btn btn--sm" data-action="findings" aria-haspopup="dialog">${icon("flag")}<span>Findings</span><span class="tabs__count">${flagged}</span></button>
-      ${this.status.source.kind === "scenario" ? `<a class="btn btn--sm" href="#/lab?episode=${esc(this.ref.episodeId)}">${icon("edit")}<span>Edit scenario</span></a>` : ""}
-      ${isEpisode ? `<button type="button" class="btn btn--sm" data-action="add" aria-haspopup="dialog"${up ? "" : " disabled"}>${icon("plus")}<span>Add agent</span></button>` : ""}
-      ${isEpisode && !hasTeacher ? `<button type="button" class="btn btn--sm" data-action="teacher" title="Adds a teacher lane: slow, about 30 to 150 s"${up ? "" : " disabled"}>${icon("plus")}<span>Add teacher</span></button>` : ""}
-      ${isEpisode && running ? `<button type="button" class="btn btn--sm" data-action="cancel">${icon("stop")}<span>Cancel</span></button>` : ""}
-      ${!isEpisode ? `<a class="btn btn--sm" href="#/episode/seed/${encodeURIComponent(this.ref.run)}/${this.ref.seed}/${this.ref.index}" title="Record this episode again as an interactive recording, to add agents">${icon("record")}<span>Record interactively</span></a>` : ""}
+      <button type="button" class="btn btn--sm" data-action="findings" aria-haspopup="dialog" aria-expanded="false">Findings<span class="tabs__count">${flagged}</span></button>
+      ${this.status.source.kind === "scenario" ? `<a class="btn btn--sm" href="#/lab?episode=${esc(this.ref.episodeId)}">Edit scenario</a>` : ""}
+      ${isEpisode ? `<button type="button" class="btn btn--sm" data-action="add" aria-haspopup="dialog" aria-expanded="false"${up ? "" : ' disabled title="Needs OSRM and VROOM"'}>Add agent</button>` : ""}
+      ${isEpisode && running ? `<button type="button" class="btn btn--sm" data-action="cancel">Cancel</button>` : ""}
+      ${!isEpisode ? `<a class="btn btn--sm" href="#/episode/seed/${encodeURIComponent(this.ref.run)}/${this.ref.seed}/${this.ref.index}" data-hint-title="Record interactively" data-hint="Record this episode again as an interactive recording, to add agents.">Record interactively</a>` : ""}
       <div class="ep__error" data-role="bar-error"></div>`;
+    if (reopen) Popover.reanchor(this.barNode.querySelector(`[data-action="${reopen}"]`));
   }
 
   renderAlerts() {
@@ -769,9 +777,8 @@ export class EpisodeView {
     if (action === "back" && this.active()) this.step(-1);
     if (action === "forward" && this.active()) this.step(1);
     if (action === "play" && this.active()) this.togglePlay();
-    if (action === "findings") this.togglePopover("findings", button);
-    if (action === "add") this.togglePopover("add", button);
-    if (action === "teacher") this.addAgents([{ agent: "teacher", run_name: null, greedy: true }]);
+    if (action === "findings") this.toggleFindings(button);
+    if (action === "add") this.toggleAdd(button);
     if (action === "cancel") this.cancel();
   }
 
@@ -802,36 +809,25 @@ export class EpisodeView {
   }
 
   closePopover() {
-    if (this.popover) this.popover.remove();
-    this.popover = null;
-    this.popoverKind = null;
+    if (Popover.current && this.recordNode.contains(Popover.current.anchor)) Popover.close();
   }
 
-  togglePopover(kind, anchor) {
-    const same = this.popoverKind === kind;
-    this.closePopover();
-    if (same) return;
-    const box = anchor.getBoundingClientRect();
-    const node = el(`<div class="popover popover--wide glass" role="dialog" aria-label="${kind === "findings" ? "Episode findings" : "Add an agent"}"></div>`);
-    node.style.top = `${box.bottom + 6}px`;
-    node.style.right = `${Math.max(8, window.innerWidth - box.right)}px`;
-    document.body.appendChild(node);
-    this.popover = node;
-    this.popoverKind = kind;
-    if (kind === "findings") this.fillFindings(node);
-    else this.fillAdd(node);
-  }
-
-  fillFindings(node) {
+  toggleFindings(anchor) {
     const lane = this.lane();
     const findings = lane ? lane.trace.findings : [];
-    node.innerHTML = `
-      <header class="popover__head"><h3>Findings for ${esc(lane ? Agents.label(lane.key) : "")}</h3><span class="muted" title="Keys [ and ] step through flagged frames"><kbd>[</kbd> <kbd>]</kbd></span></header>
-      ${findings.length ? FindingsList.list(findings, {}) : `<p class="muted">${lane && !lane.trace.complete ? "Findings are computed when the lane has finished." : "No findings for this lane."}</p>`}`;
+    const body = findings.length ? FindingsList.list(findings, {}) : `<p class="muted">${lane && !lane.trace.complete ? "Findings are computed when the lane has finished." : "No findings for this lane."}</p>`;
+    const html = `<header class="popover__head"><h3>Findings, ${esc(lane ? Agents.label(lane.key) : "")}</h3><span class="muted" title="Keys [ and ] step through flagged frames"><kbd>[</kbd> <kbd>]</kbd></span></header>${body}`;
+    const node = Popover.toggle(anchor, html, { label: "Episode findings", className: "popover--wide" });
+    if (!node) return;
     node.addEventListener("click", (event) => {
       const jump = event.target.closest("[data-jump]");
       if (jump) this.select(this.selected.lane, Number(jump.dataset.jump));
     });
+  }
+
+  toggleAdd(anchor) {
+    const node = Popover.toggle(anchor, skeleton(3), { label: "Add an agent", className: "popover--wide" });
+    if (node) this.fillAdd(node);
   }
 
   async fillAdd(node) {
@@ -841,15 +837,18 @@ export class EpisodeView {
       checkpoints = (await api.get("/api/checkpoints")).checkpoints;
     } catch (error) {
       node.innerHTML = errorBlock("The checkpoint list could not be loaded.", error.message);
+      Popover.reflow();
       return;
     }
     node.innerHTML = `<header class="popover__head"><h3>Add lanes to this episode</h3></header><div data-role="picker"></div><div class="popover__foot"><button type="button" class="btn btn--primary" data-action="confirm-add">Add</button><span class="muted">Lanes already recorded are skipped.</span></div><div data-role="add-error"></div>`;
+    Popover.reflow();
     const picker = new AgentPicker(node.querySelector("[data-role=picker]"), { checkpoints, preferredRun: null, storeKey: "episode.add" });
     node.querySelector("[data-action=confirm-add]").addEventListener("click", () => {
       const existing = new Set(this.lanes.map((lane) => lane.key));
       const agents = picker.agents().filter((agent) => !existing.has(agent.agent === "model" ? `model~${agent.run_name}~${agent.greedy ? "greedy" : "sampled"}` : agent.agent));
       if (!agents.length) {
         node.querySelector("[data-role=add-error]").innerHTML = errorBlock("Every selected agent already has a lane.");
+        Popover.reflow();
         return;
       }
       this.addAgents(agents);
