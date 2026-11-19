@@ -2,11 +2,17 @@ import sys
 from dataclasses import fields, is_dataclass
 from typing      import Union, get_args, get_origin
 
+from tools.runtime.detacher import Detacher
+
 
 class ConfigCli:
-    def __init__(self, config, argv=None):
-        self.config = config
-        self.argv   = list(sys.argv[1:] if argv is None else argv)
+    def __init__(self, config, argv=None, detacher=None):
+        raw = list(sys.argv[1:] if argv is None else argv)
+
+        self.config   = config
+        self.detacher = Detacher() if detacher is None else detacher
+        self.detach   = any(flag in raw for flag in Detacher.FLAGS)
+        self.argv     = [token for token in raw if token not in Detacher.FLAGS]
 
     def _pairs(self):
         if len(self.argv) % 2 != 0:
@@ -76,5 +82,8 @@ class ConfigCli:
         for path, raw in self._pairs():
             section, spec = self._resolve(path)
             setattr(section, spec.name, self._coerce(spec.type, raw))
+
+        if self.detach:
+            self.detacher.ensure()
 
         return self.config
