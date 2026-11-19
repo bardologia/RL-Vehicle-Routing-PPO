@@ -27,6 +27,24 @@ export class Vehicles {
   }
 }
 
+export class Sources {
+  static text(source) {
+    if (source.kind === "seed") return `Seed ${source.seed}`;
+    if (source.kind === "evaluation") return `Evaluation episode ${source.index} of ${source.run}, report seed ${source.report_seed}`;
+    if (source.template) return `Scenario from template ${source.template}`;
+    if (source.name) return `Scenario ${source.name}`;
+    return "Scenario from the Lab";
+  }
+
+  static short(source, withRun = false) {
+    if (source.kind === "seed") return `seed ${source.seed}`;
+    if (source.kind === "evaluation") return withRun ? `${source.run}, episode ${source.index}` : `report ${source.report_seed}, episode ${source.index}`;
+    if (source.template) return `template ${source.template}`;
+    if (source.name) return `scenario ${source.name}`;
+    return "Lab scenario";
+  }
+}
+
 export class Agents {
   static parse(agentKey) {
     const parts = agentKey.split("~");

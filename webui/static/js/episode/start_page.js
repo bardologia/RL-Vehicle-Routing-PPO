@@ -5,7 +5,7 @@ import { infoText, panelHead } from "../ui/panel.js";
 import { errorBlock, failView, skeleton, statusChip } from "../ui/status.js";
 import { FigureStates } from "../ui/figure_states.js";
 import { AgentPicker } from "./agent_picker.js";
-import { Agents } from "./encoding.js";
+import { Agents, Sources } from "./encoding.js";
 
 export class StartPage {
   static SOURCES = [
@@ -42,22 +42,6 @@ export class StartPage {
       if (event.target.dataset.field) this.syncRecord();
     });
     app.onHealth(() => this.syncRecord());
-  }
-
-  static sourceText(source) {
-    if (source.kind === "seed") return `Seed ${source.seed}`;
-    if (source.kind === "evaluation") return `Evaluation episode ${source.index} of ${source.run}, report seed ${source.report_seed}`;
-    if (source.template) return `Scenario from template ${source.template}`;
-    if (source.name) return `Scenario ${source.name}`;
-    return "Scenario from the Lab";
-  }
-
-  static sourceShort(source) {
-    if (source.kind === "seed") return `seed ${source.seed}`;
-    if (source.kind === "evaluation") return `report ${source.report_seed}, episode ${source.index}`;
-    if (source.template) return `template ${source.template}`;
-    if (source.name) return `scenario ${source.name}`;
-    return "Lab scenario";
   }
 
   followRow(target) {
@@ -159,7 +143,7 @@ export class StartPage {
     const rows = recent.length ? recent.map((episode, index) => `
       <tr data-recent="${index}" data-href="${esc(this.href(episode))}">
         <td class="nowrap mono"><a href="${esc(this.href(episode))}">${esc(fmtAge(episode.created))}</a></td>
-        <td class="mono" title="${esc(StartPage.sourceText(episode.source))}">${esc(StartPage.sourceShort(episode.source))}</td>
+        <td class="mono" title="${esc(Sources.text(episode.source))}">${esc(Sources.short(episode.source))}</td>
         <td>${esc(this.runsOf(episode))}</td>
         ${StartPage.LANES.map((lane) => this.laneCell(episode, lane.agent)).join("")}
       </tr>`).join("") : `<tr class="dtable__empty"><td colspan="7">No recordings yet.</td></tr>`;

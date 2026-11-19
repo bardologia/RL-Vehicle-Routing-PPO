@@ -6,7 +6,7 @@ import { AgentPicker } from "../episode/agent_picker.js";
 import { FindingsList } from "../diagnose/findings_list.js";
 import { Compare } from "../episode/compare.js";
 import { DecisionPanel } from "../episode/decision_panel.js";
-import { Agents, Vehicles } from "../episode/encoding.js";
+import { Agents, Sources, Vehicles } from "../episode/encoding.js";
 import { Inputs } from "../episode/inputs.js";
 import { KpiStrip } from "../episode/kpi_strip.js";
 import { Geometry, MapView } from "../episode/map_view.js";
@@ -406,14 +406,14 @@ export class EpisodeView {
     const seed = isNum(source.seed) ? `seed ${source.seed}, ` : "";
     if (source.kind === "diagnostics" || source.kind === "evaluation") return { title: `${source.run} / episode ${source.index}`, meta: `${seed}${caps}` };
     if (source.kind === "seed") return { title: `Seed ${source.seed}`, meta: caps };
-    return { title: StartPage.sourceShort(source), meta: `${seed}${caps}` };
+    return { title: Sources.short(source), meta: `${seed}${caps}` };
   }
 
   sourceText() {
     const source = this.status.source;
     const caps = `${plural(this.status.caps.rounds, "round")}, up to ${this.status.caps.edits} edits each`;
     if (source.kind === "diagnostics") return `Stored trace: episode ${source.index} of ${source.run}, report seed ${source.report_seed}, ${caps}`;
-    return `${StartPage.sourceText(source)}, ${caps}`;
+    return `${Sources.text(source)}, ${caps}`;
   }
 
   flaggedSeqs() {
