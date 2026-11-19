@@ -365,7 +365,9 @@ class FxTermsFigure extends HairlineFigureBase {
     for (const step of this.steps) {
       const v    = state.values[step.k];
       step.value = v;
-      HL.tset(step.hw, v === null ? FxTermsFigure.FLAT : FxTermsFigure.HEIGHTS[rank.get(step.k)], now, step.k * 30);
+      const height = v === null ? FxTermsFigure.FLAT : FxTermsFigure.HEIGHTS[rank.get(step.k)];
+      if (this.parked) step.hw = HL.tween(height);
+      else HL.tset(step.hw, height, now, step.k * 30);
       step.el.sil.classList.toggle("dash", v === null);
       step.dot.setAttribute("class", v === null ? "dot off" : v > 0 ? "dot" : v < 0 ? "dot off" : "dot m");
       step.dot.setAttribute("visibility", v === null ? "hidden" : "visible");
