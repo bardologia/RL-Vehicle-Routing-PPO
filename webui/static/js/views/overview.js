@@ -29,7 +29,7 @@ export class OverviewView {
           form: "hero",
           controls: `${PageHead.control("Run", `<select class="select" data-role="run" aria-label="Run"></select>`)}<span class="ctl" data-role="status-actions"></span>`,
           after: `<section class="panel over__board" data-region="status"><div data-role="status"></div></section>`,
-          figure: HairlineFigure.html("balance"),
+          figure: HairlineFigure.html("plans"),
         })}
         <div data-role="error"></div>
         <section class="panel" data-region="findings">
@@ -171,7 +171,7 @@ export class OverviewView {
     this.statusTiles = [];
     this.findingCounts = null;
     this.nodes.kpis.innerHTML = "";
-    FigureStates.write(this.figures.balance, FigureStates.balance(null));
+    FigureStates.write(this.figures.plans, FigureStates.plans(null));
     const run = this.runs.find((entry) => entry.name === this.selected) || null;
     this.run = run;
     if (!run) {
@@ -222,7 +222,7 @@ export class OverviewView {
     }
 
     const report = this.report;
-    FigureStates.write(this.figures.balance, FigureStates.balance(report));
+    FigureStates.write(this.figures.plans, FigureStates.plans(report));
     this.nodes.dateline.textContent = `${run.kind}, ${fmtAge(run.mtime)}, report seed ${seed}, n = ${report.meta.episodes}, ${report.meta.greedy ? "greedy" : "sampled"}`;
     this.nodes["status-actions"].innerHTML = `<a class="btn btn--primary" href="${esc(Links.diagnose(run.name, seed))}">Open in Diagnose</a>${record}`;
     const model = report.agents.model;

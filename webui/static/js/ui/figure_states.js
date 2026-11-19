@@ -10,7 +10,7 @@ export class FigureStates {
     figure.state = state;
   }
 
-  static balance(report) {
+  static plans(report) {
     if (!report || !report.agents.model) return { mine: 0, others: 0, alarm: false };
     const means = Object.values(report.agents).map((agent) => agent.mean_reward).filter(isNum);
     const floor = Math.min(...means);

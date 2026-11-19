@@ -275,201 +275,6 @@ class FxRank {
   }
 }
 
-class FxBalanceFigure extends HairlineFigureBase {
-  static NAME    = "balance";
-  static RANGE   = [0.4, 0.6, 0.9];
-  static SCALE   = 3.45;
-  static ARM     = 34;
-  static POST    = 40;
-  static STRING  = 18;
-  static PAN     = 9;
-  static ALONG   = [Math.SQRT1_2, -Math.SQRT1_2];
-  static ACROSS  = [Math.SQRT1_2, Math.SQRT1_2];
-  static COIN    = [3, 1.3, 1.65];
-  static COINS   = 8;
-  static TILT    = 9;
-  static SWAY_S  = 4.2;
-  static DROP_S  = 2.2;
-  static FALL    = 0.5;
-  static HOLD    = 0.9;
-  static FADE    = 0.4;
-  static DROP_H  = 12;
-  static DEFAULT = { mine: 1200000, others: 1150000, alarm: false };
-
-  constructor({ stage, svg }, value) {
-    super(svg, value, FxBalanceFigure.SCALE);
-    this.light = new FxLight();
-    this.clock = 0;
-    this.drop  = { pan: null, born: -1e9, drawn: "" };
-    this.next  = 0.8;
-    this._camera(this._extent(), 150);
-    this.shift = new FxShift(this.P);
-    this.coin  = new FxPrism(this.P, this.front, HL.circ(FxBalanceFigure.COIN[0], 28), HL.circ(FxBalanceFigure.COIN[0] - 0.5, 28));
-    this._buildStand();
-    this._buildPans();
-    this._buildBeam();
-    this._apply(FxBalanceFigure.DEFAULT);
-    this.tilt  = HL.spring(this.theta, { k: 60, c: 9 });
-    this.drawn = NaN;
-    this._start(stage, svg);
-    this._retarget(performance.now());
-  }
-
-  _extent() {
-    const reach    = FxBalanceFigure.ARM + FxBalanceFigure.PAN;
-    const [ax, ay] = FxBalanceFigure.ALONG;
-    const swing    = HL.rad(FxBalanceFigure.TILT + FxBalanceFigure.RANGE[2]);
-    const low      = FxBalanceFigure.POST - FxBalanceFigure.STRING - FxBalanceFigure.ARM * Math.sin(swing) - 2;
-    return [[-14, -14, -4], [14, 14, -4], [ax * reach, ay * reach, low], [-ax * reach, -ay * reach, low], [ax * reach, ay * reach, FxBalanceFigure.POST + 10], [-ax * reach, -ay * reach, FxBalanceFigure.POST + 10]];
-  }
-
-  _buildStand() {
-    HL.put(HL.solid(this.g), HL.prism(this.P, this.front, HL.circ(14, 64), HL.circ(12.6, 64), -4, 0));
-    const [ring, inner] = HL.rings(-1.8, -1.8, 1.8, 1.8, 1.2, 0.5);
-    HL.put(HL.solid(this.g), HL.prism(this.P, this.front, ring, inner, 0, FxBalanceFigure.POST));
-  }
-
-  _buildPans() {
-    const [dx, dy] = FxBalanceFigure.ALONG;
-    const [ex, ey] = FxBalanceFigure.ACROSS;
-    const pivot    = FxBalanceFigure.POST + 2;
-    this.pans      = [-1, 1].map((side, k) => {
-      const group   = HL.mk("g", {}, this.g);
-      const x       = side * FxBalanceFigure.ARM * dx;
-      const y       = side * FxBalanceFigure.ARM * dy;
-      const z       = pivot - FxBalanceFigure.STRING;
-      const rim     = (s) => this.P(x + s * FxBalanceFigure.PAN * 0.85 * dx, y + s * FxBalanceFigure.PAN * 0.85 * dy, z);
-      const top     = this.P(x, y, pivot - 1.4);
-      HL.mk("path", { class: "nf", d: HL.seg(top, rim(-1)) + HL.seg(top, rim(1)) }, group);
-      const el      = HL.solid(group);
-      HL.put(el, HL.prism(this._shifted(x, y, 0), this.front, HL.circ(FxBalanceFigure.PAN, 48), HL.circ(FxBalanceFigure.PAN - 1, 48), z - 1.4, z));
-      const dots    = Array.from({ length: k + 1 }, (_, j) => {
-        const along = (j - k / 2) * 2.4;
-        const out   = 0.5 * FxBalanceFigure.PAN;
-        const dot   = HL.flatDot(group, this.C, 0.9, "dot m");
-        HL.place(dot, this.P(x + out * ex + along * dx, y + out * ey + along * dy, z));
-        return dot;
-      });
-      const stackAt = [x - 0.42 * FxBalanceFigure.PAN * ex, y - 0.42 * FxBalanceFigure.PAN * ey];
-      const coins   = Array.from({ length: FxBalanceFigure.COINS + 1 }, () => HL.solid(group));
-      return { side, k, group, el, dots, coins, stackAt, z, count: -1, shift: "" };
-    });
-  }
-
-  _buildBeam() {
-    this.beam      = HL.solid(this.g);
-    this.beamRing  = HL.rrect(-FxBalanceFigure.ARM - 3, -2.2, FxBalanceFigure.ARM + 3, 2.2, 1.6, 4);
-    this.beamInner = HL.rrect(-FxBalanceFigure.ARM - 2.2, -1.4, FxBalanceFigure.ARM + 2.2, 1.4, 1, 4);
-  }
-
-  setState(state) {
-    const name = FxBalanceFigure.NAME;
-    FxCheck.object(name, "state", state, ["mine", "others", "alarm"]);
-    const next = { mine: FxCheck.number(name, "mine", state.mine), others: FxCheck.number(name, "others", state.others), alarm: FxCheck.boolean(name, "alarm", state.alarm) };
-    const now  = performance.now();
-    this._apply(next);
-    this._retarget(now);
-    this._tick(0, now);
-  }
-
-  _apply(state) {
-    const big    = Math.max(Math.abs(state.mine), Math.abs(state.others), 1);
-    const unit   = big / 64;
-    const coins  = (v) => Math.min(FxBalanceFigure.COINS, Math.ceil(Math.log2(1 + Math.max(0, v) / unit)));
-    this.data    = state;
-    this.counts  = [coins(state.mine), coins(state.others)];
-    this.theta   = HL.clamp((state.mine - state.others) / (0.02 * big), -1, 1) * HL.rad(FxBalanceFigure.TILT);
-    this.heavier = this.theta > 0 ? 0 : this.theta < 0 ? 1 : this.counts[1] > this.counts[0] ? 1 : 0;
-    for (const pan of this.pans) {
-      for (const dot of pan.dots) dot.setAttribute("class", pan.k === this.heavier ? "dot" : "dot m");
-      if (pan.count === this.counts[pan.k]) continue;
-      pan.count = this.counts[pan.k];
-      this._stack(pan);
-    }
-  }
-
-  _stack(pan) {
-    const [, thick, pitch] = FxBalanceFigure.COIN;
-    pan.coins.forEach((coin, i) => {
-      if (i === FxBalanceFigure.COINS) return;
-      const z0 = pan.z + i * pitch;
-      HL.put(coin, i < pan.count ? this.coin.path(pan.stackAt[0], pan.stackAt[1], z0, z0 + thick) : FxPrism.EMPTY);
-    });
-  }
-
-  _tick(dt, now) {
-    const still = HL.reducedMotion();
-    if (!still) this.clock += dt;
-    const sway  = still ? 0 : HL.rad(this.amount) * Math.sin((2 * Math.PI * this.clock) / FxBalanceFigure.SWAY_S);
-
-    this.tilt.t = this.theta + sway;
-
-    const moving = HL.stepS(this.tilt, dt);
-    if (this.tilt.x !== this.drawn) {
-      this.drawn = this.tilt.x;
-      this._drawScale(this.tilt.x);
-    }
-    if (!still) this._drop();
-    return still ? moving : true;
-  }
-
-  _drawScale(theta) {
-    const [dx, dy] = FxBalanceFigure.ALONG;
-    const [ex, ey] = FxBalanceFigure.ACROSS;
-    const c        = Math.cos(theta);
-    const s        = Math.sin(theta);
-    const pivot    = FxBalanceFigure.POST + 2;
-    const at       = (u, v, w) => this.P(u * c * dx + v * ex - w * s * dx, u * c * dy + v * ey - w * s * dy, pivot + u * s + w * c);
-    const keep     = (q) => this.front({ nu: q.nu * dx + q.nv * ex, nv: q.nu * dy + q.nv * ey });
-    const top      = this.beamRing.map((q) => at(q.u, q.v, 1.4));
-    const bottom   = this.beamRing.map((q) => at(q.u, q.v, -1.4));
-    HL.put(this.beam, { sil: HL.poly(HL.hull(top.concat(bottom))), crease: HL.open(HL.run(this.beamInner, keep).map((q) => at(q.u, q.v, 1.4))) });
-    for (const pan of this.pans) {
-      const u     = pan.side * FxBalanceFigure.ARM;
-      const shift = this.shift.of((u * c - u) * dx, (u * c - u) * dy, u * s);
-      if (shift === pan.shift) continue;
-      pan.shift   = shift;
-      pan.group.setAttribute("transform", shift);
-    }
-  }
-
-  _drop() {
-    if (this.clock >= this.next) {
-      this.next      = this.clock + FxBalanceFigure.DROP_S;
-      this.drop.pan  = this.pans[this.heavier];
-      this.drop.born = this.clock;
-      for (const pan of this.pans) HL.put(pan.coins[FxBalanceFigure.COINS], FxPrism.EMPTY);
-    }
-    const pan = this.drop.pan;
-    if (!pan) return;
-    const age                    = this.clock - this.drop.born;
-    const [, thick, pitch]       = FxBalanceFigure.COIN;
-    const rest                   = pan.z + pan.count * pitch;
-    const fall                   = HL.clamp(age / FxBalanceFigure.FALL, 0, 1);
-    const fade                   = HL.clamp((age - FxBalanceFigure.FALL - FxBalanceFigure.HOLD) / FxBalanceFigure.FADE, 0, 1);
-    const z                      = rest + FxBalanceFigure.DROP_H * (1 - fall * fall);
-    const h                      = thick * (1 - fade);
-    const key                    = `${z}|${h}`;
-    if (key === this.drop.drawn) return;
-    this.drop.drawn              = key;
-    HL.put(pan.coins[FxBalanceFigure.COINS], h < 0.1 ? FxPrism.EMPTY : this.coin.path(pan.stackAt[0], pan.stackAt[1], z, z + h));
-  }
-
-  _move(p) {
-    const centre = this.P(0, 0, FxBalanceFigure.POST)[0];
-    this._choose(p[0] < centre ? 0 : 1);
-  }
-
-  _retarget() {
-    const lit  = this.chosen === null ? this.heavier : this.chosen;
-    const pan  = this.pans[lit];
-    const coin = this.data.alarm && lit === 1 && pan.count > 0 ? pan.coins[pan.count - 1].sil : null;
-    this.light.set(coin || pan.el.sil);
-    this.loop.wake();
-  }
-}
-
-
 class FxTermsFigure extends HairlineFigureBase {
   static NAME    = "terms";
   static RANGE   = [3, 6, 10];
@@ -804,6 +609,209 @@ class FxDoor {
     let slats   = "";
     for (let z = top - 1.4; z > z0 + 0.4; z -= 1.4) slats += HL.seg(this._pt(-this.half + 0.5, z), this._pt(this.half - 0.5, z));
     HL.put(this.panel, { sil: shape.sil, crease: slats });
+  }
+}
+
+class FxPlansFigure extends HairlineFigureBase {
+  static NAME    = "plans";
+  static RANGE   = [0.4, 0.6, 0.9];
+  static SCALE   = 3.45;
+  static ARM     = 34;
+  static POST    = 40;
+  static STRING  = 18;
+  static PAD     = 9.5;
+  static ALONG   = [Math.SQRT1_2, -Math.SQRT1_2];
+  static ACROSS  = [Math.SQRT1_2, Math.SQRT1_2];
+  static VAN     = 1.35;
+  static CRATE   = [1.7, 2.6, 2.9];
+  static CRATES  = 6;
+  static ROW     = 3;
+  static SPACING = 3.9;
+  static TILT    = 9;
+  static SWAY_S  = 4.2;
+  static DROP_S  = 2.2;
+  static FALL    = 0.5;
+  static HOLD    = 0.9;
+  static FADE    = 0.4;
+  static DROP_H  = 12;
+  static DEFAULT = { mine: 1200000, others: 1150000, alarm: false };
+
+  constructor({ stage, svg }, value) {
+    super(svg, value, FxPlansFigure.SCALE);
+    this.light  = new FxLight();
+    this.clock  = 0;
+    this.drop   = { pan: null, born: -1e9, drawn: "" };
+    this.next   = 0.8;
+    this._camera(this._extent(), 150);
+    this.shift  = new FxShift(this.P);
+    this.vanKit = new FxVan(this.P, this.front, FxPlansFigure.VAN);
+    const half  = FxPlansFigure.CRATE[0];
+    this.crate  = FxParts.shape(this.P, this.front, -half, -half, half, half, 0.5, 0.4);
+    this._buildStand();
+    this._buildPans();
+    this._buildBeam();
+    this._apply(FxPlansFigure.DEFAULT);
+    this.tilt   = HL.spring(this.theta, { k: 60, c: 9 });
+    this.drawn  = NaN;
+    this._start(stage, svg);
+    this._retarget(performance.now());
+  }
+
+  _extent() {
+    const reach    = FxPlansFigure.ARM + FxPlansFigure.PAD;
+    const [ax, ay] = FxPlansFigure.ALONG;
+    const swing    = HL.rad(FxPlansFigure.TILT + FxPlansFigure.RANGE[2]);
+    const low      = FxPlansFigure.POST - FxPlansFigure.STRING - FxPlansFigure.ARM * Math.sin(swing) - 2;
+    return [[-14, -14, -4], [14, 14, -4], [ax * reach, ay * reach, low], [-ax * reach, -ay * reach, low], [ax * reach, ay * reach, FxPlansFigure.POST + 10], [-ax * reach, -ay * reach, FxPlansFigure.POST + 10]];
+  }
+
+  _buildStand() {
+    FxParts.depot(this.P, this.front, this.g, -11, -11, 11, 11, 6);
+    const [ring, inner] = HL.rings(-1.8, -1.8, 1.8, 1.8, 1.2, 0.5);
+    HL.put(HL.solid(this.g), HL.prism(this.P, this.front, ring, inner, 7.6, FxPlansFigure.POST));
+  }
+
+  _buildPans() {
+    const [dx, dy] = FxPlansFigure.ALONG;
+    const [ex, ey] = FxPlansFigure.ACROSS;
+    const pivot    = FxPlansFigure.POST + 2;
+    const r        = FxPlansFigure.PAD;
+    const [ring, inner] = HL.rings(-r, -r, r, r, 2.4, 1);
+    this.pans      = [-1, 1].map((side, k) => {
+      const group   = HL.mk("g", {}, this.g);
+      const x       = side * FxPlansFigure.ARM * dx;
+      const y       = side * FxPlansFigure.ARM * dy;
+      const z       = pivot - FxPlansFigure.STRING;
+      const top     = this.P(x, y, pivot - 1.4);
+      const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => this.P(x + u * (r - 1.6), y + v * (r - 1.6), z));
+      HL.mk("path", { class: "nf", d: corners.map((c) => HL.seg(top, c)).join("") }, group);
+      const el      = HL.solid(group);
+      HL.put(el, HL.prism(this._shifted(x, y, 0), this.front, ring, inner, z - 1.4, z));
+      const stackAt = [x - 0.42 * r * ex, y - 0.42 * r * ey];
+      const crates  = Array.from({ length: FxPlansFigure.CRATES + 1 }, () => HL.solid(group));
+      const van     = this.vanKit.make(group);
+      this.vanKit.pose(van, "x+", x + 0.36 * r * ex, y + 0.36 * r * ey, z);
+      return { side, k, group, el, van, crates, stackAt, z, count: -1, shift: "" };
+    });
+  }
+
+  _buildBeam() {
+    this.beam      = HL.solid(this.g);
+    this.beamRing  = HL.rrect(-FxPlansFigure.ARM - 3, -2.2, FxPlansFigure.ARM + 3, 2.2, 1.6, 4);
+    this.beamInner = HL.rrect(-FxPlansFigure.ARM - 2.2, -1.4, FxPlansFigure.ARM + 2.2, 1.4, 1, 4);
+  }
+
+  setState(state) {
+    const name = FxPlansFigure.NAME;
+    FxCheck.object(name, "state", state, ["mine", "others", "alarm"]);
+    const next = { mine: FxCheck.number(name, "mine", state.mine), others: FxCheck.number(name, "others", state.others), alarm: FxCheck.boolean(name, "alarm", state.alarm) };
+    const now  = performance.now();
+    this._apply(next);
+    this._retarget(now);
+    this._tick(0, now);
+  }
+
+  _apply(state) {
+    const big    = Math.max(Math.abs(state.mine), Math.abs(state.others), 1e-9);
+    const crates = (v) => Math.min(FxPlansFigure.CRATES, Math.round((Math.max(0, v) / big) * FxPlansFigure.CRATES));
+    this.data    = state;
+    this.counts  = [crates(state.mine), crates(state.others)];
+    this.theta   = HL.clamp((state.mine - state.others) / (0.08 * big), -1, 1) * HL.rad(FxPlansFigure.TILT);
+    this.heavier = this.theta > 0 ? 0 : this.theta < 0 ? 1 : this.counts[1] > this.counts[0] ? 1 : 0;
+    for (const pan of this.pans) {
+      this.vanKit.dash(pan.van, pan.k === 0 && state.alarm);
+      if (pan.count === this.counts[pan.k]) continue;
+      pan.count = this.counts[pan.k];
+      this._stack(pan);
+    }
+  }
+
+  _slot(pan, i) {
+    const [dx, dy]          = FxPlansFigure.ALONG;
+    const [, , pitch]       = FxPlansFigure.CRATE;
+    const col               = (i % FxPlansFigure.ROW) - (FxPlansFigure.ROW - 1) / 2;
+    const layer             = Math.floor(i / FxPlansFigure.ROW);
+    return [pan.stackAt[0] + col * FxPlansFigure.SPACING * dx, pan.stackAt[1] + col * FxPlansFigure.SPACING * dy, pan.z + layer * pitch];
+  }
+
+  _stack(pan) {
+    const [, height] = FxPlansFigure.CRATE;
+    pan.crates.forEach((crate, i) => {
+      if (i === FxPlansFigure.CRATES) return;
+      const [x, y, z0] = this._slot(pan, i);
+      HL.put(crate, i < pan.count ? this.crate.path(x, y, z0, z0 + height) : FxPrism.EMPTY);
+    });
+  }
+
+  _tick(dt, now) {
+    const still = HL.reducedMotion();
+    if (!still) this.clock += dt;
+    const sway  = still ? 0 : HL.rad(this.amount) * Math.sin((2 * Math.PI * this.clock) / FxPlansFigure.SWAY_S);
+
+    this.tilt.t = this.theta + sway;
+
+    const moving = HL.stepS(this.tilt, dt);
+    if (this.tilt.x !== this.drawn) {
+      this.drawn = this.tilt.x;
+      this._drawBeam(this.tilt.x);
+    }
+    if (!still) this._drop();
+    return still ? moving : true;
+  }
+
+  _drawBeam(theta) {
+    const [dx, dy] = FxPlansFigure.ALONG;
+    const [ex, ey] = FxPlansFigure.ACROSS;
+    const c        = Math.cos(theta);
+    const s        = Math.sin(theta);
+    const pivot    = FxPlansFigure.POST + 2;
+    const at       = (u, v, w) => this.P(u * c * dx + v * ex - w * s * dx, u * c * dy + v * ey - w * s * dy, pivot + u * s + w * c);
+    const keep     = (q) => this.front({ nu: q.nu * dx + q.nv * ex, nv: q.nu * dy + q.nv * ey });
+    const top      = this.beamRing.map((q) => at(q.u, q.v, 1.4));
+    const bottom   = this.beamRing.map((q) => at(q.u, q.v, -1.4));
+    HL.put(this.beam, { sil: HL.poly(HL.hull(top.concat(bottom))), crease: HL.open(HL.run(this.beamInner, keep).map((q) => at(q.u, q.v, 1.4))) });
+    for (const pan of this.pans) {
+      const u     = pan.side * FxPlansFigure.ARM;
+      const shift = this.shift.of((u * c - u) * dx, (u * c - u) * dy, u * s);
+      if (shift === pan.shift) continue;
+      pan.shift   = shift;
+      pan.group.setAttribute("transform", shift);
+    }
+  }
+
+  _drop() {
+    if (this.clock >= this.next) {
+      this.next      = this.clock + FxPlansFigure.DROP_S;
+      this.drop.pan  = this.pans[this.heavier];
+      this.drop.born = this.clock;
+      for (const pan of this.pans) HL.put(pan.crates[FxPlansFigure.CRATES], FxPrism.EMPTY);
+    }
+    const pan = this.drop.pan;
+    if (!pan) return;
+    const age                 = this.clock - this.drop.born;
+    const [, height, pitch]   = FxPlansFigure.CRATE;
+    const full                = pan.count >= FxPlansFigure.CRATES;
+    const [x, y, z0]          = this._slot(pan, full ? FxPlansFigure.CRATES - 1 : pan.count);
+    const rest                = full ? z0 + pitch : z0;
+    const fall                = HL.clamp(age / FxPlansFigure.FALL, 0, 1);
+    const fade                = HL.clamp((age - FxPlansFigure.FALL - FxPlansFigure.HOLD) / FxPlansFigure.FADE, 0, 1);
+    const z                   = rest + FxPlansFigure.DROP_H * (1 - fall * fall);
+    const h                   = height * (1 - fade);
+    const key                 = `${z}|${h}`;
+    if (key === this.drop.drawn) return;
+    this.drop.drawn           = key;
+    HL.put(pan.crates[FxPlansFigure.CRATES], h < 0.1 ? FxPrism.EMPTY : this.crate.path(x, y, z, z + h));
+  }
+
+  _move(p) {
+    const centre = this.P(0, 0, FxPlansFigure.POST)[0];
+    this._choose(p[0] < centre ? 0 : 1);
+  }
+
+  _retarget() {
+    const lit = this.chosen === null ? this.heavier : this.chosen;
+    this.light.set(this.pans[lit].van.body.sil);
+    this.loop.wake();
   }
 }
 
@@ -3378,7 +3386,7 @@ class RoutingFigures {
     confusion:  RoutingFigures.entry(FxConfusionFigure),
     terms:      RoutingFigures.entry(FxTermsFigure),
     ranking:    RoutingFigures.entry(FxRankingFigure),
-    balance:    RoutingFigures.entry(FxBalanceFigure),
+    plans:      RoutingFigures.entry(FxPlansFigure),
     checkpoint: RoutingFigures.entry(FxCheckpointFigure),
     training:   RoutingFigures.entry(FxTrainingFigure),
     queue:      RoutingFigures.entry(FxQueueFigure),
@@ -3397,7 +3405,7 @@ class RoutingFigures {
     confusion:  "Model operators against teacher operators as a three by three block of columns.",
     terms:      "Reward terms ranked on a podium.",
     ranking:    "Mean job rank on a staircase of priorities.",
-    balance:    "Model reward weighed against the teacher.",
+    plans:      "The model plan and the teacher plan weighed on a beam over the depot, each pan a van with its served jobs.",
     checkpoint: "Checkpoints on a rack, lit when they load and carry a report.",
     training:   "A training curve as a row of slats.",
     queue:      "Jobs on a belt through the running gate to the finished stack.",
