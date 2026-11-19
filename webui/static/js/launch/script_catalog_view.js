@@ -18,7 +18,7 @@ export class ScriptCatalogView {
     this.scripts = scripts;
     this.host.innerHTML = `
       <div class="catalog">
-        ${this.view.head({ title: "Entry points", lead: "Orchestrated entry scripts. Review the configuration defaults, override any field, and launch with live output.", figure: true, figureName: "cabinet" })}
+        ${this.view.head({ title: "Entry points", figure: true, figureName: "cabinet" })}
         <div class="catalog__filters ctls" data-role="filters"></div>
         <div class="catalog__sections" data-role="sections"></div>
       </div>`;
