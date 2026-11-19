@@ -106,12 +106,16 @@ export class EpisodeView {
     this.status = null;
     this.recordNode.classList.add("hidden");
     this.startNode.classList.remove("hidden");
+    document.documentElement.dataset.episode = "start";
+    this.app.backdrop.setStopped(false);
     this.start.show();
   }
 
   showRecording() {
     this.startNode.classList.add("hidden");
     this.recordNode.classList.remove("hidden");
+    document.documentElement.dataset.episode = "record";
+    this.app.backdrop.setStopped(true);
   }
 
   fail(cause, details) {
