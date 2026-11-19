@@ -62,13 +62,15 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .ep__lost { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .ep__lost hairline-figure { width: 160px; margin-bottom: var(--sp-16); }
 .ep__lost .errorblock { width: min(640px, 100%); }
-.ep__bar { flex: none; min-height: 56px; display: flex; align-items: center; gap: 6px 18px; padding: 0 16px; border-bottom: 2px solid var(--line); flex-wrap: wrap; position: relative; z-index: 6; }
-.ep__source { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 80px; flex: 0 1 auto; }
+.ep__bar { flex: none; min-height: 56px; display: flex; align-items: center; gap: 6px 18px; padding: 0 16px; border-bottom: 2px solid var(--line); flex-wrap: nowrap; position: relative; z-index: 6; }
+.ep__bar:has(> .ep__error:not(:empty)) { flex-wrap: wrap; }
+.ep__bar > * { flex: none; }
+.ep__bar > .ep__source { min-width: 80px; flex: 0 1 auto; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ep__transport { display: inline-flex; align-items: center; gap: var(--sp-4); }
 .ep__position { min-width: calc(15ch + 24px); }
 .ep__expect { display: inline-flex; align-items: center; gap: var(--sp-8); }
 .ep__tools { display: inline-flex; align-items: center; gap: var(--sp-8); }
-.ep__spacer { flex: 1; }
+.ep__bar > .ep__spacer { flex: 1 1 0; min-width: 0; }
 .ep__down { display: inline-flex; align-items: center; gap: var(--sp-8); }
 .ep__error { flex-basis: 100%; }
 .ep__error:empty { display: none; }
