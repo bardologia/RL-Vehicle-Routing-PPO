@@ -48,12 +48,12 @@
 .segmented--sm { padding: 1px; border-width: 1px; }
 .segmented--sm button { padding: 2px 8px; font-size: 11.5px; }
 
-.sb-watch { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: 12px; align-items: stretch; }
-.sb-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; align-content: start; border: 1px solid var(--line-soft); background: var(--line-soft); }
-.sb-tile { min-width: 0; padding: 6px 8px; background: var(--panel-solid); }
-.sb-tile dt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--sans); font-size: 10.5px; font-weight: 700; line-height: 1.5; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-hint); }
-.sb-tile dd { overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 13px; font-weight: 700; line-height: 1.5; color: var(--ink); white-space: nowrap; }
-.sb-watch__fig { min-height: 180px; }
+.sb-watch { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
+.sb-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; align-content: start; margin: 0; }
+.sb-tile { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; padding: 5px 9px; border: 1px solid var(--line-soft); background: var(--panel-deep); }
+.sb-tile dt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--sans); font-size: 11px; font-weight: 700; line-height: 1.5; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-hint); }
+.sb-tile dd { flex: none; font-family: var(--mono); font-size: 12.5px; font-weight: 700; line-height: 1.5; color: var(--ink); white-space: nowrap; }
+.sb-watch__fig { flex: 1; min-height: 200px; }
 .sb-alerts { display: grid; gap: 4px; margin-top: 12px; }
 .sb-alerts:empty { display: none; }
 .sb-alert { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; padding: 5px 8px; border: 1px solid var(--line-soft); font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1.5; color: var(--ink-dim); }
@@ -108,7 +108,7 @@
 .sb-cpu__dial { width: 100%; height: 150px; }
 .sb-load { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
 .sb-load dt { font-family: var(--mono); font-size: 18px; font-weight: 700; line-height: 1.3; color: var(--ink); }
-.sb-load dd { font-family: var(--sans); font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-hint); white-space: nowrap; }
+.sb-load dd { font-family: var(--sans); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-hint); white-space: nowrap; }
 .sb-spark { display: block; width: 100%; height: 72px; margin-top: 6px; }
 .sb-spark--mem { height: 56px; }
 .sb-cpu__fig { flex: 1; min-height: 140px; margin-top: 8px; }

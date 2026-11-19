@@ -77,7 +77,7 @@ export class BoardMarkup {
         </div>
         <div class="sb-alerts" data-role="wd-alerts"></div>
         <div class="sb-actions">
-          <button type="button" class="btn btn--sm" data-role="detach" title="Detach the console server from this terminal and login session into its own systemd scope, so it survives logout and a closed terminal">Keep alive</button>
+          <button type="button" class="btn btn--sm" data-role="detach" title="Detach the console server from this terminal and login session into its own systemd scope, so it survives logout and a closed terminal">Keep alive: off</button>
           <label class="ctl"><span class="ctl__label">Launch</span><select class="select select--sm" data-role="politeness" aria-label="Launch politeness" title="Priority every new launch starts under. Running jobs keep theirs."><option value="off">off</option><option value="polite">polite</option><option value="background">background</option></select></label>
           <button type="button" class="btn btn--sm" data-role="throttle" aria-pressed="false" title="When on, the first alert that blames console jobs drops them to nice 19 and idle I/O. Priorities only go down, so a throttled job stays throttled until it ends.">Auto-throttle</button>
         </div>
@@ -469,7 +469,7 @@ export class StatusBoard {
     this.server = server;
     const button = this.node("detach");
     const partial = server.detached && server.shield_error;
-    button.innerHTML = `<span>${server.detached ? (partial ? "Keep alive: partial" : "Keep alive: on") : "Keep alive"}</span>`;
+    button.innerHTML = `<span>${server.detached ? (partial ? "Keep alive: partial" : "Keep alive: on") : "Keep alive: off"}</span>`;
     button.classList.toggle("is-on", Boolean(server.detached) && !partial);
     button.classList.toggle("is-warn", Boolean(partial));
     button.disabled = Boolean(server.detached);
