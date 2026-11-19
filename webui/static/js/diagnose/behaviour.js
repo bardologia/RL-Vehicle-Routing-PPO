@@ -91,7 +91,9 @@ export class BehaviourPanels {
     if (!index) return "no traces recorded";
     const agg = new Aggregate(index);
     const parts = [plural(index.episodes.length, "episode"), plural(agg.rounds("model"), "round"), `${plural(index.decisions.length, "model decision")}`];
-    if (index.meta.teacher_verdict) parts.push(`verdicts ${index.meta.teacher_verdict}`);
+    const verdict = index.meta.teacher_verdict;
+    if (verdict === "insertions") parts.push("teacher verdicts on insertions");
+    if (verdict === "full") parts.push("full teacher verdicts");
     return parts.join(", ");
   }
 
