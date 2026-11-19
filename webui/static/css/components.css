@@ -127,7 +127,6 @@ input[type="range"]:focus-visible::-moz-range-thumb { background: var(--accent);
 .check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; line-height: 1.5; cursor: pointer; color: var(--ink-dim); }
 .check:hover { color: var(--ink); }
 .check.is-disabled { opacity: 0.4; cursor: not-allowed; }
-.fieldrow { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
 .fieldlabel { display: flex; flex-direction: column; gap: 2px; }
 .fieldlabel > span, .ctl__label { font-family: var(--sans); font-size: 11px; font-weight: 700; line-height: 1.55; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-hint); white-space: nowrap; }
 .ctl { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
