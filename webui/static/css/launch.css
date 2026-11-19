@@ -212,6 +212,27 @@
 .seq-copy { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .seq-copy > .rail-block { padding: 12px 14px; border: 2px solid var(--line-card); border-radius: var(--r); background: var(--well); }
 .seq-drawer__actions { display: flex; justify-content: space-between; gap: 12px; }
+.seq-block__flag--decide { color: var(--accent); }
+.seq-decide { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--line-soft); }
+.seq-decide__head { display: flex; align-items: center; gap: 10px; }
+.seq-decide__title { font-family: var(--sans); font-size: 11px; font-weight: 700; line-height: 1.25; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); }
+.seq-decide__count { flex: 1; font-family: var(--mono); font-size: 11.5px; font-weight: 600; line-height: 1.45; color: var(--ink-hint); }
+.seq-decide__list { display: flex; flex-direction: column; gap: 8px; }
+.seq-decide__list:empty { display: none; }
+.seq-decide__item { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(90px, 0.7fr) minmax(140px, 1.4fr) minmax(110px, 0.8fr) auto; align-items: end; gap: 10px; }
+.seq-decide__item.is-decided .seq-decide__path { color: var(--live); }
+.seq-decide__path { align-self: center; min-width: 0; padding: 0; background: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1.5; color: var(--ink); }
+.seq-decide__path.is-foreign { color: var(--ink-hint); }
+.seq-decide__field { flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
+.seq-decide__field .input, .seq-decide__field .select { width: 100%; min-width: 0; }
+.seq-decide__remove { align-self: center; }
+.seq-decide__add { display: flex; gap: 10px; }
+.seq-decide__picker { flex: 1; min-width: 0; max-width: 420px; }
+.cfg-row.cfg-row--frozen .cfg-row__label { color: var(--live); }
+.cfg-row.cfg-row--waiting .cfg-row__label { color: var(--warn); }
+.cfg-row--frozen .cfg-row__name::after, .cfg-row--waiting .cfg-row__name::after { flex: none; font-family: var(--mono); font-size: 11px; font-weight: 600; line-height: 1.5; }
+.cfg-row--frozen .cfg-row__name::after { content: "frozen"; color: var(--live); }
+.cfg-row--waiting .cfg-row__name::after { content: "waiting"; color: var(--warn); }
 
 @media (prefers-reduced-motion: reduce) {
   .seq-edge__dot { display: none; }
@@ -223,4 +244,5 @@
   .cfg-layout { grid-template-columns: minmax(0, 1fr); }
   .secnav { position: static; flex-direction: row; flex-wrap: wrap; order: -1; }
   .seq-copy { grid-template-columns: minmax(0, 1fr); }
+  .seq-decide__item { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
 }

@@ -1,8 +1,11 @@
 import { api } from "../api.js";
 import { esc, icon, Store } from "../format.js";
 import { FigureStates } from "../ui/figure_states.js";
+import { infoText } from "../ui/panel.js";
+import { Popover } from "../ui/popover.js";
 import { skeleton } from "../ui/status.js";
 import { ConfigForm } from "./config_form.js";
+import { PythonLiteral } from "./python_literal.js";
 import { ConfigTemplates, RunConfigCopy } from "./rail.js";
 
 export class SequenceBoard {
@@ -111,9 +114,14 @@ export class SequenceBoard {
     return el;
   }
 
+  static axes(count) {
+    return `${count} ${count === 1 ? "axis" : "axes"}`;
+  }
+
   block(block) {
     const state = this.state(block.block_id);
     const overrides = Object.keys(block.overrides).length;
+    const open = block.decisions.filter((decision) => !decision.choice).length;
     const el = document.createElement("div");
     el.className = `seq-block is-${state.status}${block.skip ? " is-skip" : ""}${block.checkpoint ? " is-checkpoint" : ""}${this.selected === block.block_id ? " is-selected" : ""}${this.linking === block.block_id ? " is-linking" : ""}`;
     el.dataset.block = block.block_id;
@@ -125,6 +133,7 @@ export class SequenceBoard {
       <div class="seq-block__head"><span class="seq-block__kind">run</span><span class="seq-block__state">${this.stateHtml(state.status)}</span></div>
       <h4 class="seq-block__title" title="${esc(block.script)}">${esc(block.name || block.title)}</h4>
       <p class="seq-block__meta">${esc(block.script)} · ${overrides} override${overrides === 1 ? "" : "s"}</p>
+      ${block.decisions.length ? `<p class="seq-block__flag seq-block__flag--decide" title="${esc(block.decisions.map((decision) => `${decision.path} = ${decision.choice || "undecided"}`).join("\n"))}">decides ${SequenceBoard.axes(block.decisions.length)}${open ? ` · ${open} open` : ""}</p>` : ""}
       ${block.checkpoint ? `<p class="seq-block__flag">checkpoint: holds until released</p>` : ""}
       ${block.skip ? `<p class="seq-block__flag seq-block__flag--skip">skip: bypassed on run</p>` : ""}
       <p class="seq-block__error" title="${esc(state.error || "")}"${state.error ? "" : " hidden"}>${esc(state.error || "")}</p>
@@ -342,7 +351,7 @@ export class SequencesPage extends ConfigForm {
         Store.write("sequence.active", entry.sequence_id);
       }
       const n = entry.blocks.length;
-      entry.blocks.push({ script, title, overrides: {}, predecessors: n ? [entry.blocks[n - 1].block_id] : [], checkpoint: false, skip: false, x: 288 + n * 264, y: 24 });
+      entry.blocks.push({ script, title, overrides: {}, decisions: [], predecessors: n ? [entry.blocks[n - 1].block_id] : [], checkpoint: false, skip: false, x: 288 + n * 264, y: 24 });
       await api.post(`/api/sequences/${entry.sequence_id}/save`, entry);
       this.app.toast.show(`Added ${title} to sequence "${entry.name}"`, "ok");
     } catch (error) {
@@ -453,6 +462,37 @@ export class SequencesPage extends ConfigForm {
     } finally {
       this.busy = false;
     }
+  }
+
+  async release(blockId) {
+    const pending = this.upstreamUndecided(blockId);
+    if (pending.length && !window.confirm(`These earlier blocks have no verdict recorded yet:\n\n${pending.map((item) => item.label).join("\n")}\n\nReleasing now runs this block on the pre-verdict values. Continue?`)) {
+      this.selectBlock(pending[0].block_id);
+      return;
+    }
+    await this.act("release", { block_id: blockId }, "Checkpoint released");
+  }
+
+  openDecisions(blockId) {
+    const block = this.current.blocks.find((item) => item.block_id === blockId);
+    return block ? block.decisions.filter((decision) => !decision.choice) : [];
+  }
+
+  upstreamUndecided(blockId) {
+    const byId = new Map(this.current.blocks.map((block) => [block.block_id, block]));
+    const seen = new Set();
+    const pending = [];
+    const stack = [...(byId.has(blockId) ? byId.get(blockId).predecessors : [])];
+
+    while (stack.length) {
+      const id = stack.pop();
+      if (seen.has(id) || !byId.has(id)) continue;
+      seen.add(id);
+      this.openDecisions(id).forEach((decision) => pending.push({ block_id: id, label: `${byId.get(id).name || byId.get(id).title}: ${decision.path}` }));
+      stack.push(...byId.get(id).predecessors);
+    }
+
+    return pending;
   }
 
   async start(resumeDir = "", bypass = []) {
@@ -603,7 +643,7 @@ export class SequencesPage extends ConfigForm {
       onLink: (blockId) => this.toggleLinking(blockId),
       onToggleSkip: (blockId) => this.toggleSkip(blockId),
       onMoved: () => this.persist(),
-      onRelease: (blockId) => this.act("release", { block_id: blockId }, "Checkpoint released"),
+      onRelease: (blockId) => this.release(blockId),
       onOpenJob: (jobId) => this.app.router.go(`#/console/${jobId}`),
       onBackground: () => this.closeDrawer(),
     });
@@ -639,7 +679,7 @@ export class SequencesPage extends ConfigForm {
       if (!add.value) return;
       const script = this.view.scripts.find((item) => item.key === add.value);
       const n = this.current.blocks.length;
-      this.current.blocks.push({ script: script.key, title: script.title, overrides: {}, predecessors: [], checkpoint: false, skip: false, x: 288 + n * 264, y: 24 });
+      this.current.blocks.push({ script: script.key, title: script.title, overrides: {}, decisions: [], predecessors: [], checkpoint: false, skip: false, x: 288 + n * 264, y: 24 });
       add.value = "";
       if (await this.persist()) this.draw();
     });
@@ -779,6 +819,10 @@ export class SequencesPage extends ConfigForm {
     }));
     body.appendChild(controls);
 
+    const decideHost = document.createElement("div");
+    decideHost.className = "seq-decide";
+    body.appendChild(decideHost);
+
     const configHost = document.createElement("div");
     configHost.className = "seq-drawer__config";
     configHost.innerHTML = skeleton(4);
@@ -815,6 +859,7 @@ export class SequencesPage extends ConfigForm {
     if (this.editorKey !== editorKey) return;
 
     this.config = cfg;
+    this.buildDecisions(decideHost, block, cfg);
     configHost.innerHTML = "";
     const tools = document.createElement("div");
     tools.className = "seq-copy";
@@ -823,16 +868,149 @@ export class SequencesPage extends ConfigForm {
     configHost.appendChild(this.buildToolbar(cfg));
     this.renderLayout(configHost, cfg);
     this.applyRunConfig(block.overrides);
+    this.paintProvenance(block);
 
     const apply = actions.querySelector("[data-role=apply]");
     apply.disabled = false;
     apply.addEventListener("click", async () => {
-      block.overrides = { ...this.dirty };
+      const steered = this.steerDecisions(block);
+      const applied = { ...this.dirty };
+      block.overrides = applied;
       if (!(await this.persist())) return;
+
+      const reverted = this.revertedAxes(block, applied, steered);
+      this.applyRunConfig(block.overrides);
+      this.buildDecisions(decideHost, block, cfg);
+      this.paintProvenance(block);
       this.board.render(this.current, this.live, this.selected, this.linking);
       const count = Object.keys(block.overrides).length;
-      this.app.toast.show(`Block updated: ${count} override${count === 1 ? "" : "s"}`, "ok");
+      const parts = [`Block updated: ${count} override${count === 1 ? "" : "s"}`];
+      if (steered.length) parts.push(`pre-verdict value updated for ${steered.join(", ")}`);
+      reverted.forEach(({ path, decider }) => parts.push(`${path} reverted: decided by '${decider}'`));
+      this.app.toast.show(parts.join(" · "), reverted.length ? "warn" : "ok");
     });
+  }
+
+  steerDecisions(block) {
+    const steered = [];
+    block.decisions.forEach((decision) => {
+      const leaf = this.byPath.get(decision.path);
+      if (!leaf) return;
+      const edited = this.dirty[decision.path] !== undefined ? this.dirty[decision.path] : String(leaf.value);
+      if (edited === decision.waiting) return;
+      decision.waiting = edited;
+      steered.push(decision.path);
+    });
+    return steered;
+  }
+
+  revertedAxes(block, applied, steered) {
+    const notes = block.field_notes;
+    const paths = new Set([...Object.keys(applied), ...Object.keys(block.overrides)]);
+    const reverted = [];
+    paths.forEach((path) => {
+      if (!notes[path] || steered.includes(path)) return;
+      if (applied[path] === block.overrides[path]) return;
+      const decider = this.current.blocks.find((other) => other.block_id !== block.block_id && other.decisions.some((decision) => decision.path === path));
+      reverted.push({ path, decider: decider ? decider.name || decider.title : "an earlier block" });
+    });
+    return reverted;
+  }
+
+  paintProvenance(block) {
+    const titles = {
+      frozen: "frozen: this value is the verdict of an earlier block in the sequence",
+      waiting: "waiting: a later block decides this field; until then it holds the pre-experiment value",
+    };
+    this.states.forEach(({ leaf, row }) => {
+      row.classList.remove("cfg-row--frozen", "cfg-row--waiting");
+      const note = titles[block.field_notes[leaf.path]] ? block.field_notes[leaf.path] : null;
+      const name = row.querySelector(".cfg-row__name");
+      if (name.dataset.base === undefined) name.dataset.base = name.dataset.hint;
+      name.dataset.hint = note ? `${titles[note]}. ${name.dataset.base}` : name.dataset.base;
+      if (note) row.classList.add(`cfg-row--${note}`);
+    });
+  }
+
+  buildDecisions(host, block, cfg) {
+    const info = Popover.infoButton("Decided here", infoText("Config axes this block puts under test. Blocks after this one run the verdict, blocks before it run the pre-verdict value; both are written on save, so a verdict is recorded once instead of edited into every later block.", "Editing a decided axis in the form below rewrites its pre-verdict value on apply. A candidate with commas of its own, a tuple or a list, is typed in brackets."));
+    host.innerHTML = `
+      <div class="seq-decide__head"><span class="seq-decide__title">Decided here</span><span class="seq-decide__count">${block.decisions.length ? SequenceBoard.axes(block.decisions.length) : "none"}</span>${info}</div>
+      <div class="seq-decide__list"></div>
+      <div class="seq-decide__add">
+        <input class="input seq-decide__picker" type="text" spellcheck="false" placeholder="config path under test" aria-label="Config path under test" list="seq-decide-paths">
+        <datalist id="seq-decide-paths">${cfg.leaves.filter((leaf) => leaf.editable).map((leaf) => `<option value="${esc(leaf.path)}"></option>`).join("")}</datalist>
+        <button type="button" class="btn btn--sm" data-role="add-axis">Add axis</button>
+      </div>`;
+    const list = host.querySelector(".seq-decide__list");
+    block.decisions.forEach((decision) => list.appendChild(this.decisionRow(block, decision, cfg)));
+    const picker = host.querySelector(".seq-decide__picker");
+    host.querySelector("[data-role=add-axis]").addEventListener("click", () => this.addDecision(block, picker.value.trim(), cfg));
+    picker.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") this.addDecision(block, picker.value.trim(), cfg);
+    });
+  }
+
+  decisionRow(block, decision, cfg) {
+    const leaf = cfg.leaves.find((item) => item.path === decision.path) || null;
+    const values = decision.options.slice();
+    if (decision.choice && !values.includes(decision.choice)) values.unshift(decision.choice);
+    const row = document.createElement("div");
+    row.className = `seq-decide__item${decision.choice ? " is-decided" : ""}`;
+    row.innerHTML = `
+      <code class="seq-decide__path${leaf ? "" : " is-foreign"}" title="${esc(leaf ? `${leaf.type} · default ${leaf.value}` : "this block's entry point does not expose the path; the axis is still frozen into the blocks that do")}">${esc(decision.path)}</code>
+      <label class="ctl seq-decide__field"><span class="ctl__label">Before</span><input class="input" type="text" spellcheck="false" data-role="waiting" title="Value every block that is not yet after this one runs with while the question is open"></label>
+      <label class="ctl seq-decide__field seq-decide__field--wide"><span class="ctl__label">Candidates</span><input class="input" type="text" spellcheck="false" data-role="options" title="Comma-separated values the experiment compares; they become the verdict choices. A comma inside brackets, braces or quotes belongs to the value"></label>
+      <label class="ctl seq-decide__field"><span class="ctl__label">Verdict</span><select class="select" data-role="verdict" title="Winner of this experiment; picking it freezes the value into every block after this one"><option value="">undecided</option>${values.map((value) => `<option value="${esc(value)}"${value === decision.choice ? " selected" : ""}>${esc(value)}</option>`).join("")}</select></label>
+      <button type="button" class="tbtn tbtn--sm seq-decide__remove" data-role="remove" title="Stop deciding this axis here; the blocks it stamped keep their current values as plain overrides" aria-label="Stop deciding ${esc(decision.path)}">${icon("close")}</button>`;
+    const waiting = row.querySelector("[data-role=waiting]");
+    waiting.value = decision.waiting;
+    waiting.addEventListener("change", async () => {
+      decision.waiting = waiting.value;
+      if (await this.persist()) this.draw();
+    });
+    const options = row.querySelector("[data-role=options]");
+    options.value = decision.options.join(", ");
+    options.addEventListener("change", async () => {
+      decision.options = PythonLiteral.split(options.value);
+      if (await this.persist()) this.draw();
+    });
+    row.querySelector("[data-role=verdict]").addEventListener("change", (event) => this.recordVerdict(block, decision.path, event.target.value));
+    row.querySelector("[data-role=remove]").addEventListener("click", async () => {
+      block.decisions = block.decisions.filter((item) => item.path !== decision.path);
+      if (await this.persist()) this.draw();
+    });
+    return row;
+  }
+
+  async addDecision(block, path, cfg) {
+    if (!path) return;
+    if (block.decisions.some((decision) => decision.path === path)) {
+      this.app.toast.show(`This block already decides ${path}`, "warn");
+      return;
+    }
+    const leaf = cfg.leaves.find((item) => item.path === path) || null;
+    block.decisions.push({
+      path,
+      options: leaf && Array.isArray(leaf.choices) && leaf.choices.length ? leaf.choices.slice() : leaf && leaf.type === "bool" ? ["False", "True"] : [],
+      waiting: block.overrides[path] !== undefined ? block.overrides[path] : leaf ? String(leaf.value) : "",
+      choice: "",
+    });
+    if (await this.persist()) this.draw();
+  }
+
+  async recordVerdict(block, path, choice) {
+    let res;
+    try {
+      res = await api.post(`/api/sequences/${this.current.sequence_id}/decide`, { block_id: block.block_id, path, choice });
+    } catch (error) {
+      this.app.toast.show(error.message || "Could not record the verdict", "error");
+      this.draw();
+      return;
+    }
+    this.current = res.entry;
+    this.app.toast.show(choice ? `${path} frozen to ${choice} in every block after this one` : `${path} reopened; the blocks after this one went back to the pre-verdict value`, "ok");
+    this.draw();
   }
 
   refresh() {
