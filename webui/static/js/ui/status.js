@@ -85,9 +85,14 @@ export class Toast {
   }
 
   confirm(message) {
+    this.show(message, "ok");
+  }
+
+  show(message, kind = "ok") {
     this.element.innerHTML = `<span>${esc(message)}</span>`;
+    this.element.dataset.kind = kind;
     this.element.classList.add("is-shown");
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.element.classList.remove("is-shown"), 2600);
+    this.timer = setTimeout(() => this.element.classList.remove("is-shown"), kind === "error" ? 6000 : 2600);
   }
 }
