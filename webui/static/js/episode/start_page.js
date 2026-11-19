@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { esc, fmtAge, fmtSigned, isNum, Store } from "../format.js";
+import { Figure } from "../fx/figure.js";
 import { errorBlock, skeleton, statusChip } from "../ui/status.js";
 import { AgentPicker } from "./agent_picker.js";
 import { Agents } from "./encoding.js";
@@ -89,6 +90,8 @@ export class StartPage {
     this.container.innerHTML = `
       <div class="view__pad start">
         <header class="pagehead"><h2>Record an episode</h2><p class="muted">One episode, every agent on the same start, replayed decision by decision with the policy distribution, the reward terms and the plan on the map.</p></header>
+        <div class="start__top">
+          <div>
         <div class="start__sources" role="radiogroup" aria-label="Episode source">
           ${card("seed", "Random episode from a seed", "The environment sampler draws jobs, vehicles and disruptions from this seed.", seedBody)}
           ${card("evaluation", "Episode of an evaluation report", "Replays one episode of a stored report with its environment, reward weights and caps, so totals match the report.", evaluationBody)}
@@ -109,6 +112,9 @@ export class StartPage {
             <div data-role="record-error"></div>
           </div>
         </section>
+          </div>
+          ${Figure.html("patch")}
+        </div>
         <section class="panel panel--flush">
           <header class="panel__head"><h3 class="panel__title">Recent recordings</h3><span class="panel__help">The last ten, stored under logs/webui/episodes.</span></header>
           <div class="panel__body"><div class="dtable dtable--static"><table><thead><tr><th>Recorded</th><th>Source</th><th>Agents and return</th><th></th></tr></thead><tbody>${recentRows}</tbody></table></div></div>

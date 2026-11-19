@@ -5,6 +5,7 @@ import { AgentPicker } from "../episode/agent_picker.js";
 import { Vehicles } from "../episode/encoding.js";
 import { KpiStrip } from "../episode/kpi_strip.js";
 import { MapView } from "../episode/map_view.js";
+import { Figure } from "../fx/figure.js";
 import { errorBlock, statusChip } from "../ui/status.js";
 import { DataTable } from "../ui/table.js";
 
@@ -68,6 +69,7 @@ export class LabView {
           <section class="lab__block" data-role="editor"></section>
           <section class="lab__block" data-role="summary"></section>
           <section class="lab__block" data-role="run"></section>
+          ${Figure.html("dish", "lab__figure")}
         </aside>
       </div>`));
     const find = (role) => this.root.querySelector(`[data-role=${role}]`);

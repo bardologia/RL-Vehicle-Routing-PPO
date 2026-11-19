@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { el, esc, plural } from "../format.js";
+import { Figure } from "../fx/figure.js";
 import { errorBlock, skeleton } from "../ui/status.js";
 
 export class LaunchView {
@@ -54,7 +55,7 @@ export class LaunchView {
         <a class="launch__script" href="#/launch/${esc(script.key)}" data-key="${esc(script.key)}">
           <span class="launch__scripttitle">${esc(script.title)}</span>
           <span class="launch__scriptsum">${esc(script.summary)}</span>
-        </a>`).join("")}`).join("");
+        </a>`).join("")}`).join("") + Figure.html("elevator", "launch__figure");
   }
 
   async select(key, query) {

@@ -7,6 +7,7 @@ import { LineChart } from "../ui/charts.js";
 import { kpiRow } from "../ui/kpi.js";
 import { LogText } from "../ui/logtext.js";
 import { MarkdownTable } from "../ui/markdown_table.js";
+import { Figure } from "../fx/figure.js";
 import { emptyBlock, errorBlock, plainChip, skeleton, statusChip } from "../ui/status.js";
 import { kvTable } from "../ui/table.js";
 import { Tabs } from "../ui/tabs.js";
@@ -97,6 +98,7 @@ export class RunsView {
         <aside class="runs__rail" aria-label="Runs">
           <label class="runs__search">${icon("search")}<input class="input" type="search" placeholder="Search runs" aria-label="Search runs" data-role="search"></label>
           <div class="runs__list" data-role="list"></div>
+          ${Figure.html("cabinet", "runs__figure")}
         </aside>
         <div class="runs__main" data-role="main"></div>
       </div>`));
@@ -503,7 +505,7 @@ export class RunsView {
 
   renderGallery() {
     const images = this.detail.analysis;
-    this.body.innerHTML = this.panel("Gallery", "Images written to the analysis folder of the run.", images.length ? `<div class="runs__gallery">${images.map((image) => `<button type="button" class="runs__thumb" data-action="lightbox" data-src="${esc(image.url)}" data-name="${esc(image.name)}"><img src="${esc(image.url)}" alt="${esc(image.name)}" loading="lazy"><span>${esc(image.name)}</span></button>`).join("")}</div>` : emptyBlock("This run has no analysis images."));
+    this.body.innerHTML = this.panel("Gallery", "Images written to the analysis folder of the run.", images.length ? `<div class="runs__gallery">${images.map((image) => `<button type="button" class="runs__thumb" data-action="lightbox" data-src="${esc(image.url)}" data-name="${esc(image.name)}"><img src="${esc(image.url)}" alt="${esc(image.name)}" loading="lazy"><span>${esc(image.name)}</span></button>`).join("")}</div>` : `<div class="emptyblock">${Figure.html("drawer")}<p>This run has no analysis images.</p></div>`);
   }
 
   onClick(event) {
