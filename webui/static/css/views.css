@@ -420,8 +420,6 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 .over__board .atable tbody tr:last-child td { border-bottom: 0; }
 .over__note { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 .over__note p { flex: 1 1 320px; max-width: 68ch; font-size: 13px; line-height: 1.5; color: var(--ink-faint); }
-.over__services { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-12); }
-.over__cmd { background: var(--surface-2); padding: 2px 8px; border-radius: var(--r-in); color: var(--ink); user-select: all; }
 @media (max-width: 1500px) { .over__pair > .panel { grid-column: span 12; } }
 .kpi--link { cursor: pointer; }
 .kpi--link:hover .kpi__label, .kpi--link:focus-visible .kpi__label { color: var(--ink); }
@@ -494,4 +492,4 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 .view-head__controls > .state { align-self: center; }
 .kpi__sub .lanekey { align-items: baseline; }
 .kpi__sub .lanekey i { align-self: center; }
-.picker, .decision, .drawer__body, .over__services, .ep__alerts { font-size: 13px; line-height: 1.5; }
+.picker, .decision, .drawer__body, .ep__alerts { font-size: 13px; line-height: 1.5; }

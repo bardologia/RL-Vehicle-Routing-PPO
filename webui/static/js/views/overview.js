@@ -46,10 +46,6 @@ export class OverviewView {
             <div class="panel__body figcard"><div class="figcard__fig">${HairlineFigure.html("queue")}</div><div class="figcard__body" data-role="activity"></div></div>
           </section>
         </div>
-        <section class="panel" data-region="services">
-          ${panelHead("Services", { info: infoText("Recording, solving and teacher verdicts need both routing services.") })}
-          <div class="panel__body" data-role="services"></div>
-        </section>
       </div>`));
     this.nodes = {};
     for (const node of root.querySelectorAll("[data-role]")) this.nodes[node.dataset.role] = node;
@@ -68,7 +64,7 @@ export class OverviewView {
       if (event.key === "Enter" || event.key === " ") this.onKpi(event);
     });
     this.nodes["status-actions"].addEventListener("click", (event) => this.onRecord(event));
-    app.onHealth((health) => this.renderServices(health));
+    app.onHealth(() => this.syncRecord());
 
     let timer = null;
     window.addEventListener("resize", () => {
@@ -322,17 +318,5 @@ export class OverviewView {
       ${jobRows ? `<div class="dtable dtable--dense dtable--static"><table><tbody>${jobRows}</tbody></table></div>` : `<p class="muted">No job in this server session. <a href="#/launch">Open Launch</a></p>`}
       <h4 class="ctl__label over__sub">Recordings</h4>
       ${episodeRows ? `<div class="dtable dtable--dense dtable--static"><table><tbody>${episodeRows}</tbody></table></div>` : `<p class="muted">No recording yet. <a href="#/episode">Open Episode</a></p>`}`;
-  }
-
-  renderServices(health) {
-    const down = !health.osrm || !health.vroom;
-    this.nodes.services.innerHTML = `
-      <div class="over__services">
-        <span>${statusChip(health.osrm ? "UP" : "DOWN", health.osrm_url, "OSRM")}</span>
-        <span>${statusChip(health.vroom ? "UP" : "DOWN", health.vroom_url, "VROOM")}</span>
-        ${health.unreachable ? `<span class="muted">The console backend did not answer.</span>` : ""}
-        ${down ? `<span class="muted">Recording is disabled. Start the services from the repository root:</span><code class="over__cmd">${esc(DOCKER)}</code>` : `<span class="muted">Both routing services answer.</span>`}
-      </div>`;
-    this.syncRecord();
   }
 }
