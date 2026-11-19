@@ -484,6 +484,13 @@ a.findstrip__rule:hover { color: var(--ink); text-decoration: underline; text-de
 
 .diag__spacer { flex: 1; }
 .over__sub { margin-top: var(--sp-16); }
+.actlist__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-12); margin-bottom: 2px; }
+.actlist__all { font-family: var(--mono); font-size: 11.5px; font-weight: 600; line-height: 1.45; color: var(--ink-faint); }
+.actlist { list-style: none; margin: 0; padding: 0; }
+.actlist__row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; min-height: 29px; }
+.actlist__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; line-height: 1.55; color: var(--ink); }
+.actlist__sub { font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--ink-faint); }
+.actlist__age { font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1.55; color: var(--ink-faint); text-align: right; white-space: nowrap; }
 .over [data-role=activity] .ctl__label { display: block; margin-bottom: var(--sp-4); }
 .runs__findings { display: contents; }
 .runs__meta3 .ctl__label { display: block; margin-bottom: var(--sp-8); }

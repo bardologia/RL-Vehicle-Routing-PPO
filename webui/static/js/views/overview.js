@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { FindingsList } from "../diagnose/findings_list.js";
 import { Links } from "../diagnose/links.js";
-import { Agents } from "../episode/encoding.js";
+import { Agents, Sources } from "../episode/encoding.js";
 import { el, esc, fmtAge, fmtSigned, NONE, plural } from "../format.js";
 import { AgentTable } from "../diagnose/agent_table.js";
 import { kpiRow } from "../ui/kpi.js";
@@ -14,6 +14,8 @@ import { FigureStates } from "../ui/figure_states.js";
 const DOCKER = 'sg docker -c "docker compose up -d"';
 
 export class OverviewView {
+  static ACTIVITY = 3;
+
   constructor(app, root) {
     this.app = app;
     this.root = root;
@@ -306,17 +308,20 @@ export class OverviewView {
       return;
     }
     FigureStates.write(this.figures.queue, FigureStates.queue(jobs.jobs));
-    const jobRows = jobs.jobs.slice(0, 6).map((job) => `<tr><td><a href="#/console/${esc(job.job_id)}">${esc(job.title)}</a></td><td>${statusChip(job.status === "failed" && job.stopped ? "stopped" : job.status)}</td><td class="muted">${esc(job.overrides && job.overrides["io.run_name"] ? job.overrides["io.run_name"] : "")}</td><td class="num muted">${esc(job.started.replace("T", " ").slice(5, 16))}</td></tr>`).join("");
-    const episodeRows = episodes.episodes.slice(0, 6).map((episode) => {
+    const row = (state, href, title, sub, age, hint) => `<li class="actlist__row"${hint ? ` data-hint="${esc(hint)}"` : ""}>${state === "finished" ? `<span class="state state--pass"><i></i><span class="sr-only">finished</span></span>` : statusChip(state)}<a class="actlist__title" href="${esc(href)}">${esc(title)}${sub ? ` <span class="actlist__sub">${esc(sub)}</span>` : ""}</a><span class="actlist__age">${esc(age)}</span></li>`;
+    const jobRows = jobs.jobs.slice(0, OverviewView.ACTIVITY).map((job) => {
+      const state = job.status === "failed" && job.stopped ? "stopped" : job.status;
+      const run = job.overrides && job.overrides["io.run_name"] ? job.overrides["io.run_name"] : "";
+      return row(state, `#/console/${job.job_id}`, job.title, run, fmtAge(Date.parse(job.started) / 1000).replace(/ ago$/, ""), `${job.title}${run ? `, ${run}` : ""}, ${state}, started ${job.started.replace("T", " ").slice(0, 16)}`);
+    }).join("");
+    const episodeRows = episodes.episodes.slice(0, OverviewView.ACTIVITY).map((episode) => {
       const keys = Object.keys(episode.agents).sort((a, b) => Agents.order(a) - Agents.order(b));
-      const first = keys[0];
-      const source = episode.source.kind === "scenario" ? `scenario ${episode.source.template || episode.source.name || "custom"}` : episode.source.kind === "evaluation" ? `${episode.source.run} episode ${episode.source.index}` : `seed ${episode.source.seed}`;
-      return `<tr><td><a href="#/episode/ep/${esc(episode.episode_id)}/${encodeURIComponent(first)}/0">${esc(source)}</a></td><td>${statusChip(episode.status)}</td><td class="muted">${plural(keys.length, "agent")}</td><td class="num muted">${esc(fmtAge(episode.created))}</td></tr>`;
+      return row(episode.status, `#/episode/ep/${episode.episode_id}/${encodeURIComponent(keys[0])}/0`, Sources.short(episode.source, true), "", fmtAge(episode.created).replace(/ ago$/, ""), `${Sources.text(episode.source)}, ${plural(keys.length, "agent")}, ${episode.status}`);
     }).join("");
     this.nodes.activity.innerHTML = `
-      <h4 class="ctl__label">Jobs</h4>
-      ${jobRows ? `<div class="dtable dtable--dense dtable--static"><table><tbody>${jobRows}</tbody></table></div>` : `<p class="muted">No job in this server session. <a href="#/launch">Open Launch</a></p>`}
-      <h4 class="ctl__label over__sub">Recordings</h4>
-      ${episodeRows ? `<div class="dtable dtable--dense dtable--static"><table><tbody>${episodeRows}</tbody></table></div>` : `<p class="muted">No recording yet. <a href="#/episode">Open Episode</a></p>`}`;
+      <div class="actlist__head"><h4 class="ctl__label">Jobs</h4><a class="actlist__all" href="#/console">All jobs</a></div>
+      ${jobRows ? `<ul class="actlist">${jobRows}</ul>` : `<p class="muted">No job in this server session. <a href="#/launch">Open Launch</a></p>`}
+      <div class="actlist__head over__sub"><h4 class="ctl__label">Recordings</h4><a class="actlist__all" href="#/episode">All recordings</a></div>
+      ${episodeRows ? `<ul class="actlist">${episodeRows}</ul>` : `<p class="muted">No recording yet. <a href="#/episode">Open Episode</a></p>`}`;
   }
 }
