@@ -409,6 +409,7 @@ a.chip--flag:hover { background: var(--surface); color: var(--ink); border-color
 @media (max-width: 1100px) { .behav > .behav__panel { grid-column: span 12; } }
 .behav__none { font-size: 13px; line-height: 1.5; color: var(--ink-hint); }
 .behav__chart { margin-top: 14px; }
+.behav .heat table { width: 100%; }
 .behav__reads { margin: 10px 0 0; }
 .behav__reads .ctl__label { margin-right: -6px; }
 .behav__reads--foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
