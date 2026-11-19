@@ -103,7 +103,10 @@ export class MapView {
     this.buildings = new BuildingsLayer(this.map, () => this.renderControls());
     this.legendOpen = Store.read("map.legend", window.innerHeight >= 900);
 
-    this.map.on("zoomend", () => this.drawChevrons());
+    this.map.on("zoomend", () => {
+      this.root.classList.toggle("is-near", this.buildings.near);
+      this.drawChevrons();
+    });
     this.map.on("click", (event) => {
       if (this.onMapClick) this.onMapClick([Number(event.latlng.lng.toFixed(6)), Number(event.latlng.lat.toFixed(6))]);
     });

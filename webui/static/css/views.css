@@ -151,6 +151,7 @@
 .map__canvas { position: absolute; inset: 0; background: var(--well); z-index: 0; }
 .map .leaflet-container { background: var(--well); font: 600 11px var(--mono); color: var(--ink-dim); }
 .map .leaflet-tile-pane { filter: var(--tile-filter); }
+.map.is-near .leaflet-tile-pane { filter: var(--tile-filter-near); }
 .map .leaflet-control-attribution { margin: 0; padding: 2px 6px; border-top-left-radius: var(--r); background: var(--glass-solid); color: var(--ink-faint); font: 600 10.5px var(--mono); box-shadow: none; }
 .map .leaflet-control-attribution a { color: var(--ink-dim); }
 .map .leaflet-bar { border: 2px solid var(--line); border-radius: var(--r); box-shadow: none; }

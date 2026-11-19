@@ -4,6 +4,7 @@ export class BuildingsLayer {
   static MIN_ZOOM = 15;
   static TILE_ZOOM = 16;
   static BLOCK_ZOOM = 14;
+  static NEAR_ZOOM = 17;
   static CONCURRENCY = 4;
   static RETRY_MS = 60000;
 
@@ -37,6 +38,10 @@ export class BuildingsLayer {
       }
     });
     this.sync();
+  }
+
+  get near() {
+    return this.map.getZoom() >= BuildingsLayer.NEAR_ZOOM;
   }
 
   get missing() {
@@ -94,7 +99,8 @@ export class BuildingsLayer {
   }
 
   restyle() {
-    if (this.layer) this.layer.style({ wallColor: cssVar("--bld-wall"), roofColor: cssVar("--bld-roof"), shadows: false });
+    const suffix = this.near ? "-near" : "";
+    if (this.layer) this.layer.style({ wallColor: cssVar(`--bld-wall${suffix}`), roofColor: cssVar(`--bld-roof${suffix}`), shadows: false });
   }
 
   attach() {
@@ -208,7 +214,10 @@ export class BuildingsLayer {
     const wanted = this.enabled && !this.suspended && this.map.getZoom() >= BuildingsLayer.MIN_ZOOM;
     if (wanted && !this.attached) this.attach();
     else if (!wanted && this.attached) this.detach();
-    else if (wanted) this.request();
+    else if (wanted) {
+      this.restyle();
+      this.request();
+    }
     this.shown = `${this.label}|${this.detail}`;
     this.onState(this);
   }

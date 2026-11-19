@@ -121,4 +121,7 @@
   --tile-filter: grayscale(1) invert(1) brightness(0.86) contrast(1.12) sepia(0.5) hue-rotate(178deg) saturate(1.6);
   --bld-wall: rgba(30, 39, 48, 0.8);
   --bld-roof: rgba(42, 53, 64, 0.8);
+  --tile-filter-near: grayscale(1) invert(1) brightness(1.1) contrast(1.2) sepia(0.5) hue-rotate(178deg) saturate(1.6);
+  --bld-wall-near: rgba(34, 45, 56, 0.38);
+  --bld-roof-near: rgba(48, 61, 74, 0.42);
 }
