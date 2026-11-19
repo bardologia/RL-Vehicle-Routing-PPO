@@ -159,8 +159,8 @@
 .sb-heat__canvas { display: block; width: 100%; height: 96px; }
 .sb-heat__fig { min-height: 150px; }
 
-.sb-procs { max-height: 420px; overflow: auto; }
-.sb-procs .dtable { width: 100%; }
+.sb-procs .dtable { max-height: 420px; }
+.sb-procs table { table-layout: auto; }
 .sb-procs tbody td { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-dim); }
 .sb-procs tr.is-run td { color: var(--ink); }
 .sb-cpuval.is-mid { color: var(--warn); }

@@ -268,10 +268,12 @@ export class BoardMarkup {
       <section class="panel panel--flush span-12 sb-card sb-card--procs" aria-label="Processes">
         ${panelHead(`Processes of ${user}`, { note: "", info })}
         <div class="panel__body sb-procs">
-          <table class="dtable dtable--dense">
-            <thead><tr><th class="num">PID</th><th class="num">CPU%</th><th class="num">Mem</th><th class="num">GPU</th><th class="num">Thr</th><th>S</th><th>Command</th></tr></thead>
-            <tbody data-role="procs"></tbody>
-          </table>
+          <div class="dtable dtable--dense dtable--static">
+            <table>
+              <thead><tr><th class="num">PID</th><th class="num">CPU%</th><th class="num">Mem</th><th class="num">GPU</th><th class="num">Thr</th><th>S</th><th>Command</th></tr></thead>
+              <tbody data-role="procs"></tbody>
+            </table>
+          </div>
         </div>
       </section>`;
   }
