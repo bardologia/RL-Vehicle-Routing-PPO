@@ -68,6 +68,7 @@ export class LaunchView {
     if (!(await this.ensureCatalog())) return;
     const [first, second] = parts;
     if (this.current === "sequences" && first !== "sequences") this.sequences.leave();
+    this.root.scrollTop = 0;
 
     if (!first) {
       this.current = "";
