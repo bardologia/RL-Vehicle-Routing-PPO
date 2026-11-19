@@ -5,12 +5,14 @@ import { AgentPicker } from "../episode/agent_picker.js";
 import { Vehicles } from "../episode/encoding.js";
 import { KpiStrip } from "../episode/kpi_strip.js";
 import { MapView } from "../episode/map_view.js";
-import { errorBlock, statusChip } from "../ui/status.js";
+import { infoText } from "../ui/panel.js";
+import { Popover } from "../ui/popover.js";
+import { errorBlock } from "../ui/status.js";
 import { FigureStates } from "../ui/figure_states.js";
 import { DataTable } from "../ui/table.js";
 
 const TOOLS = [
-  { key: "select", label: "Select", iconName: "cursor", hint: "Click a job or a vehicle to edit it. Drag any marker to move it." },
+  { key: "select", label: "Select", iconName: "cursor", hint: "Click a job or a vehicle to edit it. Drag any marker to move it. Key Escape." },
   { key: "job", label: "Add job", iconName: "job", hint: "Click the map to place a job." },
   { key: "vehicle", label: "Add vehicle", iconName: "vehicle", hint: "Click the map to place a vehicle." },
   { key: "depot", label: "Move depot", iconName: "depot", hint: "Click the map to move the depot." },
@@ -63,13 +65,17 @@ export class LabView {
           </section>
         </aside>
         <div class="lab__map">
-          <div class="lab__tools" role="toolbar" aria-label="Map tools"></div>
+          <div class="segmented lab__tools" role="radiogroup" aria-label="Map tool"></div>
         </div>
         <aside class="lab__right">
           <div class="fig-band lab__band">${HairlineFigure.html("fleet")}</div>
           <section class="lab__block" data-role="editor"></section>
           <section class="lab__block" data-role="summary"></section>
           <section class="lab__block" data-role="run"></section>
+          <footer class="lab__foot" data-role="runfoot">
+            <button type="button" class="btn btn--primary" data-action="run" data-hint-title="Run agents" data-hint="Records one episode of this scenario with every selected agent and opens it in Episode.">${icon("play")}<span>Run agents</span></button>
+            <span class="lab__footnote" data-role="run-note"></span>
+          </footer>
         </aside>
       </div>`));
     const find = (role) => this.root.querySelector(`[data-role=${role}]`);
@@ -77,6 +83,7 @@ export class LabView {
     this.editorNode = find("editor");
     this.summaryNode = find("summary");
     this.runNode = find("run");
+    this.footNode = find("runfoot");
     this.toolsNode = this.root.querySelector(".lab__tools");
     this.fleet = this.root.querySelector("hairline-figure[name=fleet]");
 
@@ -92,7 +99,7 @@ export class LabView {
 
     this.jobTable = new DataTable(find("jobs"), {
       rowKey: (row) => row.id,
-      emptyText: "No jobs. Use Add job on the map.",
+      emptyText: "No jobs yet.",
       onSelect: (row) => this.select("job", row.id),
       onHover: (row) => this.map.highlight(row ? { jobId: row.id } : null),
       columns: [
@@ -104,7 +111,7 @@ export class LabView {
     });
     this.vehicleTable = new DataTable(find("vehicles"), {
       rowKey: (row) => row.id,
-      emptyText: "No vehicles. Use Add vehicle on the map.",
+      emptyText: "No vehicles yet.",
       onSelect: (row) => this.select("vehicle", row.id),
       onHover: (row) => this.map.highlight(row ? { vehicleId: row.id } : null),
       columns: [
@@ -121,8 +128,15 @@ export class LabView {
     this.editorNode.addEventListener("click", (event) => this.onEditorClick(event));
     this.summaryNode.addEventListener("click", (event) => {
       if (event.target.closest("[data-action=free]")) this.resolveFreely();
+      const more = event.target.closest("[data-action=plan-more]");
+      if (more && this.plan) Popover.toggle(more, KpiStrip.planMoreHtml(this.plan.kpis), { label: "Plan measures" });
     });
     this.runNode.addEventListener("click", (event) => {
+      const option = event.target.closest("button[data-disruption]");
+      if (!option) return;
+      for (const button of this.runNode.querySelectorAll("button[data-disruption]")) button.setAttribute("aria-checked", String(button === option));
+    });
+    this.footNode.addEventListener("click", (event) => {
       const button = event.target.closest("[data-action=run]");
       if (button && !button.disabled) this.run();
     });
@@ -203,8 +217,7 @@ export class LabView {
   }
 
   renderTools() {
-    this.toolsNode.innerHTML = TOOLS.map((tool) => `<button type="button" class="btn btn--sm" data-tool="${tool.key}" aria-pressed="${this.tool === tool.key}">${icon(tool.iconName)}<span>${tool.label}</span></button>`).join("");
-    this.map.setCaption(esc(TOOLS.find((tool) => tool.key === this.tool).hint));
+    this.toolsNode.innerHTML = TOOLS.map((tool) => `<button type="button" role="radio" data-tool="${tool.key}" aria-checked="${this.tool === tool.key}" data-hint-title="${esc(tool.label)}" data-hint="${esc(tool.hint)}">${icon(tool.iconName)}<span>${tool.label}</span></button>`).join("");
     this.map.setCursor(this.tool === "select" ? "" : "place");
   }
 
@@ -213,37 +226,62 @@ export class LabView {
     this.renderTools();
   }
 
+  scenarioNote() {
+    const scenario = this.scenario;
+    if (scenario.name) return `saved as ${scenario.name}`;
+    if (this.template()) return scenario.pristine ? "template, unedited" : "template, edited";
+    return "not saved";
+  }
+
   renderSource() {
     const scenario = this.scenario;
     const template = this.template();
     const templateOptions = (this.templates || []).map((entry) => `<option value="${esc(entry.key)}"${scenario.template === entry.key ? " selected" : ""}>${esc(entry.title)}</option>`).join("");
-    const savedOptions = this.saved.map((entry) => `<option value="${esc(entry.name)}"${scenario.name === entry.name ? " selected" : ""}>${esc(entry.name)} (${plural(entry.jobs, "job")}, ${plural(entry.vehicles, "vehicle")}, ${fmtAge(entry.mtime)})</option>`).join("");
-    const sampler = Store.read("lab.sampler", { jobs: 12, vehicles: 3, seed: 0 });
     const checks = template ? template.expectation.map((check) => CHECK_TEXT[check.kind](check)).join("; ") : "";
+    const info = template ? Popover.infoButton(template.title, infoText(template.description, `Checked after a run: ${checks}.`, scenario.pristine ? null : "The scenario was edited, so the check may no longer apply.")) : "";
 
     this.sourceNode.innerHTML = `
       ${this.notice ? errorBlock(this.notice.cause, this.notice.details) : ""}
-      <header class="lab__blockhead"><h3>Scenario</h3><span class="muted">${scenario.name ? `saved as ${esc(scenario.name)}` : template ? (scenario.pristine ? "template, unedited" : "template, edited") : "not saved"}</span></header>
+      <header class="lab__blockhead"><h3>Scenario</h3><span class="muted">${esc(this.scenarioNote())}</span><span class="lab__info">${info}</span></header>
       <label class="fieldlabel"><span>Template</span>
         <select class="select" data-role="template"><option value="">Choose a template</option>${templateOptions}</select>
       </label>
-      ${template ? `<p class="lab__desc">${esc(template.description)}</p><p class="lab__desc"><b>Expected:</b> ${esc(template.expected)}</p><p class="lab__desc muted">Checked after a run: ${esc(checks)}.${scenario.pristine ? "" : " The scenario was edited, so the check may no longer apply."}</p>` : ""}
-      <label class="fieldlabel"><span>Saved scenarios</span>
-        <span class="fieldrow"><select class="select lab__grow" data-role="saved"><option value="">${this.saved.length ? "Choose a saved scenario" : "None saved yet"}</option>${savedOptions}</select>
-        <button type="button" class="btn btn--sm" data-action="delete"${scenario.name ? "" : " disabled"} title="Delete the loaded saved scenario">${icon("trash")}<span>Delete</span></button></span>
-      </label>
-      <span class="fieldrow"><input class="input lab__grow" data-role="save-name" placeholder="Name, letters digits _ -" value="${esc(scenario.name || "")}" aria-label="Scenario name"><button type="button" class="btn btn--sm" data-action="save">${icon("save")}<span>Save as</span></button></span>
-      <div data-role="source-error"></div>
-      <div class="lab__sampler">
-        <span class="fieldlabel"><span>Jobs</span><input class="input input--num" data-role="sample-jobs" inputmode="numeric" value="${sampler.jobs}"></span>
-        <span class="fieldlabel"><span>Vehicles</span><input class="input input--num" data-role="sample-vehicles" inputmode="numeric" value="${sampler.vehicles}"></span>
-        <span class="fieldlabel"><span>Seed</span><input class="input input--num" data-role="sample-seed" inputmode="numeric" value="${sampler.seed}"></span>
-        <button type="button" class="btn btn--sm" data-action="sample">${icon("refresh")}<span>Sample</span></button>
-      </div>`;
+      ${template ? `<p class="lab__expect">Expected: ${esc(template.expected)}</p>` : ""}
+      <div class="lab__srcbtns">
+        <button type="button" class="btn btn--sm" data-action="saved" aria-haspopup="dialog" aria-expanded="false">Saved<span class="tabs__count">${this.saved.length}</span></button>
+        <button type="button" class="btn btn--sm" data-action="sampler" aria-haspopup="dialog" aria-expanded="false">Sample</button>
+      </div>
+      <div data-role="source-error"></div>`;
+  }
+
+  savedHtml() {
+    const rows = this.saved.map((entry) => `
+      <li class="lab__saved${this.scenario.name === entry.name ? " is-current" : ""}">
+        <button type="button" class="lab__savedname" data-open="${esc(entry.name)}">${esc(entry.name)}</button>
+        <span class="lab__savedmeta">${plural(entry.jobs, "job")}, ${plural(entry.vehicles, "vehicle")}, ${esc(fmtAge(entry.mtime))}</span>
+        <button type="button" class="tbtn tbtn--sm" data-delete="${esc(entry.name)}" aria-label="Delete ${esc(entry.name)}" title="Delete ${esc(entry.name)}">${icon("trash")}</button>
+      </li>`).join("");
+    return `
+      <header class="popover__head"><h3>Saved scenarios</h3></header>
+      ${this.saved.length ? `<ul class="lab__savedlist">${rows}</ul>` : `<p class="muted">None saved yet.</p>`}
+      <div class="lab__saveas"><input class="input" data-role="save-name" placeholder="name, letters digits _ -" value="${esc(this.scenario.name || "")}" aria-label="Scenario name"><button type="button" class="btn btn--sm" data-action="save">Save as</button></div>
+      <div data-role="popover-error"></div>`;
+  }
+
+  samplerHtml() {
+    const sampler = Store.read("lab.sampler", { jobs: 12, vehicles: 3, seed: 0 });
+    const field = (role, label, value, ch) => `<label class="ctl"><span class="ctl__label">${label}</span><input class="input input--num" data-role="${role}" inputmode="numeric" style="--ch:${ch}" value="${value}"></label>`;
+    return `
+      <header class="popover__head"><h3>Sample a scenario</h3></header>
+      <div class="ctls">${field("sample-jobs", "Jobs", sampler.jobs, 3)}${field("sample-vehicles", "Vehicles", sampler.vehicles, 3)}${field("sample-seed", "Seed", sampler.seed, 6)}</div>
+      <div class="popover__foot"><button type="button" class="btn btn--sm" data-action="sample">Sample</button></div>
+      <div data-role="popover-error"></div>`;
   }
 
   sourceError(cause, details) {
-    this.sourceNode.querySelector("[data-role=source-error]").innerHTML = cause ? errorBlock(cause, details) : "";
+    const target = Popover.current && this.sourceNode.contains(Popover.current.anchor) ? Popover.current.node.querySelector("[data-role=popover-error]") : this.sourceNode.querySelector("[data-role=source-error]");
+    target.innerHTML = cause ? errorBlock(cause, details) : "";
+    Popover.reflow();
   }
 
   async onSourceChange(event) {
@@ -255,24 +293,48 @@ export class LabView {
       this.renderAll();
       this.solveNow(true);
     }
-    if (role === "saved" && event.target.value) {
-      try {
-        const stored = await api.get(`/api/scenarios/${encodeURIComponent(event.target.value)}`);
-        this.notice = null;
-        this.adopt({ ...stored, pristine: Boolean(stored.template) }, true);
-        this.renderAll();
-        this.solveNow(true);
-      } catch (error) {
-        this.sourceError("The saved scenario could not be loaded.", error.message);
-      }
+  }
+
+  async openSaved(name) {
+    try {
+      const stored = await api.get(`/api/scenarios/${encodeURIComponent(name)}`);
+      this.notice = null;
+      Popover.close();
+      this.adopt({ ...stored, pristine: Boolean(stored.template) }, true);
+      this.renderAll();
+      this.solveNow(true);
+    } catch (error) {
+      this.sourceError("The saved scenario could not be loaded.", error.message);
     }
   }
 
-  async onSourceClick(event) {
+  async onPopoverClick(event) {
+    const value = (role) => Popover.current.node.querySelector(`[data-role=${role}]`).value.trim();
+    const open = event.target.closest("[data-open]");
+    if (open) {
+      this.openSaved(open.dataset.open);
+      return;
+    }
+    const remove = event.target.closest("[data-delete]");
+    if (remove) {
+      const name = remove.dataset.delete;
+      try {
+        await api.del(`/api/scenarios/${encodeURIComponent(name)}`);
+        this.saved = (await api.get("/api/scenarios")).scenarios;
+      } catch (error) {
+        this.sourceError("The scenario was not deleted.", error.message);
+        return;
+      }
+      if (this.scenario.name === name) {
+        this.scenario.name = null;
+        this.persist();
+      }
+      this.app.toast.confirm(`Scenario ${name} deleted`);
+      this.reopenSource("saved");
+      return;
+    }
     const button = event.target.closest("button[data-action]");
-    if (!button || button.disabled) return;
-    const value = (role) => this.sourceNode.querySelector(`[data-role=${role}]`).value.trim();
-    this.sourceError(null);
+    if (!button) return;
 
     if (button.dataset.action === "sample") {
       const numbers = { jobs: Number(value("sample-jobs")), vehicles: Number(value("sample-vehicles")), seed: Number(value("sample-seed")) };
@@ -283,6 +345,7 @@ export class LabView {
       Store.write("lab.sampler", numbers);
       try {
         const sampled = await api.post("/api/scenario/sample", { num_jobs: numbers.jobs, num_vehicles: numbers.vehicles, seed: numbers.seed });
+        Popover.close();
         this.adopt({ name: null, template: null, pristine: false, ...sampled, assignment: null }, true);
         this.renderAll();
         this.solveNow(true);
@@ -308,23 +371,28 @@ export class LabView {
       scenario.name = name;
       this.persist();
       this.app.toast.confirm(`Scenario saved as ${name}`);
+      Popover.close();
       this.renderSource();
     }
+  }
 
-    if (button.dataset.action === "delete") {
-      const name = this.scenario.name;
-      try {
-        await api.del(`/api/scenarios/${encodeURIComponent(name)}`);
-        this.saved = (await api.get("/api/scenarios")).scenarios;
-      } catch (error) {
-        this.sourceError("The scenario was not deleted.", error.message);
-        return;
-      }
-      this.scenario.name = null;
-      this.persist();
-      this.app.toast.confirm(`Scenario ${name} deleted`);
-      this.renderSource();
-    }
+  reopenSource(action) {
+    Popover.close();
+    this.renderSource();
+    this.toggleSourcePopover(this.sourceNode.querySelector(`[data-action=${action}]`));
+  }
+
+  toggleSourcePopover(button) {
+    const saved = button.dataset.action === "saved";
+    const node = Popover.toggle(button, saved ? this.savedHtml() : this.samplerHtml(), { label: saved ? "Saved scenarios" : "Sample a scenario", className: saved ? "popover--wide" : "" });
+    if (node) node.addEventListener("click", (event) => this.onPopoverClick(event));
+  }
+
+  onSourceClick(event) {
+    const button = event.target.closest("button[data-action]");
+    if (!button || button.disabled) return;
+    this.sourceError(null);
+    if (button.dataset.action === "saved" || button.dataset.action === "sampler") this.toggleSourcePopover(button);
   }
 
   assignmentOfPlan() {
@@ -371,40 +439,51 @@ export class LabView {
   renderEditor() {
     const entity = this.entity();
     if (!entity) {
-      this.editorNode.innerHTML = `<header class="lab__blockhead"><h3>Editor</h3></header><p class="muted">Select a job or a vehicle on the map or in the lists to edit every field.</p>`;
+      this.editorNode.innerHTML = `<p class="lab__hint">Select a job or a vehicle to edit it; drag a marker to move it.</p>`;
       return;
     }
-    const number = (field, label, value, unit, half) => `<label class="fieldlabel${half ? " lab__half" : ""}"><span>${label}${unit ? ` (${unit})` : ""}</span><input class="input input--num" data-field="${field}" inputmode="decimal" value="${esc(value)}"></label>`;
+    const field = (name, label, value, unit, span) => `<label class="fieldlabel lab__field" style="--span:${span}"><span>${label}${unit ? `<small>${unit}</small>` : ""}</span><input class="input input--num" data-field="${name}" inputmode="decimal" value="${esc(value)}"></label>`;
+    const remove = `<button type="button" class="tbtn tbtn--sm" data-action="delete" aria-label="Delete" title="Delete">${icon("trash")}</button>`;
 
     if (this.selected.kind === "job") {
       this.editorNode.innerHTML = `
-        <header class="lab__blockhead"><h3>Job ${entity.id}</h3><button type="button" class="btn btn--sm" data-action="delete">${icon("trash")}<span>Delete</span></button></header>
+        <header class="lab__blockhead"><h3>Job ${entity.id}</h3><span class="muted">${entity.location[0].toFixed(4)}, ${entity.location[1].toFixed(4)}</span>${remove}</header>
         <div class="lab__fields">
-          <label class="fieldlabel"><span>Kind</span><select class="select" data-field="kind"><option value="support"${entity.kind === "support" ? " selected" : ""}>support</option><option value="repossession"${entity.kind === "repossession" ? " selected" : ""}>repossession</option></select></label>
-          <label class="fieldlabel"><span>Priority (1 to 5)</span><select class="select" data-field="priority">${[1, 2, 3, 4, 5].map((value) => `<option${entity.priority === value ? " selected" : ""}>${value}</option>`).join("")}</select></label>
-          ${number("service", "Service", entity.service, "s")}
-          ${number("setup", "Setup", entity.setup, "s")}
-          ${number("amount", "Amount", entity.amount, "bikes")}
+          <label class="fieldlabel lab__field" style="--span:3"><span>Kind</span><select class="select" data-field="kind"><option value="support"${entity.kind === "support" ? " selected" : ""}>support</option><option value="repossession"${entity.kind === "repossession" ? " selected" : ""}>repossession</option></select></label>
+          <label class="fieldlabel lab__field" style="--span:3" title="1 to 5"><span>Priority</span><select class="select" data-field="priority">${[1, 2, 3, 4, 5].map((value) => `<option${entity.priority === value ? " selected" : ""}>${value}</option>`).join("")}</select></label>
+          ${field("service", "Service", entity.service, "s", 2)}
+          ${field("setup", "Setup", entity.setup, "s", 2)}
+          ${field("amount", "Bikes", entity.amount, "", 2)}
         </div>
-        <p class="muted">Location ${entity.location[0].toFixed(4)}, ${entity.location[1].toFixed(4)}. Drag the marker to move it.</p>
         <div data-role="editor-error"></div>`;
       return;
     }
 
     const assigned = new Set(this.assignmentOfPlan()[entity.id] || []);
     this.editorNode.innerHTML = `
-      <header class="lab__blockhead"><h3>Vehicle ${Vehicles.swatch(entity.id)}</h3><button type="button" class="btn btn--sm" data-action="delete">${icon("trash")}<span>Delete</span></button></header>
-      <div class="lab__fields lab__fields--vehicle">
-        ${number("capacity", "Capacity", entity.capacity, "bikes")}
-        ${number("onboard", "Onboard", entity.onboard, "bikes")}
-        ${number("speed_factor", "Speed factor", entity.speed_factor, "")}
-        ${number("shift_start", "Shift start", entity.time_window[0], "s of day", true)}
-        ${number("shift_end", "Shift end", entity.time_window[1], "s of day", true)}
+      <header class="lab__blockhead"><h3>Vehicle ${Vehicles.swatch(entity.id)}</h3><span class="muted">${entity.start[0].toFixed(4)}, ${entity.start[1].toFixed(4)}</span>${remove}</header>
+      <div class="lab__fields">
+        ${field("capacity", "Capacity", entity.capacity, "", 2)}
+        ${field("onboard", "Onboard", entity.onboard, "", 2)}
+        ${field("speed_factor", "Speed", entity.speed_factor, "", 2)}
+        ${field("shift_start", "Shift start", entity.time_window[0], "s", 3)}
+        ${field("shift_end", "Shift end", entity.time_window[1], "s", 3)}
       </div>
-      <fieldset class="lab__assign"><legend>Assigned jobs (changing this pins the assignment)</legend>
-        ${this.scenario.jobs.length ? this.scenario.jobs.map((job) => `<label class="check"><input type="checkbox" data-assign="${job.id}"${assigned.has(job.id) ? " checked" : ""}><span>${job.id}</span></label>`).join("") : `<span class="muted">no jobs</span>`}
-      </fieldset>
+      <div class="lab__assign" role="group" aria-label="Assigned jobs">
+        <span class="ctl__label" data-hint-title="Assigned jobs" data-hint="Changing the assignment pins it; Re-solve freely hands it back to VROOM.">Assigned jobs</span>
+        <span class="chips">${this.scenario.jobs.length ? this.scenario.jobs.map((job) => `<button type="button" class="chip" data-assign="${job.id}" aria-pressed="${assigned.has(job.id)}">${job.id}</button>`).join("") : `<span class="muted">no jobs</span>`}</span>
+      </div>
       <div data-role="editor-error"></div>`;
+  }
+
+  toggleAssign(jobId, on) {
+    const entity = this.entity();
+    const assignment = this.assignmentOfPlan();
+    for (const key of Object.keys(assignment)) assignment[key] = assignment[key].filter((id) => id !== jobId);
+    if (on) assignment[entity.id].push(jobId);
+    this.scenario.assignment = assignment;
+    this.touch();
+    this.scheduleSolve();
   }
 
   onEditorChange(event) {
@@ -413,17 +492,6 @@ export class LabView {
     const target = event.target;
     const errorNode = this.editorNode.querySelector("[data-role=editor-error]");
     errorNode.innerHTML = "";
-
-    if (target.dataset.assign !== undefined) {
-      const jobId = Number(target.dataset.assign);
-      const assignment = this.assignmentOfPlan();
-      for (const key of Object.keys(assignment)) assignment[key] = assignment[key].filter((id) => id !== jobId);
-      if (target.checked) assignment[entity.id].push(jobId);
-      this.scenario.assignment = assignment;
-      this.touch();
-      this.scheduleSolve();
-      return;
-    }
 
     const field = target.dataset.field;
     if (!field) return;
@@ -449,6 +517,13 @@ export class LabView {
   }
 
   onEditorClick(event) {
+    const chip = event.target.closest("button[data-assign]");
+    if (chip) {
+      const on = chip.getAttribute("aria-pressed") !== "true";
+      chip.setAttribute("aria-pressed", String(on));
+      this.toggleAssign(Number(chip.dataset.assign), on);
+      return;
+    }
     if (!event.target.closest("[data-action=delete]")) return;
     const { kind, id } = this.selected;
     if (kind === "job") {
@@ -573,39 +648,41 @@ export class LabView {
     const state = this.solveState;
     FigureStates.write(this.fleet, FigureStates.fleet(this.plan, this.scenario, state.status === "solving"));
     const pinned = Boolean(this.scenario && this.scenario.assignment);
+    const reopen = Popover.current && this.summaryNode.contains(Popover.current.anchor);
     let body;
-    if (state.status === "solving") body = `<p class="muted" role="status">solving</p>`;
+    if (state.status === "solving") body = `<p class="lab__hint" role="status">solving</p>`;
     else if (state.status === "error") body = errorBlock("VROOM could not solve this scenario.", state.error);
-    else if (state.status === "down") body = `<div class="noteblock">${statusChip("DOWN", "routing services")}<span>Solving needs OSRM and VROOM. Start them from the repository root:</span><code>sg docker -c "docker compose up -d"</code></div>`;
-    else if (state.status === "incomplete") body = `<p class="muted">Add at least one job and one vehicle to get a plan.</p>`;
+    else if (state.status === "down") body = `<div class="noteblock"><span>Solving needs OSRM and VROOM. Start them from the repository root: <code>sg docker -c "docker compose up -d"</code></span></div>`;
+    else if (state.status === "incomplete") body = `<p class="lab__hint">Add at least one job and one vehicle to get a plan.</p>`;
     else if (this.plan) body = KpiStrip.planHtml(this.plan.kpis);
     else body = "";
+    const more = this.plan && state.status === "solved" ? `<button type="button" class="btn btn--sm" data-action="plan-more" aria-haspopup="dialog" aria-expanded="false">More</button>` : "";
 
     this.summaryNode.innerHTML = `
-      <header class="lab__blockhead"><h3>Plan</h3><span class="muted">${pinned ? "assignment pinned" : "assigned by VROOM"}</span></header>
+      <header class="lab__blockhead"><h3 data-hint-title="Plan" data-hint="${pinned ? "Assignment pinned by hand; VROOM orders the stops." : "Assigned and ordered by VROOM."}">Plan</h3>${pinned ? `<span class="muted">pinned</span>` : ""}</header>
       ${body}
-      ${pinned ? `<button type="button" class="btn btn--sm" data-action="free">${icon("refresh")}<span>Re-solve freely</span></button>` : ""}`;
+      ${more || pinned ? `<div class="lab__planactions">${more}${pinned ? `<button type="button" class="btn btn--sm" data-action="free">${icon("refresh")}<span>Re-solve freely</span></button>` : ""}</div>` : ""}`;
+    if (reopen) Popover.close();
   }
 
   renderRun() {
     if (!this.runNode.querySelector("[data-role=picker]")) {
       const saved = Store.read("lab.run", { rounds: 2, edits: 8, seed: 0, disruption: false });
+      const field = (name, label, value, ch) => `<label class="ctl"><span class="ctl__label">${label}</span><input class="input input--num" data-run="${name}" inputmode="numeric" style="--ch:${ch}" value="${value}"></label>`;
+      const option = (value, label) => `<button type="button" role="radio" data-disruption="${value}" aria-checked="${String(saved.disruption) === value}">${label}</button>`;
       this.runNode.innerHTML = `
-        <header class="lab__blockhead"><h3>Run agents</h3><span class="muted">opens Episode</span></header>
+        <header class="lab__blockhead"><h3>Run agents</h3></header>
         <div data-role="picker"></div>
-        <div class="lab__fields">
-          <label class="fieldlabel"><span>Rounds</span><input class="input input--num" data-run="rounds" inputmode="numeric" value="${saved.rounds}"></label>
-          <label class="fieldlabel"><span>Edits</span><input class="input input--num" data-run="edits" inputmode="numeric" value="${saved.edits}"></label>
-          <label class="fieldlabel"><span>Seed</span><input class="input input--num" data-run="seed" inputmode="numeric" value="${saved.seed}"></label>
+        <div class="ctls lab__runfields">
+          ${field("rounds", "Rounds", saved.rounds, 2)}${field("edits", "Edits", saved.edits, 2)}${field("seed", "Seed", saved.seed, 6)}
+          <span class="ctl" role="group" aria-label="Initial disruption"><span class="ctl__label" data-hint-title="Initial disruption" data-hint="Apply a disruption before the first round.">Disruption</span><span class="segmented" role="radiogroup" aria-label="Initial disruption">${option("false", "off")}${option("true", "on")}</span></span>
         </div>
-        <label class="check"><input type="checkbox" data-run="disruption"${saved.disruption ? " checked" : ""}><span>Apply an initial disruption</span></label>
-        <div class="lab__runrow"><button type="button" class="btn btn--primary" data-action="run">${icon("play")}<span>Run agents</span></button><span class="muted" data-role="run-note"></span></div>
         <div data-role="run-error"></div>`;
       this.picker = new AgentPicker(this.runNode.querySelector("[data-role=picker]"), { checkpoints: this.checkpoints, preferredRun: this.app.context.run, storeKey: "lab.agents", teacherDefault: true });
     }
     const ready = this.solveState.status === "solved";
-    this.runNode.querySelector("[data-action=run]").disabled = !ready;
-    this.runNode.querySelector("[data-role=run-note]").textContent = ready ? "" : "Needs a solved plan.";
+    this.footNode.querySelector("[data-action=run]").disabled = !ready;
+    this.footNode.querySelector("[data-role=run-note]").textContent = ready ? "" : "needs a solved plan";
   }
 
   async run() {
@@ -617,7 +694,7 @@ export class LabView {
       errorNode.innerHTML = errorBlock("Rounds are 1 to 10, edits per round 1 to 8, and the seed a whole number of zero or more.");
       return;
     }
-    const disruption = read("disruption").checked;
+    const disruption = this.runNode.querySelector("button[data-disruption][aria-checked=true]").dataset.disruption === "true";
     Store.write("lab.run", { ...numbers, disruption });
     const agents = this.picker.agents();
     if (!agents.length) {
