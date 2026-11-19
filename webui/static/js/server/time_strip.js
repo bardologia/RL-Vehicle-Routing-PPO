@@ -44,6 +44,16 @@ export class CanvasFrame {
     return `${CanvasFrame.pad(date.getDate())}.${CanvasFrame.pad(date.getMonth() + 1)}`;
   }
 
+  static tick(ctx, text, x, w, y, last, align) {
+    const width = ctx.measureText(text).width;
+    const right = Math.min(w - 1, align === "left" ? x + width : x + width / 2);
+    const left = right - width;
+    if (left < last + 8) return last;
+    ctx.textAlign = "left";
+    ctx.fillText(text, left, y);
+    return right;
+  }
+
   static empty(ctx, w, h, text) {
     ctx.fillStyle = `rgb(${INK.hint})`;
     ctx.font = CanvasFrame.font(600, 12);
@@ -187,6 +197,7 @@ export class TimeStrip {
     ctx.setLineDash([]);
 
     ctx.textBaseline = "top";
+    let last = -Infinity;
     TimeStrip.ticks(view, w - left).forEach(({ t, label }) => {
       const x = Math.round(px(t)) + 0.5;
       ctx.strokeStyle = `rgba(${INK.ink}, 0.07)`;
@@ -196,8 +207,7 @@ export class TimeStrip {
       ctx.stroke();
       if (!label) return;
       ctx.fillStyle = `rgb(${INK.faint})`;
-      ctx.textAlign = x > w - 24 ? "right" : "center";
-      ctx.fillText(label, Math.min(x, w - 1), top + plotH + 5);
+      last = CanvasFrame.tick(ctx, label, x, w, top + plotH + 5, last, "center");
     });
 
     ctx.save();
@@ -411,6 +421,7 @@ export class ActivityTimeline {
     ctx.font = CanvasFrame.font(600, 11);
     ctx.textBaseline = "top";
     const ticks = g.window > 86400 ? TimeStrip.ticks({ now: g.now, window_s: g.window }, g.plotW) : this.hourTicks();
+    let last = -Infinity;
     for (const { t, label } of ticks) {
       const x = Math.round(g.plotX + ((t - g.start) / g.window) * g.plotW) + 0.5;
       ctx.strokeStyle = `rgba(${INK.ink}, 0.12)`;
@@ -420,8 +431,7 @@ export class ActivityTimeline {
       ctx.stroke();
       if (!label) continue;
       ctx.fillStyle = `rgb(${INK.faint})`;
-      ctx.textAlign = x > w - 20 ? "right" : "center";
-      ctx.fillText(label, Math.min(x, w - 1), bottom + 5);
+      last = CanvasFrame.tick(ctx, label, x, w, bottom + 5, last, "center");
     }
   }
 
@@ -541,12 +551,12 @@ export class HeatmapCalendar {
     ctx.font = CanvasFrame.font(600, 11);
     ctx.textBaseline = "top";
     const every = Math.max(1, Math.ceil((days.length * 46) / plotW));
+    let last = -Infinity;
     days.forEach((t, index) => {
       if (index % every !== 0) return;
       const x = plotX + index * cellW;
       ctx.fillStyle = `rgb(${INK.faint})`;
-      ctx.textAlign = x > w - 24 ? "right" : "left";
-      ctx.fillText(CanvasFrame.day(new Date(t * 1000)), Math.min(x, w - 1), bottom + 5);
+      last = CanvasFrame.tick(ctx, CanvasFrame.day(new Date(t * 1000)), x, w, bottom + 5, last, "left");
     });
   }
 
