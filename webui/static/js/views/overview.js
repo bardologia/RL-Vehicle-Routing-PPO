@@ -242,7 +242,7 @@ export class OverviewView {
 
   renderHead() {
     const tiles = [...(this.statusTiles || [])];
-    if (this.findingCounts) tiles.push({ key: "findings", label: "Findings", detail: "fail / warn", value: `${this.findingCounts.FAIL} / ${this.findingCounts.WARN}`, subs: [FindingsList.restLabel(this.findingCounts)], title: "Rules flagged FAIL and WARN for this run. Click to open the list." });
+    if (this.findingCounts) tiles.push({ key: "findings", label: "Findings", detail: "fail / warn", value: `${this.findingCounts.FAIL} / ${this.findingCounts.WARN}`, subs: [`of ${plural(this.findingTotal, "rule")}`], title: "Rules flagged FAIL and WARN for this run. Click to open the list." });
     this.nodes.kpis.innerHTML = tiles.length ? kpiRow(tiles, { columns: 4 }) : "";
     const link = this.nodes.kpis.querySelector(".kpi[data-kpi=findings]");
     if (link) {
@@ -261,6 +261,7 @@ export class OverviewView {
   renderFindings(run, seed, findings) {
     const counts = FindingsList.counts(findings);
     this.findingCounts = counts;
+    this.findingTotal = findings.length;
     this.renderHead();
     const trace = `<a class="btn btn--sm" href="${esc(Links.recordTraces(run.name, seed, this.report ? this.report.meta.episodes : null))}">Record traces</a>`;
     const actions = { report: `<a class="btn btn--sm" href="${esc(Links.evaluate(run.name))}">Evaluate this run</a>`, traces: trace, verdicts: trace };
