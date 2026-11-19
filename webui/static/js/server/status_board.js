@@ -22,7 +22,8 @@ export class ByteFormat {
 
   static size(bytes) {
     const tb = bytes / 1099511627776;
-    return tb >= 1 ? `${tb.toFixed(2)} TB` : `${ByteFormat.gb(bytes)} GB`;
+    if (tb >= 1) return `${tb.toFixed(2)} TB`;
+    return bytes >= 1073741824 ? `${ByteFormat.gb(bytes)} GB` : `${Math.round(bytes / 1048576)} MB`;
   }
 
   static uptime(seconds) {
