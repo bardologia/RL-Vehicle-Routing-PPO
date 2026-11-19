@@ -230,7 +230,7 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .dsec__toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .dsec__toggle .icon { align-self: center; width: 12px; height: 12px; color: var(--ink-hint); transition: transform var(--t-ctl) var(--ease); }
 .dsec.is-open .dsec__toggle .icon { transform: rotate(90deg); }
-.dsec__label { font-family: var(--sans); font-size: 11px; font-weight: 700; line-height: 1.25; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-hint); white-space: nowrap; transition: color var(--t-ctl) var(--ease); }
+.dsec__label { font-family: var(--sans); font-size: 11px; font-weight: 700; line-height: 1.55; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-hint); white-space: nowrap; transition: color var(--t-ctl) var(--ease); }
 .dsec__toggle:hover .dsec__label { color: var(--ink); }
 .dsec__sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 13px; font-weight: 700; line-height: 1.3; text-align: right; color: var(--ink); white-space: nowrap; }
 .dsec__info { display: inline-flex; }
@@ -478,5 +478,5 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .view-head__controls > .state { align-self: center; }
 .kpi__sub .lanekey { align-items: baseline; }
 .kpi__sub .lanekey i { align-self: center; }
-.lab__block, .picker, .decision, .drawer__body, .over__services, .ep__alerts { font-size: 13px; line-height: 1.5; }
+.picker, .decision, .drawer__body, .over__services, .ep__alerts { font-size: 13px; line-height: 1.5; }
 .diag__against { margin-bottom: var(--sp-8); }

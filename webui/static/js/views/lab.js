@@ -471,7 +471,7 @@ export class LabView {
       </div>
       <div class="lab__assign" role="group" aria-label="Assigned jobs">
         <span class="ctl__label" data-hint-title="Assigned jobs" data-hint="Changing the assignment pins it; Re-solve freely hands it back to VROOM.">Assigned jobs</span>
-        <span class="chips">${this.scenario.jobs.length ? this.scenario.jobs.map((job) => `<button type="button" class="chip" data-assign="${job.id}" aria-pressed="${assigned.has(job.id)}">${job.id}</button>`).join("") : `<span class="muted">no jobs</span>`}</span>
+        <span class="chips">${this.scenario.jobs.length ? this.scenario.jobs.map((job) => `<button type="button" class="chip" data-assign="${job.id}" aria-pressed="${assigned.has(job.id)}">${job.id}</button>`).join("") : `<span class="lab__hint">no jobs</span>`}</span>
       </div>
       <div data-role="editor-error"></div>`;
   }
