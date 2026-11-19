@@ -303,10 +303,10 @@ a.finding__title:hover { text-decoration: underline; text-decoration-color: var(
 .lab__blockhead .tbtn--sm, .lab__info { flex: none; align-self: center; }
 .lab__blockhead .lab__info:empty { display: none; }
 .lab__table { flex: 1; min-height: 0; overflow: auto; margin: 0 -14px; }
-.lab__table .dtable thead th { background: var(--well); }
-.lab__table .dtable th, .lab__table .dtable td { padding-left: 6px; padding-right: 6px; }
-.lab__table .dtable th:first-child, .lab__table .dtable td:first-child { padding-left: 14px; }
-.lab__table .dtable th:last-child, .lab__table .dtable td:last-child { padding-right: 14px; }
+.lab__table.dtable thead th { background: var(--well); }
+.lab__table.dtable th, .lab__table.dtable td { padding-left: 6px; padding-right: 6px; }
+.lab__table.dtable th:first-child, .lab__table.dtable td:first-child { padding-left: 14px; }
+.lab__table.dtable th:last-child, .lab__table.dtable td:last-child { padding-right: 14px; }
 .lab__expect { font-size: 13px; line-height: 1.5; color: var(--ink-faint); }
 .lab__hint { font-size: 13px; line-height: 1.5; color: var(--ink-faint); }
 .lab__srcbtns { display: flex; gap: var(--sp-8); }
