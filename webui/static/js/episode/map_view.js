@@ -78,7 +78,7 @@ export class MapView {
 
     this.root = el(`
       <div class="map">
-        <div class="map__caption" role="status" aria-live="polite"></div>
+        <div class="map__caption glass" role="status" aria-live="polite"></div>
         <div class="map__canvas"></div>
         <div class="map__controls" role="toolbar" aria-label="Map controls"></div>
         <div class="map__legend"></div>
@@ -195,11 +195,12 @@ export class MapView {
       [`<span class="mk-drop veh-1"></span>`, "depot drops of a route"],
       [`${stop("circle", 1)}${stop("circle", 2)}${stop("circle", 3)}`, "priority 1 to 2, 3, 4 to 5"],
       [`<span class="mk-stop mk-stop--circle sz-2 is-unassigned">14</span>`, "unassigned job, number is the job id"],
-      [`<span class="lg-line lg-line--ghost"></span>`, "removed leg, ghost lane or teacher alternative"],
+      [`<span class="lg-line lg-line--ghost"></span>`, "removed leg or ghost lane"],
+      [`<span class="lg-line lg-line--teacher"></span>`, "teacher alternative"],
     ];
     this.legendNode.innerHTML = `
       <button type="button" class="btn btn--sm" aria-expanded="${this.legendOpen}" title="Legend (key L)">${icon("legend")}<span>Legend</span>${icon(this.legendOpen ? "chevron-down" : "chevron-up")}</button>
-      ${this.legendOpen ? `<div class="map__legendbody">${rows.map(([mark, text]) => `<div class="lg-row"><span class="lg-mark">${mark}</span><span>${text}</span></div>`).join("")}</div>` : ""}`;
+      ${this.legendOpen ? `<div class="map__legendbody glass">${rows.map(([mark, text]) => `<div class="lg-row"><span class="lg-mark">${mark}</span><span>${text}</span></div>`).join("")}</div>` : ""}`;
   }
 
   latLng(lonLat) {
@@ -459,12 +460,12 @@ export class MapView {
       if ((anchor[0] - job.location[0]) ** 2 + (anchor[1] - job.location[1]) ** 2 < (nearest[0] - job.location[0]) ** 2 + (nearest[1] - job.location[1]) ** 2) nearest = anchor;
     }
     L.polyline([this.latLng(nearest), this.latLng(job.location)], { pane: "changes", className: "route-teacher", weight: 3, interactive: false }).addTo(this.groups.teacher);
-    this.label(job.location, `teacher: job ${alternative.job_id} into vehicle ${alternative.vehicle_id}`, this.groups.teacher, "below");
+    this.label(job.location, `teacher: job ${alternative.job_id} into vehicle ${alternative.vehicle_id}`, this.groups.teacher, "below", "teacher");
   }
 
-  label(lonLat, text, group, placement) {
+  label(lonLat, text, group, placement, tone) {
     L.marker(this.latLng(lonLat), {
-      icon: L.divIcon({ className: "mk", html: `<span class="mk-label mk-label--${placement || "above"}">${esc(text)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
+      icon: L.divIcon({ className: "mk", html: `<span class="mk-label mk-label--${placement || "above"}${tone ? ` mk-label--${tone}` : ""}">${esc(text)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
       pane: "labels",
       interactive: false,
       keyboard: false,
@@ -502,14 +503,14 @@ export class MapView {
     for (const outcome of change.outcomes || []) {
       const job = this.scene.jobs[outcome.jobId];
       this.marker(job.location, `<span class="mk-outcome mk-outcome--${outcome.word}"></span>`, 12, "changes", { interactive: false }).addTo(this.groups.changes);
-      this.label(job.location, `job ${outcome.jobId} ${outcome.word}`);
+      this.label(job.location, `job ${outcome.jobId} ${outcome.word}`, undefined, undefined, outcome.word);
     }
 
     for (const jobId of change.arrived || []) {
       const marker = this.jobMarkers.get(jobId);
       if (marker) {
         this.pulse(marker);
-        this.label(this.scene.jobs[jobId].location, `new job ${jobId}`);
+        this.label(this.scene.jobs[jobId].location, `new job ${jobId}`, undefined, undefined, "new");
       }
     }
 

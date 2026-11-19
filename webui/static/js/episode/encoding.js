@@ -1,4 +1,4 @@
-import { cssVar, esc, listIds, plural } from "../format.js";
+import { esc, listIds, plural } from "../format.js";
 
 export const OPERATORS = ["INSERT", "REMOVE", "DO_NOTHING"];
 export const OPERATOR_ICONS = ["insert", "remove", "hold"];
@@ -19,10 +19,6 @@ export class Vehicles {
 
   static dashed(vehicleId) {
     return Math.floor(Number(vehicleId) / 4) % 2 === 1;
-  }
-
-  static color(vehicleId) {
-    return cssVar(`--veh-${Vehicles.slot(vehicleId)}`);
   }
 
   static swatch(vehicleId, idle) {

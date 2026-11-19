@@ -1,4 +1,4 @@
-import { esc, fmtFixed, fmtSigned, icon } from "../format.js";
+import { esc, fmtFixed, fmtSigned, icon, signClass } from "../format.js";
 import { statusChip } from "../ui/status.js";
 import { tooltip, Tooltip } from "../ui/tooltip.js";
 import { Agents, OPERATORS, Sentences, TERMS } from "./encoding.js";
@@ -132,7 +132,7 @@ export class Timeline {
       const top = index * laneH;
       const mid = top + laneH * 0.62;
       const half = Math.min(laneH * 0.34, 12);
-      const glyph = Math.min(9, cell - 3);
+      const glyph = Math.min(laneH >= Timeline.LANE_H ? 10 : 9, cell - 3);
       const parts = [`<line class="tl-zero" x1="${Timeline.LABEL_W}" x2="${end}" y1="${mid}" y2="${mid}"></line>`];
       const cumPoints = [];
       let previousCommitX = null;
@@ -171,7 +171,7 @@ export class Timeline {
 
       if (cumPoints.length > 1 && cumHi > cumLo) {
         const y = (value) => top + laneH - 3 - ((value - cumLo) / (cumHi - cumLo)) * (laneH - 6);
-        parts.unshift(`<polyline class="tl-cum" points="${cumPoints.map(([px, value]) => `${px.toFixed(1)},${y(value).toFixed(1)}`).join(" ")}"></polyline>`);
+        parts.unshift(`<polyline class="tl-cum tl-cum--${Agents.style(lane.key)}" points="${cumPoints.map(([px, value]) => `${px.toFixed(1)},${y(value).toFixed(1)}`).join(" ")}"></polyline>`);
       }
       if (index > 0) parts.unshift(`<line class="tl-lane" x1="0" x2="${width}" y1="${top}" y2="${top}"></line>`);
       return parts.join("");
@@ -185,13 +185,15 @@ export class Timeline {
       else if (info.status === "queued") state = `<span class="muted">queued</span>`;
       else if (info.status === "cancelled") state = `<span class="muted">cancelled</span>`;
       else state = "";
-      const total = lane.trace.summary && lane.trace.length ? fmtFixed(lane.trace.cumulative(lane.trace.length - 1), 2) : "";
+      const ended = lane.trace.summary && lane.trace.length;
+      const total = ended ? fmtFixed(lane.trace.cumulative(lane.trace.length - 1), 2) : "";
+      const sign  = ended ? signClass(lane.trace.cumulative(lane.trace.length - 1)) : "";
       const current = selected.lane === lane.key;
       return `
         <button type="button" class="timeline__lane timeline__lane--${Agents.style(lane.key)}${current ? " is-current" : ""}" data-lanehead="${esc(lane.key)}" style="top:${Timeline.HEAD_H + index * laneH}px;height:${laneH}px" aria-pressed="${current}" title="${esc(Agents.label(lane.key))}">
           <i class="timeline__stroke"></i><span class="timeline__name">${esc(Agents.label(lane.key))}</span>${state}
         </button>
-        <div class="timeline__total" style="top:${Timeline.HEAD_H + index * laneH}px;height:${laneH}px;left:${end + 8}px" title="Cumulative reward at the end of the lane">${total}</div>`;
+        <div class="timeline__total ${sign}" style="top:${Timeline.HEAD_H + index * laneH}px;height:${laneH}px;left:${end + 8}px" title="Cumulative reward at the end of the lane">${total}</div>`;
     }).join("");
 
     this.container.innerHTML = `
