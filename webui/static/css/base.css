@@ -2,7 +2,7 @@
 
 html, body { height: 100%; }
 
-html { scrollbar-color: rgba(200, 215, 225, 0.35) transparent; scrollbar-width: thin; }
+* { scrollbar-color: rgba(200, 215, 225, 0.35) transparent; scrollbar-width: thin; }
 
 body {
   margin: 0;
