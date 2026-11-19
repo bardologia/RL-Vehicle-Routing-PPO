@@ -1,6 +1,5 @@
 import { api } from "../api.js";
 import { esc, icon, Store } from "../format.js";
-import { FigureStates } from "../ui/figure_states.js";
 import { infoText } from "../ui/panel.js";
 import { Popover } from "../ui/popover.js";
 import { skeleton } from "../ui/status.js";
@@ -362,7 +361,7 @@ export class SequencesPage extends ConfigForm {
   async render() {
     this.host.innerHTML = `
       <div class="stores stores--sequences">
-        ${this.view.head({ title: "Sequences", lead: "Chains of launches that run block by block, each after its predecessors finish, in a workspace of their own.", figure: true, figureName: "dispatch" })}
+        ${this.view.head({ title: "Sequences", lead: "Chains of launches that run block by block, each after its predecessors finish, in a workspace of their own.", figure: true, figureName: "elevator" })}
         <div class="seq-layout" data-role="layout">${skeleton(4)}</div>
       </div>`;
     this.layoutHost = this.host.querySelector("[data-role=layout]");
@@ -585,7 +584,7 @@ export class SequencesPage extends ConfigForm {
   buildRail() {
     const rail = document.createElement("aside");
     rail.className = "seq-rail";
-    rail.innerHTML = `<button type="button" class="btn btn--sm btn--primary seq-rail__new" data-action="new">${icon("plus")}<span>New sequence</span></button>`;
+    rail.innerHTML = `<button type="button" class="btn btn--primary seq-rail__new" data-action="new">${icon("plus")}<span>New sequence</span></button>`;
     rail.querySelector("[data-action=new]").addEventListener("click", () => this.create());
 
     if (!this.sequences.length) rail.insertAdjacentHTML("beforeend", `<p class="seq-rail__empty">No sequences yet. Create one here, or add an entry point from its card in the catalog.</p>`);
@@ -713,8 +712,11 @@ export class SequencesPage extends ConfigForm {
     if (this.headFigure) {
       const states = this.live ? Object.values(this.live.blocks) : [];
       const fired = states.filter((state) => ["running", "done", "failed"].includes(state.status)).length;
-      const loads = this.current ? Math.min(6, this.current.blocks.length) : 0;
-      FigureStates.write(this.headFigure, { armed: Boolean(this.current && this.current.blocks.length), loads, queued: states.some((state) => ["pending", "held"].includes(state.status)) && Boolean(this.live && this.live.status === "running"), fired });
+      const total = this.current ? this.current.blocks.length : 0;
+      const running = Boolean(this.live && ["running", "held"].includes(this.live.status));
+      const intensity = total ? (running ? 0.6 + 0.4 * Math.min(1, fired / total) : 0.35) : 0.15;
+      const value = String(Math.round(intensity * 100) / 100);
+      if (this.headFigure.getAttribute("intensity") !== value) this.headFigure.setAttribute("intensity", value);
     }
     if (!this.statusEl || !this.current) return;
 

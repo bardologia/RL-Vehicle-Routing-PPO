@@ -144,7 +144,7 @@
 
 .seq-layout { display: flex; flex-direction: column; gap: 16px; }
 .seq-rail { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; }
-.seq-rail__new { justify-content: center; min-height: 60px; padding-inline: 18px; }
+.seq-rail__new { flex: none; justify-content: center; }
 .seq-rail__new .icon { width: 12px; height: 12px; }
 .seq-rail__empty { align-self: center; margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-faint); }
 .seq-rail__card { display: flex; flex-direction: column; justify-content: center; gap: 4px; width: 240px; padding: 10px 12px; border: 2px solid var(--line-card); border-radius: var(--r); background: var(--panel); cursor: pointer; transition: border-color var(--t-ctl) var(--ease), background var(--t-ctl) var(--ease); }

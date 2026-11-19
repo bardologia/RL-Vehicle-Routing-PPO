@@ -3433,6 +3433,7 @@ class RoutingFigures {
     terminal:   "A terminal printing a log.",
     cabinet:    "A filing cabinet of run files.",
     riffle:     "A stack of figures.",
+    elevator:   "A lift carrying a sequence of launches floor by floor.",
   };
 }
 
