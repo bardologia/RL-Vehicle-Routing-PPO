@@ -1,273 +1,117 @@
 import { api } from "../api.js";
-import { el, esc, plural } from "../format.js";
+import { el, esc } from "../format.js";
 import { PageHead } from "../ui/page_head.js";
-import { infoText, panelHead } from "../ui/panel.js";
-import { errorBlock, failView, skeleton } from "../ui/status.js";
-import { FigureStates } from "../ui/figure_states.js";
+import { failView, skeleton } from "../ui/status.js";
+import { LaunchPage } from "../launch/launch_page.js";
+import { ScriptCatalogView } from "../launch/script_catalog_view.js";
+import { SequencesPage } from "../launch/sequences.js";
+import { SavedRunsPage, TemplatesPage } from "../launch/stores.js";
 
 export class LaunchView {
+  static PAGES = [
+    { key: "", label: "Scripts" },
+    { key: "saved", label: "Saved" },
+    { key: "templates", label: "Templates" },
+    { key: "sequences", label: "Sequences" },
+  ];
+
   constructor(app, root) {
     this.app = app;
     this.root = root;
     this.scripts = null;
-    this.form = null;
-    this.dirty = {};
-    this.invalid = {};
-    this.activeKey = null;
-    this.fired = 0;
+    this.project = null;
+    this.page = null;
+    this.sequences = null;
+    this.current = "";
+    this.pendingImport = null;
 
-    root.appendChild(el(`
-      <div class="launch">
-        <aside class="launch__rail" aria-label="Scripts"></aside>
-        <div class="launch__main"></div>
-      </div>`));
-    this.rail = root.querySelector(".launch__rail");
-    this.main = root.querySelector(".launch__main");
-    this.main.innerHTML = `
-      ${PageHead.html({
-        title: "Launch",
-        form: "narrow",
-        controls: `<button type="button" class="btn btn--primary" data-action="launch" disabled>Launch</button><button type="button" class="btn" data-action="queue" disabled>Queue</button><button type="button" class="btn btn--sm btn--quiet" data-action="reset">Reset</button><span class="launch__count" data-role="count"></span>`,
-        figure: HairlineFigure.html("dispatch"),
-      })}
-      <div class="launch__body" data-role="launch-body"></div>`;
-    this.head = { title: this.main.querySelector("[data-role=title]"), lead: this.main.querySelector("[data-role=lead]"), figure: this.main.querySelector("hairline-figure[name=dispatch]") };
-    this.body = this.main.querySelector("[data-role=launch-body]");
-    app.onJobs(() => this.writeDispatch());
-
-    this.main.addEventListener("input", (event) => this.onEdit(event));
-    this.main.addEventListener("change", (event) => this.onEdit(event));
-    this.main.addEventListener("click", (event) => this.onClick(event));
-  }
-
-  async enter(parts, query) {
-    if (!this.scripts) {
-      try {
-        this.scripts = (await api.get("/api/scripts")).scripts;
-      } catch (error) {
-        this.body.innerHTML = failView("The script list could not be loaded.", error.message, error);
-        return;
-      }
-      this.renderRail();
-    }
-    const key = parts[0] || this.activeKey || this.scripts[0].key;
-    const hasQuery = Object.keys(query).length > 0;
-    if (key !== this.activeKey || hasQuery || !this.form) await this.select(key, query);
-  }
-
-  leave() {}
-
-  renderRail() {
-    const groups = new Map();
-    for (const script of this.scripts) {
-      if (!groups.has(script.group)) groups.set(script.group, []);
-      groups.get(script.group).push(script);
-    }
-    this.rail.innerHTML = [...groups.entries()].map(([group, items]) => `
-      <h4 class="launch__group">${esc(group)}</h4>
-      ${items.map((script) => `
-        <a class="launch__script" href="#/launch/${esc(script.key)}" data-key="${esc(script.key)}">
-          <span class="launch__scripttitle">${esc(script.title)}</span>
-          <span class="launch__scriptsum">${esc(script.summary)}</span>
-        </a>`).join("")}`).join("");
-  }
-
-  async select(key, query) {
-    this.activeKey = key;
-    this.dirty = {};
-    this.invalid = {};
-    this.launchError = null;
-    for (const link of this.rail.querySelectorAll(".launch__script")) {
-      if (link.dataset.key === key) link.setAttribute("aria-current", "true");
-      else link.removeAttribute("aria-current");
-    }
-
-    const script = this.scripts.find((entry) => entry.key === key);
-    this.head.title.textContent = script ? script.title : key;
-    this.head.lead.textContent = script ? script.summary : "";
-    this.form = null;
-    this.setArmed(false);
-    this.main.querySelector("[data-role=count]").textContent = "";
-    this.body.innerHTML = skeleton(4);
-    try {
-      this.form = await api.get(`/api/scripts/${encodeURIComponent(key)}/config`);
-    } catch (error) {
-      this.form = null;
-      this.body.innerHTML = failView(`The form for "${key}" could not be loaded.`, error.message, error);
-      return;
-    }
-
-    const known = new Set(this.fields().map((field) => field.path));
-    for (const [path, value] of Object.entries(query || {})) {
-      if (known.has(path)) this.dirty[path] = value;
-    }
-    this.renderForm();
-  }
-
-  fields() {
-    return this.form.sections.flatMap((section) => section.fields);
-  }
-
-  field(path) {
-    return this.fields().find((field) => field.path === path);
-  }
-
-  defaultText(field) {
-    if (field.default === null || field.default === undefined) return "";
-    if (Array.isArray(field.default)) return field.default.join(", ");
-    return String(field.default);
-  }
-
-  fieldHtml(field) {
-    const dirty = field.path in this.dirty;
-    const current = dirty ? this.dirty[field.path] : this.defaultText(field);
-    const help = field.help ? `<span class="field__help">${esc(field.help)}</span>` : "";
-    const head = `<span class="field__label">${esc(field.label)}</span><code class="field__path">${esc(field.path)}</code>`;
-    let control;
-
-    if (field.choices) {
-      control = `<select class="select" data-path="${esc(field.path)}">${field.choices.map((choice) => `<option value="${esc(choice)}"${String(choice) === String(current) ? " selected" : ""}>${esc(choice)}</option>`).join("")}</select>`;
-    } else if (field.kind === "bool") {
-      const on = String(current).toLowerCase() === "true";
-      control = `<label class="check"><input type="checkbox" data-path="${esc(field.path)}" data-kind="bool"${on ? " checked" : ""}><span>${on ? "true" : "false"}</span></label>`;
-    } else {
-      const shown = current === "none" ? "" : current;
-      control = `<input class="input" type="text" inputmode="${field.kind === "int" || field.kind === "float" ? "decimal" : "text"}" spellcheck="false" data-path="${esc(field.path)}" data-kind="${esc(field.kind)}" value="${esc(shown)}"${field.nullable ? ' placeholder="not set"' : ""}>`;
-    }
-
-    return `
-      <div class="field${dirty ? " is-dirty" : ""}" data-field="${esc(field.path)}">
-        <div class="field__head">${head}</div>
-        ${control}
-        <span class="field__error" role="alert"></span>
-        ${help}
-      </div>`;
-  }
-
-  renderForm() {
-    const form = this.form;
-    const essentials = form.essentials.map((path) => this.field(path)).filter((field) => field);
-    const essentialPaths = new Set(essentials.map((field) => field.path));
-
-    const sections = form.sections.map((section, index) => {
-      const rest = section.fields.filter((field) => !essentialPaths.has(field.path));
-      if (!rest.length) return "";
-      return `
-        <details class="launch__section" data-section="${index}">
-          <summary><span class="launch__sectiontitle">${esc(section.title)}</span><span class="muted">${plural(rest.length, "field")}</span><span class="launch__changed" data-changed="${index}"></span></summary>
-          <div class="launch__grid">${rest.map((field) => this.fieldHtml(field)).join("")}</div>
-        </details>`;
-    }).join("");
-
-    this.head.title.textContent = form.title;
-    this.head.lead.textContent = form.summary;
-    this.body.innerHTML = `
-      <div data-role="error"></div>
-      <pre class="launch__cmd" data-role="cmd" aria-label="Command preview"></pre>
-      <section class="panel">
-        ${panelHead("Essentials", { info: infoText("The fields most runs change. Everything else keeps its default unless edited below.") })}
-        <div class="panel__body"><div class="launch__grid">${essentials.map((field) => this.fieldHtml(field)).join("")}</div></div>
-      </section>
-      <div class="launch__sections">${sections}</div>`;
-
-    for (const path of Object.keys(this.dirty)) {
-      const wrap = this.main.querySelector(`[data-field="${CSS.escape(path)}"]`);
-      const section = wrap.closest("details");
-      if (section) section.open = true;
-    }
-    this.syncPreview();
-  }
-
-  validate(field, text) {
-    if (text === "") return field.nullable ? null : "A value is required.";
-    if (field.kind === "int" && !/^-?\d+$/.test(text)) return "Expected a whole number.";
-    if (field.kind === "float" && !/^-?(\d+\.?\d*|\.\d+)(e-?\d+)?$/i.test(text)) return "Expected a number.";
-    if (field.kind === "tuple" && !text.split(",").every((part) => part.trim().length)) return "Expected comma-separated values.";
-    return null;
-  }
-
-  onEdit(event) {
-    const input = event.target;
-    if (!(input instanceof HTMLElement) || !input.dataset.path) return;
-    const path = input.dataset.path;
-    const field = this.field(path);
-    const wrap = input.closest(".field");
-    let value;
-    let problem = null;
-
-    if (input.dataset.kind === "bool") {
-      value = input.checked ? "true" : "false";
-      input.parentElement.querySelector("span").textContent = value;
-      if (value === String(Boolean(field.default))) delete this.dirty[path];
-      else this.dirty[path] = value;
-    } else {
-      value = input.value.trim();
-      problem = field.choices ? null : this.validate(field, value);
-      if (value === this.defaultText(field)) delete this.dirty[path];
-      else this.dirty[path] = value === "" ? "none" : value;
-    }
-
-    if (problem) this.invalid[path] = problem;
-    else delete this.invalid[path];
-    if (input.classList.contains("input")) input.setAttribute("aria-invalid", String(Boolean(problem)));
-    wrap.querySelector(".field__error").textContent = problem || "";
-    wrap.classList.toggle("is-dirty", path in this.dirty);
-    this.syncPreview();
-  }
-
-  syncPreview() {
-    const parts = [`python -u main/${esc(this.form.key)}.py`];
-    for (const [path, value] of Object.entries(this.dirty)) parts.push(`    <b>--${esc(path)}</b> ${esc(value)}`);
-    this.main.querySelector("[data-role=cmd]").innerHTML = parts.join(" \\\n");
-
-    const count = Object.keys(this.dirty).length;
-    const bad = Object.keys(this.invalid).length;
-    this.main.querySelector("[data-role=count]").textContent = bad ? `${bad} invalid` : count ? `${count} changed` : "all defaults";
-    this.main.querySelector("[data-role=count]").classList.toggle("launch__changed", count > 0 && !bad);
-    this.setArmed(bad === 0);
-
-    this.form.sections.forEach((section, index) => {
-      const node = this.main.querySelector(`[data-changed="${index}"]`);
-      if (!node) return;
-      const changed = section.fields.filter((field) => field.path in this.dirty && !this.form.essentials.includes(field.path)).length;
-      node.textContent = changed ? `${changed} changed` : "";
+    root.appendChild(el(`<div class="view__pad launch-view"><div data-role="host">${skeleton(4)}</div></div>`));
+    this.host = root.querySelector("[data-role=host]");
+    app.onJobs(() => {
+      if (this.page && this.current === "script") this.page.writeDispatch();
     });
   }
 
-  setArmed(armed) {
-    for (const button of this.main.querySelectorAll("[data-action=launch], [data-action=queue]")) button.disabled = !armed;
-    this.writeDispatch();
+  head({ title, lead = "", dateline = "", figure = false, figureName = "dispatch" }) {
+    const section = this.current === "script" ? "" : this.current;
+    const nav = `<nav class="segmented launch-nav" aria-label="Launch pages">${LaunchView.PAGES.map((page) => `<a href="#/launch${page.key ? `/${page.key}` : ""}"${page.key === section ? ' aria-current="page"' : ""}>${esc(page.label)}</a>`).join("")}</nav>`;
+    return PageHead.html({ title, lead, controls: nav, dateline, figure: figure ? HairlineFigure.html(figureName) : "", form: "narrow", className: "launch-head" });
   }
 
-  writeDispatch() {
-    const jobs = this.app.jobs || [];
-    const armed = Boolean(this.form) && Object.keys(this.invalid).length === 0;
-    FigureStates.write(this.head.figure, { armed, loads: Math.min(6, Object.keys(this.dirty).length), queued: jobs.some((job) => ["queued", "pending"].includes(job.status)), fired: this.fired });
+  set pendingImport(entry) {
+    this.pending = entry;
+    if (this.page) this.page.pendingImport = entry;
   }
 
-  onClick(event) {
-    const button = event.target.closest("button[data-action]");
-    if (!button) return;
-    if (button.disabled) return;
-    if (button.dataset.action === "reset") this.select(this.activeKey, {});
-    if (button.dataset.action === "launch") this.launch(false);
-    if (button.dataset.action === "queue") this.launch(true);
+  get pendingImport() {
+    return this.pending;
   }
 
-  async launch(queue) {
-    const errorNode = this.main.querySelector("[data-role=error]");
-    errorNode.innerHTML = "";
-    let result;
+  focusSearch() {
+    const input = this.host.querySelector(".catalog__search, .cfg-toolbar__search");
+    if (input) input.focus();
+  }
+
+  async ensureCatalog() {
+    if (this.scripts && this.project) return true;
     try {
-      result = await api.post("/api/run", { script: this.form.key, overrides: this.dirty, queue });
+      [this.scripts, this.project] = await Promise.all([api.get("/api/scripts").then((data) => data.scripts), api.get("/api/project")]);
     } catch (error) {
-      errorNode.innerHTML = errorBlock("The job was not started.", error.message);
+      this.host.innerHTML = failView("The entry points could not be loaded.", error.message, error);
+      return false;
+    }
+    this.sequences = new SequencesPage(this, this.host, this.project);
+    return true;
+  }
+
+  async enter(parts, query) {
+    if (!(await this.ensureCatalog())) return;
+    const [first, second] = parts;
+    if (this.current === "sequences" && first !== "sequences") this.sequences.leave();
+
+    if (!first) {
+      this.current = "";
+      this.page = null;
+      new ScriptCatalogView(this, this.host).render(this.scripts);
       return;
     }
-    this.fired += 1;
-    this.writeDispatch();
-    this.app.toast.confirm(queue && result.queued ? "Job queued" : "Job launched");
-    this.app.pollJobs();
-    this.app.router.go(`#/console/${result.job_id}`);
+
+    if (first === "saved") {
+      this.current = "saved";
+      await new SavedRunsPage(this, this.host).render();
+      return;
+    }
+
+    if (first === "templates") {
+      this.current = "templates";
+      await new TemplatesPage(this, this.host).render();
+      return;
+    }
+
+    if (first === "sequences") {
+      this.current = "sequences";
+      await this.sequences.render();
+      return;
+    }
+
+    const known = this.scripts.some((script) => script.key === first);
+    if (!known) {
+      this.current = "";
+      this.host.innerHTML = failView(`There is no entry point called "${first}".`, "", { status: 404 });
+      return;
+    }
+
+    const reuse = this.current === "script" && this.page && this.page.key === first && this.host.contains(this.page.configHost || null);
+    this.current = "script";
+    if (!reuse) this.page = new LaunchPage(this, this.host, this.project);
+    if (this.pending) {
+      this.page.pendingImport = this.pending;
+      this.pending = null;
+    }
+    await this.page.show(first, second || null, query);
+  }
+
+  leave() {
+    if (this.current === "sequences") this.sequences.leave();
   }
 }
