@@ -4,7 +4,7 @@ import { BehaviourPanels } from "../diagnose/behaviour.js";
 import { FindingsList } from "../diagnose/findings_list.js";
 import { Links } from "../diagnose/links.js";
 import { Agents, TERMS } from "../episode/encoding.js";
-import { el, esc, fmtPct, fmtSigned, fmtSignedInt, isNum, plural } from "../format.js";
+import { el, esc, fmtPct, fmtSigned, fmtSignedInt, isNum, NONE, plural } from "../format.js";
 import { Scatter } from "../ui/charts.js";
 import { PageHead } from "../ui/page_head.js";
 import { infoText, panelHead } from "../ui/panel.js";
@@ -55,6 +55,13 @@ export class DiagnoseView {
     this.content.addEventListener("click", (event) => {
       const figure = event.target.closest(".sechead__figures hairline-figure[data-panel]");
       if (figure) this.focusPanel(figure.dataset.panel);
+    });
+    this.content.addEventListener("keydown", (event) => {
+      const figure = event.target.closest(".sechead__figures hairline-figure[data-panel]");
+      if (figure && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        this.focusPanel(figure.dataset.panel);
+      }
     });
 
     this.runSelect.addEventListener("change", () => this.app.router.go(Links.diagnose(this.runSelect.value, null)));
@@ -210,28 +217,37 @@ export class DiagnoseView {
     }).filter((part) => part);
     this.facts.textContent = facts.join(", ");
     const withoutData = FindingsList.counts(this.findings)["NO DATA"];
-    this.flags.innerHTML = FindingsList.strip(this.findings, { actions: this.findingActions(), tail: `<button type="button" class="btn btn--sm btn--quiet" data-info aria-haspopup="dialog" aria-expanded="false" aria-label="Trace coverage">${withoutData ? `${withoutData} without data` : "Traces"}</button><template data-info-body><p>Traces: ${coverage.map(esc).join(", ")}</p></template>` });
+    const absent = BehaviourPanels.missing(this.index).map((line) => `<p>${esc(line)}</p>`).join("");
+    this.flags.innerHTML = FindingsList.strip(this.findings, { actions: this.findingActions(), tail: `<span class="findstrip__more"><button type="button" class="btn btn--sm btn--quiet" data-info aria-haspopup="dialog" aria-expanded="false" aria-label="Trace coverage">${withoutData ? `${withoutData} without data` : "Traces"}</button><template data-info-body><p>Traces: ${coverage.map(esc).join(", ")}</p>${absent}</template></span>` });
     this.recordLink.href = this.recordHash;
   }
 
   render() {
     this.renderFacts();
+    const n = this.report.meta.episodes;
     this.content.innerHTML = `
       <section class="panel" data-panel="agent-table">
-        ${panelHead("Agents", { info: AgentTable.info(this.report) })}
+        ${panelHead("Agents", { note: `points, n = ${n}`, info: AgentTable.info(this.report), actions: `<span data-role="agent-set"></span>` })}
         <div class="panel__body" data-role="agents"></div>
       </section>
       <div class="grid-12">
-        <section class="panel span-5" data-panel="paired-scatter">
-          ${panelHead("Model against reference", { note: "points", info: infoText("One point per episode: model reward against the reward of the reference agent.", "Points above the diagonal are episodes the model won. Click a point to open the episode.") })}
-          <div class="panel__body"><div class="ctls diag__against"><span class="ctl"><span class="ctl__label">Against</span><span data-role="reference"></span></span></div><div data-role="scatter"></div></div>
+        <section class="panel span-5 diag__scatter" data-panel="paired-scatter">
+          ${panelHead("Model against reference", { note: "points", info: infoText("One point per episode: model reward against the reward of the reference agent.", "Points above the diagonal are episodes the model won. Click a point to open the episode."), actions: `<span data-role="reference"></span>` })}
+          <div class="panel__body"><div data-role="scatter"></div></div>
         </section>
         <section class="panel panel--flush span-7" data-panel="regret-table">
-          ${panelHead("Episodes by regret", { info: infoText("Regret = reference reward minus model reward, in points.", "J and K move, Enter opens the episode.") })}
+          ${panelHead("Episodes by regret", { note: "model against teacher", info: infoText("Regret = reference reward minus model reward, in points. Unassigned and served are model minus teacher, in jobs; wasted edits and profitable insertions left come from traces.", "J and K move, Enter opens the episode. The Columns menu holds seed, jobs, vehicles, events, holding share, decisions, INSERT count and abandonments.") })}
           <div class="panel__body"><div data-role="regret" class="diag__regret"></div></div>
         </section>
       </div>
-      <div class="sechead diag__section"><div class="sechead__main"><h2>Behaviour <span class="muted">from recorded traces</span></h2></div><div class="sechead__figures">${HairlineFigure.html("heads", 'data-panel="operator-mix" data-hint="Operator mix"')}${HairlineFigure.html("terms", 'data-panel="reward-by-term" data-hint="Reward by term"')}${HairlineFigure.html("ranking", 'data-panel="job-ranking" data-hint="Job ranking"')}</div></div>
+      <div class="sechead diag__section">
+        <div class="sechead__main">
+          <h2>Behaviour</h2>
+          <p class="sechead__date">${esc(BehaviourPanels.facts(this.index))}</p>
+          <div class="legend opkey" aria-label="Operator key"><span><i class="opmark opmark--op0"></i>INSERT</span><span><i class="opmark opmark--op1"></i>REMOVE</span><span><i class="opmark opmark--op2"></i>DO_NOTHING</span></div>
+        </div>
+        <div class="sechead__figures">${HairlineFigure.html("heads", 'data-panel="operator-mix" data-hint="Operator mix" tabindex="0" role="link"')}${HairlineFigure.html("terms", 'data-panel="reward-by-term" data-hint="Reward by term" tabindex="0" role="link"')}${HairlineFigure.html("ranking", 'data-panel="job-ranking" data-hint="Job ranking" tabindex="0" role="link"')}</div>
+      </div>
       <div data-role="behaviour-note"></div>
       <div data-role="behaviour"></div>`;
 
@@ -243,6 +259,7 @@ export class DiagnoseView {
         this.drawScatter();
       }, "Reference agent");
     }
+    AgentTable.switcher(this.content.querySelector("[data-role=agent-set]"), () => this.drawAgents());
 
     this.writeFigures();
     this.writeBehaviourFigures();
@@ -259,13 +276,17 @@ export class DiagnoseView {
     };
   }
 
-  drawCharts() {
+  drawAgents() {
     AgentTable.render(this.content.querySelector("[data-role=agents]"), this.report);
+  }
+
+  drawCharts() {
+    this.drawAgents();
     this.drawScatter();
     if (this.index) this.behaviour.render(this.index);
     else {
       this.behaviour.needsTraces();
-      this.content.querySelector("[data-role=behaviour-note]").innerHTML = `<p class="noteblock"><span>No traces are recorded for this report, so the eight behaviour panels and the trace columns of the regret table are empty. ${esc(this.estimate())}</span><a class="btn btn--primary" href="${esc(this.recordHash)}">Record traces</a></p>`;
+      this.content.querySelector("[data-role=behaviour-note]").innerHTML = `<p class="noteblock"><span>No traces are recorded for this report, so the eight behaviour panels and the trace columns of the episode table are empty. ${esc(this.estimate())}</span><a class="btn btn--primary" href="${esc(this.recordHash)}">Record traces</a></p>`;
     }
   }
 
@@ -276,7 +297,14 @@ export class DiagnoseView {
       return;
     }
     const points = this.report.episodes.map((episode) => ({ x: episode.reward[this.reference], y: episode.reward.model, title: `Episode ${episode.index}, seed ${episode.seed}`, episode }));
-    Scatter.render(node, points, { xLabel: `${Agents.label(this.reference)} reward`, yLabel: "model reward", height: 320, onClick: (point) => this.openEpisode(point.episode) });
+    Scatter.render(node, points, { xLabel: `${Agents.label(this.reference)} reward`, yLabel: "model reward", height: this.scatterHeight(node), onClick: (point) => this.openEpisode(point.episode) });
+  }
+
+  scatterHeight(node) {
+    const table = this.content.querySelector("[data-panel=regret-table] .dtable");
+    if (!table || !table.offsetHeight) return 320;
+    const height = table.getBoundingClientRect().bottom - 18 - node.getBoundingClientRect().top;
+    return Math.round(Math.max(240, Math.min(420, height)));
   }
 
   episodeHash(episode) {
@@ -296,9 +324,10 @@ export class DiagnoseView {
   buildRegret() {
     const traced = new Map((this.index ? this.index.episodes : []).map((episode) => [episode.index, episode]));
     const model = (row) => (row.trace && row.trace.agents.model ? row.trace.agents.model : null);
-    const fromTrace = (pick, format) => ({
+    const fromTrace = (pick, format, hidden) => ({
       numeric: true,
       hideable: true,
+      hidden,
       sortValue: (row) => (model(row) ? pick(model(row)) : null),
       render: (row) => (model(row) ? esc(format ? format(pick(model(row))) : pick(model(row))) : needsTraces()),
     });
@@ -306,27 +335,27 @@ export class DiagnoseView {
     const maxRegret = Math.max(1e-9, ...this.report.episodes.map((episode) => Math.abs(episode.regret_teacher === null ? episode.regret_best_baseline : episode.regret_teacher)));
 
     const columns = [
-      { key: "index", label: "Episode", numeric: true, render: (row) => `<a href="${esc(this.episodeHash(row))}" title="${row.has_trace.model ? "Open the stored trace" : "Record this episode now"}">${row.index}</a>` },
-      { key: "seed", label: "Seed", numeric: true },
+      { key: "index", label: "Episode", numeric: true, render: (row) => `<a href="${esc(this.episodeHash(row))}" data-hint="${row.has_trace.model ? "Open the stored trace" : "Record this episode now"}">${row.index}</a>` },
+      { key: "seed", label: "Seed", numeric: true, hideable: true, hidden: true },
       { key: "regret_teacher", label: "Regret", full: "Regret against the teacher: teacher reward minus model reward", unit: "pts", numeric: true, render: (row) => signed(row.regret_teacher), bar: { value: (row) => Math.max(0, row.regret_teacher), max: () => maxRegret } },
       { key: "regret_best_baseline", label: "Vs best", full: "Regret against the best baseline", unit: "pts", numeric: true, render: (row) => signed(row.regret_best_baseline) },
       { key: "unassigned_delta", label: "Unassigned", unit: "jobs", numeric: true, title: "Final unassigned jobs, model minus teacher", format: fmtSignedInt },
       { key: "served_delta", label: "Served", unit: "jobs", numeric: true, title: "Served jobs, model minus teacher", format: fmtSignedInt },
-      { key: "jobs", label: "Jobs", numeric: true, hideable: true, sortValue: (row) => (row.trace ? row.trace.jobs : null), render: (row) => (row.trace ? row.trace.jobs : needsTraces()) },
-      { key: "vehicles", label: "Vehicles", numeric: true, hideable: true, sortValue: (row) => (row.trace ? row.trace.vehicles : null), render: (row) => (row.trace ? row.trace.vehicles : needsTraces()) },
-      { key: "events", label: "Events", hideable: true, sortable: false, title: "Disruption of each round, in round order", render: (row) => (row.trace ? `<span title="${esc(`In order: ${row.trace.events.join(", ") || "none"}`)}">${esc(DiagnoseView.eventWords(row.trace.events))}</span>` : needsTraces()) },
-      { key: "holding_share", label: "Holding share", ...fromTrace((agent) => agent.holding_share, (value) => fmtPct(value)) },
-      { key: "decisions", label: "Decisions", ...fromTrace((agent) => agent.decisions) },
-      { key: "inserts", label: "INSERT", ...fromTrace((agent) => agent.operator_counts[0]) },
+      { key: "jobs", label: "Jobs", numeric: true, hideable: true, hidden: true, sortValue: (row) => (row.trace ? row.trace.jobs : null), render: (row) => (row.trace ? row.trace.jobs : needsTraces()) },
+      { key: "vehicles", label: "Vehicles", numeric: true, hideable: true, hidden: true, sortValue: (row) => (row.trace ? row.trace.vehicles : null), render: (row) => (row.trace ? row.trace.vehicles : needsTraces()) },
+      { key: "events", label: "Events", hideable: true, hidden: true, sortable: false, title: "Disruption of each round, in round order", render: (row) => (row.trace ? `<span data-hint="${esc(`In order: ${row.trace.events.join(", ") || "none"}`)}">${esc(DiagnoseView.eventWords(row.trace.events))}</span>` : needsTraces()) },
+      { key: "holding_share", label: "Holding share", ...fromTrace((agent) => agent.holding_share, (value) => fmtPct(value), true) },
+      { key: "decisions", label: "Decisions", ...fromTrace((agent) => agent.decisions, null, true) },
+      { key: "inserts", label: "INSERT", ...fromTrace((agent) => agent.operator_counts[0], null, true) },
       { key: "wasted_edits", label: "Wasted", full: "Wasted edits", ...fromTrace((agent) => agent.wasted_edits) },
-      { key: "abandonments", label: "Abandonments", ...fromTrace((agent) => agent.abandonments) },
-      { key: "profitable_left", label: "Left", title: "Profitable insertions left at round ends, from teacher verdicts", ...fromTrace((agent) => agent.profitable_left, (value) => (value === null ? "needs verdicts" : value)) },
+      { key: "abandonments", label: "Abandonments", ...fromTrace((agent) => agent.abandonments, null, true) },
+      { key: "profitable_left", label: "Left", full: "Profitable insertions left at round ends, from teacher verdicts", title: "Profitable insertions left at round ends, from teacher verdicts", ...fromTrace((agent) => agent.profitable_left), render: (row) => (model(row) ? (model(row).profitable_left === null ? `<span class="faint" data-hint="Needs teacher verdicts">${NONE}</span>` : esc(model(row).profitable_left)) : needsTraces()) },
     ];
 
     this.regret = new DataTable(this.content.querySelector("[data-role=regret]"), {
       columns,
       rowKey: (row) => row.index,
-      storeKey: "diagnose.regret",
+      storeKey: "diagnose.episodes",
       menuHost: this.content.querySelector("[data-panel=regret-table] [data-role=panel-actions]"),
       sort: { key: this.report.agents.teacher ? "regret_teacher" : "regret_best_baseline", descending: true },
       onOpen: (row) => this.openEpisode(row),

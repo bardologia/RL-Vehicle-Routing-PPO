@@ -1,31 +1,64 @@
-import { esc, fmtFixed, fmtInt, fmtMin, fmtSigned, isNum, NONE } from "../format.js";
+import { esc, fmtFixed, fmtInt, fmtMin, fmtSigned, isNum, NONE, Store } from "../format.js";
 import { Agents } from "../episode/encoding.js";
 import { bindTips, IntervalStrip, StackBar } from "../ui/charts.js";
 import { plainChip } from "../ui/status.js";
+import { Segmented } from "../ui/tabs.js";
 
 export class AgentTable {
   static ORDER = ["model", "teacher", "insertion_only", "do_nothing"];
+
+  static SETS = [
+    { value: "outcome", label: "Outcome", title: "Reward, paired difference, record, unassigned jobs and operator mix" },
+    { value: "execution", label: "Execution", title: "Final drive, served / failed / dropped, drive per served job, unassigned jobs and operator mix in percent" },
+  ];
+
+  static MIN = 96;
+
+  static MAX = { brief: 360, outcome: 420, execution: 0 };
+
+  static get set() {
+    const value = Store.read("agents.set", "outcome");
+    return AgentTable.SETS.some((entry) => entry.value === value) ? value : "outcome";
+  }
+
+  static switcher(host, onChange) {
+    return new Segmented(host, AgentTable.SETS, AgentTable.set, (value) => {
+      Store.write("agents.set", value);
+      onChange(value);
+    }, "Agent columns");
+  }
 
   static agentCell(key) {
     return `<span class="lanekey lanekey--${Agents.style(key)}"><i></i>${esc(Agents.label(key))}</span>`;
   }
 
-  static render(container, report) {
-    container.innerHTML = AgentTable.html(container, report, false);
-    const wrapper = container.querySelector(".atable");
-    if (wrapper.scrollWidth > wrapper.clientWidth) container.innerHTML = AgentTable.html(container, report, true);
+  static render(container, report, { set = AgentTable.set, tail = "" } = {}) {
+    container.innerHTML = AgentTable.html(report, { set, tail, width: AgentTable.MIN, compact: false });
+    if (set !== "execution") {
+      const wrapper = container.querySelector(".atable");
+      const table = wrapper.querySelector("table");
+      table.style.width = "max-content";
+      const spare = wrapper.clientWidth - table.offsetWidth;
+      table.style.width = "";
+      if (spare < 0) container.innerHTML = AgentTable.html(report, { set, tail, width: 120, compact: true });
+      else container.innerHTML = AgentTable.html(report, { set, tail, width: Math.round(Math.min(AgentTable.MAX[set], AgentTable.MIN + spare / 2)), compact: false });
+    }
     bindTips(container);
   }
 
-  static html(container, report, compact) {
+  static mixHint(mix) {
+    return `INSERT ${(mix.op0 * 100).toFixed(0)}%, REMOVE ${(mix.op1 * 100).toFixed(0)}%, DO_NOTHING ${(mix.op2 * 100).toFixed(0)}%`;
+  }
+
+  static html(report, { set, tail, width, compact }) {
     const present = AgentTable.ORDER.filter((key) => report.agents[key]);
     const n = report.meta.episodes;
     const rewardRows = present.map((key) => ({ key, label: Agents.label(key), style: Agents.style(key), mean: report.agents[key].mean_reward, lo: report.agents[key].ci95[0], hi: report.agents[key].ci95[1], n: report.agents[key].episodes }));
     const pairedRows = present.filter((key) => report.paired[key]).map((key) => ({ key, label: `model minus ${Agents.label(key)}`, style: Agents.style(key), mean: report.paired[key].mean_diff, lo: report.paired[key].ci95[0], hi: report.paired[key].ci95[1], n }));
-    const width = compact ? 132 : container.clientWidth >= 1500 ? 168 : container.clientWidth >= 1250 ? 120 : 96;
     const rewardStrip = IntervalStrip.scale(rewardRows, width, true);
     const pairedStrip = pairedRows.length ? IntervalStrip.scale(pairedRows, width, true) : null;
-    const cell = (strip, figures) => (compact ? `<td class="atable__strip">${strip}<div class="atable__under">${figures}</div></td>` : `<td class="atable__strip">${strip}</td><td class="num">${figures}</td>`);
+    const forest = set !== "execution";
+    const cell = (strip, figures) => (compact ? `<td class="atable__strip">${strip}<div class="atable__under">${figures}</div></td>` : `<td class="atable__strip" style="width:${width + 12}px">${strip}</td><td class="num atable__value">${figures}</td>`);
 
     const body = present.map((key) => {
       const agent = report.agents[key];
@@ -33,44 +66,52 @@ export class AgentTable {
       const paired = pairedRows.find((row) => row.key === key);
       const pair = report.paired[key];
       const separable = pair && (pair.ci95[0] > 0 || pair.ci95[1] < 0);
-      const chip = agent.identical_to ? plainChip(`identical to ${agent.identical_to}`, `Per-episode rewards equal ${agent.identical_to} in all ${n} episodes`) : "";
+      const chip = agent.identical_to ? plainChip(`same as ${Agents.label(agent.identical_to)}`, `Per-episode rewards equal ${agent.identical_to} in all ${n} episodes`) : "";
       const mix = agent.operator_frequency;
-      const pairedCell = pair
-        ? `${cell(IntervalStrip.cell(paired, pairedStrip), `<b class="${separable ? (pair.mean_diff > 0 ? "gain" : "loss") : "muted"}" data-hint="${separable ? "separable" : "not separable"}: 95% interval ${fmtSigned(pair.ci95[0], 1)} to ${fmtSigned(pair.ci95[1], 1)}">${fmtSigned(pair.mean_diff)}</b>`)}<td class="num" title="Episodes where the model is ahead, level and behind">${pair.wins} / ${pair.ties} / ${pair.losses}</td>`
-        : `${cell("", `<span class="faint">reference</span>`)}<td class="num faint">${NONE}</td>`;
-      return `
-        <tr data-agent="${esc(key)}">
-          <td class="atable__agent">${AgentTable.agentCell(key)} ${chip}</td>
-          ${cell(IntervalStrip.cell(reward, rewardStrip), `<b data-hint="95% interval ${fmtSigned(agent.ci95[0], 1)} to ${fmtSigned(agent.ci95[1], 1)}">${fmtSigned(agent.mean_reward)}</b>`)}
-          ${pairedCell}
-          <td class="num">${fmtMin(agent.mean_final_cost, 0)}</td>
-          <td class="num">${fmtFixed(agent.mean_final_unassigned, 1)}</td>
-          <td class="num">${fmtFixed(agent.mean_served, 1)} / ${fmtFixed(agent.mean_failed, 1)} / ${fmtFixed(agent.mean_dropped, 1)}</td>
-          <td class="num">${isNum(agent.cost_per_served) ? fmtInt(agent.cost_per_served) : NONE}</td>
-          <td><span class="mixcell">${StackBar.html([mix.op0, mix.op1, mix.op2], { shares: true, showWords: false })}<span class="atable__mix">${[mix.op0, mix.op1, mix.op2].map((share) => (share * 100).toFixed(0)).join(" / ")}</span></span></td>
-        </tr>`;
+      const shares = [mix.op0, mix.op1, mix.op2];
+      const cells = [`<td class="atable__agent">${AgentTable.agentCell(key)} ${chip}</td>`];
+      if (forest) {
+        cells.push(cell(IntervalStrip.cell(reward, rewardStrip), `<b data-hint="95% interval ${fmtSigned(agent.ci95[0], 1)} to ${fmtSigned(agent.ci95[1], 1)}" data-hint-title="Mean reward">${fmtSigned(agent.mean_reward)}</b>`));
+        cells.push(pair ? cell(IntervalStrip.cell(paired, pairedStrip), `<b class="${separable ? "" : "muted"}" data-hint="${separable ? "separable" : "not separable"}: 95% interval ${fmtSigned(pair.ci95[0], 1)} to ${fmtSigned(pair.ci95[1], 1)}" data-hint-title="Model minus ${esc(Agents.label(key))}, paired">${fmtSigned(pair.mean_diff)}</b>`) : cell("", `<span class="faint">reference</span>`));
+      }
+      if (set === "outcome") cells.push(pair ? `<td class="num" data-hint="Episodes where the model is ahead, level and behind">${pair.wins} / ${pair.ties} / ${pair.losses}</td>` : `<td class="num faint">${NONE}</td>`);
+      if (set === "execution") {
+        cells.push(`<td class="num">${fmtMin(agent.mean_final_cost, 0)}</td>`);
+        cells.push(`<td class="num">${fmtFixed(agent.mean_served, 1)} / ${fmtFixed(agent.mean_failed, 1)} / ${fmtFixed(agent.mean_dropped, 1)}</td>`);
+        cells.push(`<td class="num">${isNum(agent.cost_per_served) ? fmtInt(agent.cost_per_served) : NONE}</td>`);
+      }
+      if (set !== "brief") {
+        cells.push(`<td class="num">${fmtFixed(agent.mean_final_unassigned, 1)}</td>`);
+        cells.push(set === "outcome" ? `<td class="atable__mix" data-hint="${AgentTable.mixHint(mix)}" data-hint-title="Operator mix">${StackBar.html(shares, { shares: true, showWords: false })}</td>` : `<td class="num" data-hint="${AgentTable.mixHint(mix)}" data-hint-title="Operator mix">${shares.map((share) => (share * 100).toFixed(0)).join(" / ")}</td>`);
+      }
+      if (tail) cells.push(`<td class="atable__tail"></td>`);
+      return `<tr data-agent="${esc(key)}">${cells.join("")}</tr>`;
     }).join("");
 
     const missing = report.missing_agents.length ? `<p class="noteblock atable__missing">Missing from this report: ${report.missing_agents.map((key) => esc(Agents.label(key))).join(", ")}. The table shows the agents present.</p>` : "";
-    const head = (title, full, axis, figures) => `<th class="atable__strip" data-hint="${full}">${title}<small>points</small><div>${axis}</div></th>${compact ? "" : `<th class="num">${figures}</th>`}`;
+    const strip = (title, full, axis) => `<th class="atable__strip"${compact ? "" : ' colspan="2"'} data-hint="${full}"><span>${title}</span><small>pts</small><div class="atable__axis">${axis}</div></th>`;
+    const heads = ["<th>Agent</th>"];
+    if (forest) {
+      heads.push(strip("Reward", "Mean reward, 95% interval", IntervalStrip.axis(rewardStrip)));
+      heads.push(strip("Vs model", "Model minus agent, paired, 95% interval", pairedStrip ? IntervalStrip.axis(pairedStrip) : ""));
+    }
+    if (set === "outcome") heads.push(`<th class="num" data-hint="Wins / ties / losses of the model against this agent">W / T / L</th>`);
+    if (set === "execution") {
+      heads.push(`<th class="num" data-hint="Final drive: plan drive time at the end of the episode">Drive<small>min</small></th>`);
+      heads.push(`<th class="num" data-hint="Served / failed / dropped">S / F / D</th>`);
+      heads.push(`<th class="num" data-hint="Drive per served job">Drive / job<small>s</small></th>`);
+    }
+    if (set !== "brief") {
+      heads.push(`<th class="num" data-hint="Jobs left unassigned at the end of the episode">Unassigned<small>jobs</small></th>`);
+      heads.push(`<th class="${set === "outcome" ? "atable__mix" : "num"}" data-hint="Operator mix in percent, INSERT / REMOVE / DO_NOTHING">Mix${set === "execution" ? "<small>%</small>" : ""}</th>`);
+    }
+    if (tail) heads.push(`<th class="atable__tail">${tail}</th>`);
 
     return `
       ${missing}
-      <div class="dtable dtable--static atable${compact ? " atable--compact" : ""}">
+      <div class="dtable dtable--static atable atable--${set}${compact ? " atable--compact" : ""}">
         <table>
-          <thead>
-            <tr>
-              <th>Agent</th>
-              ${head("Reward", "Mean reward, 95% interval", IntervalStrip.axis(rewardStrip), "Mean")}
-              ${head("Vs model", "Model minus agent, paired", pairedStrip ? IntervalStrip.axis(pairedStrip) : "", "Difference")}
-              <th class="num" data-hint="Wins / ties / losses of the model against this agent">W / T / L</th>
-              <th class="num" data-hint="Final drive: plan drive time at the end of the episode">Drive<small>min</small></th>
-              <th class="num" data-hint="Jobs left unassigned at the end of the episode">Unassigned<small>jobs</small></th>
-              <th class="num" data-hint="Served / failed / dropped">S / F / D</th>
-              <th class="num" data-hint="Drive per served job">Drive / job<small>s</small></th>
-              <th data-hint="Operator mix in percent. Filled = INSERT, hatched = REMOVE, outline = DO_NOTHING">Mix<small>%</small></th>
-            </tr>
-          </thead>
+          <thead><tr>${heads.join("")}</tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>`;

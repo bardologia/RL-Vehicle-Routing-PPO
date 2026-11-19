@@ -209,7 +209,7 @@ export class DataTable {
 }
 
 export function needsTraces() {
-  return `<span class="faint">needs traces</span>`;
+  return `<span class="faint" data-hint="Needs traces">${NONE}</span>`;
 }
 
 export function kvTable(pairs) {
